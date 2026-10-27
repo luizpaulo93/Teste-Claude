@@ -1,11 +1,12 @@
 'use client';
 
-import { ShieldCheck, Trash2 } from 'lucide-react';
+import { FlaskConical, ShieldCheck, Trash2 } from 'lucide-react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
 import { Card, Field, Input } from '@/components/ui';
 import { ActionButton, SubmitButton, Switch } from '@/components/ui-client';
 import type { PlatformSettings } from '@/lib/types';
+import { loadDemo, removeDemo } from '../demo-actions';
 import { addAdmin, removeAdmin, saveSettings } from '../misc-actions';
 
 export function SettingsForm({ settings, admins }: { settings: PlatformSettings; admins: string[] }) {
@@ -41,7 +42,24 @@ export function SettingsForm({ settings, admins }: { settings: PlatformSettings;
         </ActionForm>
       </Card>
 
-      <Card className="p-5 xl:self-start">
+      <div className="space-y-6 xl:self-start">
+      <Card className="border-brand/30 p-5">
+        <p className="flex items-center gap-2 text-sm font-bold text-ink">
+          <FlaskConical className="size-4 text-brand" /> Conteúdo de exemplo
+        </p>
+        <p className="mt-1 mb-4 text-xs text-muted">
+          Cria cursos, aulas, uma turma, um simulado, uma live e eventos de exemplo para testar a plataforma. Depois é só apagar.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <ActionButton action={loadDemo} success="Conteúdo de exemplo criado" variant="primary" size="md">
+            Carregar exemplos
+          </ActionButton>
+          <ActionButton action={removeDemo} confirm="Apagar todo o conteúdo de exemplo?" success="Conteúdo de exemplo apagado" variant="danger" size="md">
+            Apagar exemplos
+          </ActionButton>
+        </div>
+      </Card>
+      <Card className="p-5">
         <p className="flex items-center gap-2 text-sm font-bold text-ink">
           <ShieldCheck className="size-4 text-brand" /> Administradores
         </p>
@@ -63,6 +81,7 @@ export function SettingsForm({ settings, admins }: { settings: PlatformSettings;
           </SubmitButton>
         </ActionForm>
       </Card>
+      </div>
     </div>
   );
 }

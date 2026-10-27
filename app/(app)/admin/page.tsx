@@ -26,6 +26,17 @@ export default async function AdminHome() {
   return (
     <>
       <PageHeader title="Visão geral" subtitle="Números da plataforma em tempo real." />
+      {catalog.courses.length === 0 && (
+        <Card className="mb-6 flex flex-col gap-3 border-brand/30 bg-brand-soft p-5 sm:flex-row sm:items-center">
+          <div className="flex-1">
+            <p className="font-bold text-ink">Plataforma vazia</p>
+            <p className="text-sm text-muted">Quer testar com conteúdo pronto? Carregue cursos, aulas, simulado e live de exemplo com um clique.</p>
+          </div>
+          <Link href="/admin/config" className="text-sm font-semibold text-brand">
+            Carregar exemplos →
+          </Link>
+        </Card>
+      )}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Alunos na lista" value={students} hint={`${active} ativos`} icon={<Users className="size-4" />} />
         <Stat label="Contas criadas" value={users} hint="Pessoas que já entraram" icon={<UserCheck className="size-4" />} />
