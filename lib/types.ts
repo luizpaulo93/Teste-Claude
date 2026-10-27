@@ -259,3 +259,25 @@ export interface LessonComment {
   text: string;
   created_at: string;
 }
+
+export interface LiveSession {
+  id: string;
+  title: string;
+  description: string;
+  youtube_id: string;
+  cover_url: string;
+  course_id: string | null;
+  starts_at: string;
+  status: 'scheduled' | 'live' | 'ended';
+  show_replay: boolean;
+  chat_enabled: boolean;
+  is_published: boolean;
+}
+
+export interface LiveMessage {
+  id: number;
+  live_id: string;
+  author_id: string;
+  text: string;
+  created_at: string;
+}

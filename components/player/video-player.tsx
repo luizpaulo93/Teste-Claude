@@ -52,9 +52,11 @@ export interface VideoPlayerProps {
   onEnded?: () => void;
   nextHref?: string;
   onNext?: () => void;
+  /** Transmissão ao vivo: esconde a linha do tempo e mostra o selo AO VIVO. */
+  live?: boolean;
 }
 
-export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgress, onEnded, onNext }: VideoPlayerProps) {
+export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgress, onEnded, onNext, live }: VideoPlayerProps) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const mountRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
@@ -81,6 +83,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
   const [controls, setControls] = useState(true);
   const [seeking, setSeeking] = useState<number | null>(null);
   const [wmPos, setWmPos] = useState(0);
+  const [ytError, setYtError] = useState<number | null>(null);
 
   // Limpa o player ao trocar de aula
   useEffect(() => {
@@ -102,6 +105,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
     setEnded(false);
     setTime(startAt > 3 ? startAt : 0);
     setDuration(0);
+    setYtError(null);
   }, [videoId, startAt]);
 
   // Marca d'água muda de posição a cada 15 s
@@ -140,7 +144,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
         modestbranding: 1,
         playsinline: 1,
         rel: 0,
-        start: startAt > 3 ? Math.floor(startAt) : 0,
+        start: !live && startAt > 3 ? Math.floor(startAt) : 0,
         origin: window.location.origin,
       },
       events: {
@@ -148,6 +152,10 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
           setReady(true);
           setDuration(e.target.getDuration() || 0);
           e.target.playVideo();
+        },
+        onError: (e: any) => {
+          setYtError(Number(e.data) || 1);
+          setReady(true);
         },
         onStateChange: (e: any) => {
           const st = e.data;
@@ -181,7 +189,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
         onProgressRef.current?.(Math.floor(t), Math.floor(d));
       }
     }, 500);
-  }, [videoId, startAt, showControls]);
+  }, [videoId, startAt, showControls, live]);
 
   const toggle = useCallback(() => {
     const p = playerRef.current;
@@ -334,12 +342,32 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
               <Play className="ml-1 size-7 fill-current sm:size-8" />
             </span>
           </span>
-          {startAt > 3 && (
+          {live && (
+            <span className="absolute top-4 left-4 flex items-center gap-1.5 rounded-md bg-red-600 px-2.5 py-1 text-xs font-bold text-white shadow-lg">
+              <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO
+            </span>
+          )}
+          {startAt > 3 && !live && (
             <span className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-white backdrop-blur">
               Continuar de {formatClock(startAt)}
             </span>
           )}
         </button>
+      )}
+
+      {ytError !== null && (
+        <div className="absolute inset-0 z-50 grid place-items-center bg-black/95 p-6 text-center text-white">
+          <div className="max-w-sm">
+            <p className="font-bold">{live ? 'Não foi possível abrir a transmissão' : 'Não foi possível carregar o vídeo'}</p>
+            <p className="mt-2 text-sm text-white/65">
+              {ytError === 101 || ytError === 150 || ytError === 153
+                ? 'O vídeo não permite reprodução fora do YouTube. Peça ao professor para ativar “Permitir incorporação”.'
+                : live
+                  ? 'A transmissão ainda não começou no YouTube ou o link está incorreto. Aguarde alguns instantes e recarregue.'
+                  : 'O vídeo está indisponível no momento. Tente novamente mais tarde.'}
+            </p>
+          </div>
+        </div>
       )}
 
       {/* Carregando */}
@@ -361,7 +389,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
       {/* Fim */}
       {ended && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-4 bg-black/85 p-6 text-center text-white backdrop-blur-sm">
-          <p className="text-lg font-bold">Aula concluída 🎉</p>
+          <p className="text-lg font-bold">{live ? 'Transmissão encerrada' : 'Aula concluída 🎉'}</p>
           <div className="flex flex-wrap justify-center gap-2">
             <button type="button" onClick={() => { seekTo(0); playerRef.current?.playVideo(); }} className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm font-semibold hover:bg-white/20">
               <RotateCcw className="size-4" /> Rever
@@ -384,7 +412,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
           )}
         >
           {/* Linha do tempo */}
-          <div className="group/seek relative mb-1.5 flex h-5 items-center">
+          <div className={cn('group/seek relative mb-1.5 flex h-5 items-center', live && 'hidden')}>
             <div className="absolute inset-x-0 h-1 rounded-full bg-white/20 transition-all group-hover/seek:h-1.5">
               <div className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${buffered}%` }} />
               <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pct}%` }} />
@@ -432,11 +460,22 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
                 className="w-0 cursor-pointer accent-white opacity-0 transition-all duration-200 group-hover/vol:w-20 group-hover/vol:opacity-100"
               />
             </div>
-            <span className="ml-1 text-xs font-medium text-white/85 tabular-nums">
-              {formatClock(shownTime)} <span className="text-white/50">/ {formatClock(duration)}</span>
-            </span>
+            {live ? (
+              <button
+                type="button"
+                onClick={() => seekTo((playerRef.current?.getDuration?.() || 0) + 60)}
+                title="Ir para o ao vivo"
+                className="ml-1 flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-bold text-white hover:bg-white/15"
+              >
+                <span className={cn('size-2 rounded-full', duration - time < 30 ? 'bg-red-500' : 'bg-white/50')} /> AO VIVO
+              </button>
+            ) : (
+              <span className="ml-1 text-xs font-medium text-white/85 tabular-nums">
+                {formatClock(shownTime)} <span className="text-white/50">/ {formatClock(duration)}</span>
+              </span>
+            )}
             <div className="flex-1" />
-            <div className="relative">
+            <div className={cn('relative', live && 'hidden')}>
               <button
                 type="button"
                 onClick={() => setSpeedOpen((v) => !v)}

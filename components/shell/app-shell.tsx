@@ -10,6 +10,7 @@ import {
   Menu,
   MessageCircleQuestion,
   Moon,
+  Radio,
   Settings2,
   Shield,
   Sun,
@@ -30,6 +31,7 @@ interface NavItem {
   label: string;
   icon: typeof Home;
   show?: boolean;
+  dot?: boolean;
 }
 
 function useTheme() {
@@ -53,6 +55,7 @@ export function AppShell({
   isAdmin,
   isMember,
   hasMentoria,
+  liveNow = false,
 }: {
   children: ReactNode;
   brand: string;
@@ -60,6 +63,7 @@ export function AppShell({
   isAdmin: boolean;
   isMember: boolean;
   hasMentoria: boolean;
+  liveNow?: boolean;
 }) {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
@@ -74,6 +78,7 @@ export function AppShell({
   const items: NavItem[] = [
     { href: '/', label: 'Início', icon: Home },
     { href: '/cursos', label: 'Cursos', icon: Compass },
+    { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow },
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
@@ -84,7 +89,9 @@ export function AppShell({
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const inAdmin = pathname.startsWith('/admin');
 
-  const mobileMain = items.filter((i) => ['/', '/cursos', '/simulados', '/duvidas'].includes(i.href)).slice(0, 4);
+  const mobileMain = items
+    .filter((i) => (liveNow ? ['/', '/cursos', '/ao-vivo', '/simulados'] : ['/', '/cursos', '/simulados', '/duvidas']).includes(i.href))
+    .slice(0, 4);
   const mobileMore = items.filter((i) => !mobileMain.includes(i));
 
   return (
@@ -233,7 +240,11 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     >
       <item.icon className={cn('size-[18px] transition-transform group-hover:scale-110', active && 'text-brand')} />
       {item.label}
-      {active && <span className="ml-auto size-1.5 rounded-full bg-brand" />}
+      {item.dot ? (
+        <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">AO VIVO</span>
+      ) : (
+        active && <span className="ml-auto size-1.5 rounded-full bg-brand" />
+      )}
     </Link>
   );
 }
@@ -245,7 +256,10 @@ function BottomLink({ item, active }: { item: NavItem; active: boolean }) {
       className={cn('relative flex flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition-colors', active ? 'text-brand' : 'text-muted')}
     >
       {active && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand" />}
-      <item.icon className="size-5" />
+      <span className="relative">
+        <item.icon className="size-5" />
+        {item.dot && <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-bg-elev" />}
+      </span>
       {item.label}
     </Link>
   );

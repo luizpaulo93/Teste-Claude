@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, BookOpen, CalendarDays, ClipboardCheck, Settings, Target, Users, UsersRound } from 'lucide-react';
+import { BarChart3, BookOpen, Radio, CalendarDays, ClipboardCheck, Settings, Target, Users, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ const TABS = [
   { href: '/admin/cursos', label: 'Cursos', icon: BookOpen },
   { href: '/admin/alunos', label: 'Alunos', icon: Users },
   { href: '/admin/turmas', label: 'Turmas', icon: UsersRound },
+  { href: '/admin/ao-vivo', label: 'Ao vivo', icon: Radio },
   { href: '/admin/simulados', label: 'Simulados', icon: ClipboardCheck },
   { href: '/admin/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/admin/mentoria', label: 'Mentoria', icon: Target },

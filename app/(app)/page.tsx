@@ -2,12 +2,13 @@ import { CalendarDays, Lock, Play } from 'lucide-react';
 import Link from 'next/link';
 import { CourseCard, CoverFallback } from '@/components/course/course-card';
 import { HeroCarousel, type HeroSlide } from '@/components/home/hero-carousel';
+import { LiveCard } from '@/components/live/live-card';
 import { Rail } from '@/components/home/rail';
 import { Card, Img, ProgressBar } from '@/components/ui';
 import { courseProgress, getCatalog, getMyProgress, getUpcomingEvents, LESSON_LIST_COLUMNS, type LessonSummary } from '@/lib/data';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { Course } from '@/lib/types';
+import type { Course, LiveSession } from '@/lib/types';
 import { firstName, formatDate, youtubeThumb } from '@/lib/utils';
 
 export default async function HomePage() {
@@ -26,6 +27,19 @@ export default async function HomePage() {
     const { data } = await supabase.from('lessons').select(LESSON_LIST_COLUMNS).in('id', recent.map((r) => r.lesson_id));
     const byId = new Map((data ?? []).map((l: LessonSummary) => [l.id, l]));
     continueLessons = recent.map((r) => byId.get(r.lesson_id)).filter(Boolean) as LessonSummary[];
+  }
+
+  let lives: LiveSession[] = [];
+  if (viewer.isMember) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from('live_sessions')
+      .select('*')
+      .eq('is_published', true)
+      .in('status', ['live', 'scheduled'])
+      .order('starts_at')
+      .limit(12);
+    lives = ((data ?? []) as LiveSession[]).sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live'));
   }
 
   const restrict = settings.restrict_to_student_list;
@@ -92,6 +106,21 @@ export default async function HomePage() {
             </p>
           </div>
         </Card>
+      )}
+
+      {lives.length > 0 && (
+        <Rail
+          title={lives[0].status === 'live' ? '🔴 Ao vivo agora' : 'Próximos aulões ao vivo'}
+          action={
+            <Link href="/ao-vivo" className="text-xs font-semibold text-brand">
+              Ver todos
+            </Link>
+          }
+        >
+          {lives.map((l) => (
+            <LiveCard key={l.id} live={l} className="w-[40%] shrink-0 sm:w-[190px]" />
+          ))}
+        </Rail>
       )}
 
       {continueLessons.length > 0 && (

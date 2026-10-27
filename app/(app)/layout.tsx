@@ -8,10 +8,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!viewer) redirect('/login');
 
   let hasMentoria = viewer.isAdmin;
-  if (!hasMentoria && viewer.isMember) {
+  let liveNow = false;
+  if (viewer.isMember) {
     const supabase = await createClient();
-    const { data } = await supabase.from('mentorias').select('id').eq('status', 'active').limit(1);
-    hasMentoria = Boolean(data?.length);
+    const [{ data: m }, { data: l }] = await Promise.all([
+      hasMentoria ? Promise.resolve({ data: [1] }) : supabase.from('mentorias').select('id').eq('status', 'active').limit(1),
+      supabase.from('live_sessions').select('id').eq('status', 'live').eq('is_published', true).limit(1),
+    ]);
+    hasMentoria = Boolean(m?.length);
+    liveNow = Boolean(l?.length);
   }
 
   return (
@@ -21,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       isAdmin={viewer.isAdmin}
       isMember={viewer.isMember}
       hasMentoria={hasMentoria}
+      liveNow={liveNow}
     >
       {children}
     </AppShell>

@@ -26,6 +26,8 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
 - Início no estilo streaming: abertura em tela cheia com carrossel dos cursos em destaque e
   fileiras de capas por categoria.
 - Comentários em cada aula.
+- **Aulas ao vivo** pelo YouTube (não listado): contagem regressiva, player com selo AO VIVO,
+  chat da turma e gravação depois. Só alunos com acesso ao curso escolhido veem a live.
 - Tema claro/escuro, menu inferior no celular e botão **Instalar aplicativo** (ícone do Vértice
   na tela inicial do celular; no iPhone mostra o passo a passo).
 - Página de apresentação para visitantes, com botão **Entrar** no canto que abre o login.
@@ -62,7 +64,8 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
    [`supabase/migrations/0001_schema.sql`](supabase/migrations/0001_schema.sql) e clique em **Run**.
    Isso cria tabelas, regras de segurança, gatilhos e os buckets `media` e `materials`.
    Depois rode também [`0002_lesson_comments.sql`](supabase/migrations/0002_lesson_comments.sql)
-   (comentários nas aulas).
+   (comentários nas aulas) e [`0003_live_sessions.sql`](supabase/migrations/0003_live_sessions.sql)
+   (aulas ao vivo).
 3. O e-mail `luizpaulofisica@gmail.com` já vira administrador no primeiro login.
    Para outro e-mail, rode: `insert into admin_emails (email) values ('seu@email.com');`
 4. **Authentication → Providers → Google**: ative e cole o Client ID/Secret do Google Cloud
@@ -91,6 +94,19 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
 Com "Restringir à lista de alunos" ligado (padrão), só os e-mails cadastrados, ativos e com
 turma acessam conteúdo pago. Cursos ou aulas marcados como **gratuitos** ficam abertos para
 qualquer pessoa logada.
+
+## Aulas ao vivo (YouTube não listado)
+
+1. No YouTube Studio, crie a transmissão como **Não listado**, com **Permitir incorporação**
+   ligado e "Conteúdo para crianças" desligado (senão o YouTube bloqueia o player e o chat).
+2. No painel: **Admin → Ao vivo → Agendar transmissão**, cole o link da live e escolha quem
+   pode assistir (todos os alunos liberados ou só as turmas de um curso).
+3. Na hora, clique em **Iniciar**. Os alunos veem o selo AO VIVO no menu e na tela inicial.
+4. Ao terminar, clique em **Encerrar**. Com "Mostrar gravação" ligado, a live vira replay.
+
+O link do vídeo só é entregue a quem tem acesso (regra no banco). Como em qualquer vídeo não
+listado do YouTube, alguém com acesso ainda poderia copiar o link — por isso o player mostra o
+nome e o e-mail do aluno como marca d'água.
 
 ## Rodar localmente
 
