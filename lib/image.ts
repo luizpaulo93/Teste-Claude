@@ -17,6 +17,3 @@ export async function compressImage(file: File, maxSize = 1600, quality = 0.85):
   return blob && blob.size < file.size ? blob : file;
 }
 
-export function randomName(ext = 'webp') {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-}

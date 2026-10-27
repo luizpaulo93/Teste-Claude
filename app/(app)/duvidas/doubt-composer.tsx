@@ -6,17 +6,14 @@ import { useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { Avatar, buttonClass, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { compressImage, randomName } from '@/lib/image';
+import { compressImage } from '@/lib/image';
+import { uploadFile } from '@/lib/storage/client';
 import { createClient } from '@/lib/supabase/client';
 
 export async function uploadDoubtImage(userId: string, file: File) {
   const blob = await compressImage(file, 1600);
-  const ext = blob.type === 'image/webp' ? 'webp' : (file.name.split('.').pop() || 'jpg').toLowerCase();
-  const path = `doubts/${userId}/${randomName(ext)}`;
-  const supabase = createClient();
-  const { error } = await supabase.storage.from('media').upload(path, blob, { contentType: blob.type || file.type, cacheControl: '31536000' });
-  if (error) throw error;
-  return supabase.storage.from('media').getPublicUrl(path).data.publicUrl;
+  const { publicUrl } = await uploadFile('media', `doubts/${userId}`, blob, blob.type || file.type);
+  return publicUrl;
 }
 
 export function DoubtComposer({ userId, name, avatar, doubtId, onDone, compact }: { userId: string; name: string; avatar: string; doubtId?: string; onDone?: () => void; compact?: boolean }) {

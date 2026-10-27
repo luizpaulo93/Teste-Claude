@@ -5,8 +5,8 @@ import { useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { compressImage, randomName } from '@/lib/image';
-import { createClient } from '@/lib/supabase/client';
+import { compressImage } from '@/lib/image';
+import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 
 /** Upload de imagem para o bucket público `media`. Guarda a URL num input hidden `name`. */
@@ -36,14 +36,10 @@ export function ImageUpload({
     setBusy(true);
     try {
       const blob = await compressImage(file, maxSize, 0.86);
-      const ext = blob.type === 'image/webp' ? 'webp' : (file.name.split('.').pop() || 'jpg').toLowerCase();
-      const path = `${folder}/${randomName(ext)}`;
-      const supabase = createClient();
-      const { error } = await supabase.storage.from('media').upload(path, blob, { contentType: blob.type || file.type, cacheControl: '31536000' });
-      if (error) throw error;
-      setUrl(supabase.storage.from('media').getPublicUrl(path).data.publicUrl);
-    } catch {
-      toast.error('Falha no upload da imagem.');
+      const { publicUrl } = await uploadFile('media', folder, blob, blob.type || file.type);
+      setUrl(publicUrl);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha no upload da imagem.');
     } finally {
       setBusy(false);
     }
@@ -109,9 +105,7 @@ function sizeLabel(bytes: number) {
 export async function uploadPdf(file: File, folder: string) {
   if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) throw new Error('Envie um arquivo PDF.');
   if (file.size > 50 * 1024 * 1024) throw new Error('O PDF deve ter no máximo 50 MB.');
-  const path = `${folder}/${randomName('pdf')}`;
-  const { error } = await createClient().storage.from('materials').upload(path, file, { contentType: 'application/pdf' });
-  if (error) throw error;
+  const { path } = await uploadFile('materials', folder, file, 'application/pdf');
   return { path, size: sizeLabel(file.size), title: file.name.replace(/\.pdf$/i, '') };
 }
 

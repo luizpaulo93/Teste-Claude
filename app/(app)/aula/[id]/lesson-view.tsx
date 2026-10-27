@@ -8,6 +8,7 @@ import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
+import { getFileUrl } from '@/lib/storage/client';
 import { createClient } from '@/lib/supabase/client';
 import type { Lesson, LessonMaterial } from '@/lib/types';
 import { cn, youtubeThumb } from '@/lib/utils';
@@ -88,14 +89,17 @@ export function LessonView(p: Props) {
 
   const openMaterial = async (m: LessonMaterial, download = false) => {
     setOpeningId(m.id);
-    const { data, error } = await supabase.storage
-      .from('materials')
-      .createSignedUrl(m.file_path, 60 * 60, download ? { download: `${m.title}.pdf` } : undefined);
+    let signedUrl = '';
+    try {
+      signedUrl = await getFileUrl(m.file_path, download ? m.title : undefined);
+    } catch {
+      setOpeningId(null);
+      return toast.error('Arquivo indisponível.');
+    }
     setOpeningId(null);
-    if (error || !data) return toast.error('Arquivo indisponível.');
-    if (download) window.location.href = data.signedUrl;
-    else if (window.matchMedia('(max-width: 768px)').matches) window.open(data.signedUrl, '_blank', 'noopener');
-    else setPdf({ title: m.title, url: data.signedUrl });
+    if (download) window.location.href = signedUrl;
+    else if (window.matchMedia('(max-width: 768px)').matches) window.open(signedUrl, '_blank', 'noopener');
+    else setPdf({ title: m.title, url: signedUrl });
   };
 
   const goNext = p.nextId ? () => router.push(`/aula/${p.nextId}`) : undefined;

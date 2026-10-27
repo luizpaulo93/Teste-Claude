@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { adminClient, bool, fail, int, str, type ActionResult } from '@/lib/admin/guard';
+import { removeObjects } from '@/lib/storage/server';
 import { evaluateCohort } from '@/lib/tri';
 import type { EnemArea } from '@/lib/types';
 
@@ -55,7 +56,7 @@ export async function deleteSimulado(id: string): Promise<ActionResult> {
     const { data } = await supabase.from('simulados').select('pdf_path').eq('id', id).maybeSingle();
     const { error } = await supabase.from('simulados').delete().eq('id', id);
     if (error) throw error;
-    if (data?.pdf_path) await supabase.storage.from('materials').remove([data.pdf_path]);
+    if (data?.pdf_path) await removeObjects('materials', [data.pdf_path]);
     refresh();
     return { ok: true };
   } catch (e) {

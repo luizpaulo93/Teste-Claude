@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { adminClient, bool, fail, str, type ActionResult } from '@/lib/admin/guard';
+import { removeObjects } from '@/lib/storage/server';
 import { extractYoutubeId } from '@/lib/utils';
 
 function revalidateContent(courseId?: string) {
@@ -176,7 +177,7 @@ export async function saveLesson(fd: FormData): Promise<ActionResult> {
     const removed = (existing ?? []).filter((m: { id: string }) => !keep.has(m.id));
     if (removed.length) {
       await supabase.from('lesson_materials').delete().in('id', removed.map((m: { id: string }) => m.id));
-      await supabase.storage.from('materials').remove(removed.map((m: { file_path: string }) => m.file_path));
+      await removeObjects('materials', removed.map((m: { file_path: string }) => m.file_path));
     }
     await Promise.all(
       materials.slice(0, 20).map((m, position) =>
@@ -206,7 +207,7 @@ export async function deleteLesson(id: string, courseId: string): Promise<Action
     const { data: mats } = await supabase.from('lesson_materials').select('file_path').eq('lesson_id', id);
     const { error } = await supabase.from('lessons').delete().eq('id', id);
     if (error) throw error;
-    if (mats?.length) await supabase.storage.from('materials').remove(mats.map((m: { file_path: string }) => m.file_path));
+    if (mats?.length) await removeObjects('materials', mats.map((m: { file_path: string }) => m.file_path));
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {

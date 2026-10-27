@@ -5,7 +5,7 @@ Plataforma de área de membros para cursos (Enem e vestibulares), inspirada no p
 **Supabase + Vercel**, com foco em velocidade, design responsivo e muitos acessos simultâneos.
 
 **Stack:** Next.js 16 (App Router, Server Components, Server Actions) · React 19 · TypeScript ·
-Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
+Tailwind CSS 4 · Supabase (Postgres, Auth, RLS) · Cloudflare R2 (arquivos).
 
 ## O que tem
 
@@ -14,7 +14,7 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
 - Cursos → módulos → aulas, com player próprio sobre o YouTube (controles personalizados,
   velocidade, atalhos de teclado, tela cheia inclusive no iPhone, marca d'água com nome/e-mail
   e retomada de onde parou).
-- PDFs das aulas em bucket privado (link temporário assinado).
+- PDFs das aulas em bucket privado no Cloudflare R2 (link temporário assinado de 1 hora).
 - Favoritas e histórico de aulas concluídas.
 - Simulados no padrão ENEM: caderno em PDF, cartão-resposta com salvamento automático,
   cronômetro com entrega automática, nota estimada pela TRI, coerência pedagógica,
@@ -85,7 +85,12 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
    (ex.: `gru1` para São Paulo) — reduz a latência de cada página.
 4. Deploy.
 
-### 3. Primeiros passos no painel
+### 3. Cloudflare R2 (arquivos)
+Siga o passo a passo em [`docs/CLOUDFLARE-R2.md`](docs/CLOUDFLARE-R2.md): criar os buckets
+`vertice-media` (público) e `vertice-materials` (privado), liberar CORS, gerar a chave e cadastrar
+as variáveis `R2_*` na Vercel. Sem elas, a plataforma usa o Supabase Storage.
+
+### 4. Primeiros passos no painel
 1. Entre com o e-mail de administrador.
 2. **Admin → Cursos**: crie cursos, módulos e aulas.
 3. **Admin → Turmas**: crie uma turma e marque os cursos liberados.

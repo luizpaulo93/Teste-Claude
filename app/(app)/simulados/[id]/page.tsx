@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { requireViewer } from '@/lib/session';
+import { createDownloadUrl } from '@/lib/storage/server';
 import { createClient } from '@/lib/supabase/server';
 import type { Simulado, SimuladoResult, SimuladoStats, SimuladoSubmission } from '@/lib/types';
 import { ExamRunner } from './exam-runner';
@@ -28,8 +29,7 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
 
   let pdfUrl = '';
   if (simulado.pdf_path && (!submission || submission.status === 'in_progress' || simulado.results_released)) {
-    const { data } = await supabase.storage.from('materials').createSignedUrl(simulado.pdf_path, 60 * 60 * 6);
-    pdfUrl = data?.signedUrl ?? '';
+    pdfUrl = await createDownloadUrl(simulado.pdf_path, 60 * 60 * 6);
   }
 
   let body: React.ReactNode;
