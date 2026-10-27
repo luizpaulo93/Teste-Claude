@@ -14,6 +14,23 @@ function GoogleIcon() {
   );
 }
 
+/** Traduz os erros mais comuns do Supabase Auth para algo que dá para resolver. */
+function explainAuthError(msg: string) {
+  const m = msg.toLowerCase();
+  if (m.includes('not authorized') || m.includes('not_authorized'))
+    return 'Este e-mail não está autorizado pelo servidor de e-mail padrão do Supabase (ele só envia para a equipe do projeto). Configure um SMTP próprio no Supabase ou entre com o Google.';
+  if (m.includes('rate limit') || m.includes('rate_limit') || m.includes('too many'))
+    return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
+  if (m.includes('signups not allowed') || m.includes('signup is disabled') || m.includes('signups_disabled'))
+    return 'Novos cadastros estão desativados no Supabase (Authentication → Sign In / Providers → "Allow new users to sign up").';
+  if (m.includes('provider is not enabled') || m.includes('unsupported provider'))
+    return 'Este tipo de login ainda não foi ativado no Supabase (Authentication → Sign In / Providers).';
+  if (m.includes('invalid') && m.includes('email')) return 'E-mail inválido. Confira se digitou certo.';
+  if (m.includes('smtp') || m.includes('sending') || m.includes('send'))
+    return `O Supabase não conseguiu enviar o e-mail (${msg}). Confira as configurações de SMTP.`;
+  return `Não foi possível concluir: ${msg}`;
+}
+
 export function LoginForm({ next }: { next?: string }) {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState<'google' | 'email' | null>(null);
@@ -34,7 +51,7 @@ export function LoginForm({ next }: { next?: string }) {
       options: { redirectTo: redirectTo(), queryParams: { prompt: 'select_account' } },
     });
     if (error) {
-      setError('Não foi possível entrar com o Google.');
+      setError(explainAuthError(error.message));
       setLoading(null);
     }
   }
@@ -48,7 +65,7 @@ export function LoginForm({ next }: { next?: string }) {
       options: { emailRedirectTo: redirectTo() },
     });
     setLoading(null);
-    if (error) setError(error.message.includes('rate') ? 'Muitas tentativas. Aguarde um minuto.' : 'Não foi possível enviar o link.');
+    if (error) setError(explainAuthError(error.message));
     else setSent(true);
   }
 
