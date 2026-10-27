@@ -23,7 +23,12 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
 - Mentoria individual: plano semanal de tarefas, check-in semanal, feedback do mentor,
   gráfico de horas e encontros (individuais e em grupo).
 - Calendário com eventos do curso + feriados nacionais (e do Pará) automáticos.
-- Tema claro/escuro, menu inferior no celular, instalável como app (PWA).
+- Início no estilo streaming: abertura em tela cheia com carrossel dos cursos em destaque e
+  fileiras de capas por categoria.
+- Comentários em cada aula.
+- Tema claro/escuro, menu inferior no celular e botão **Instalar aplicativo** (ícone do Vértice
+  na tela inicial do celular; no iPhone mostra o passo a passo).
+- Página de apresentação para visitantes, com botão **Entrar** no canto que abre o login.
 
 **Para o administrador** (`/admin`)
 - Visão geral com números da plataforma.
@@ -56,6 +61,8 @@ Tailwind CSS 4 · Supabase (Postgres, Auth, Storage, RLS).
 2. Abra **SQL Editor**, cole todo o conteúdo de
    [`supabase/migrations/0001_schema.sql`](supabase/migrations/0001_schema.sql) e clique em **Run**.
    Isso cria tabelas, regras de segurança, gatilhos e os buckets `media` e `materials`.
+   Depois rode também [`0002_lesson_comments.sql`](supabase/migrations/0002_lesson_comments.sql)
+   (comentários nas aulas).
 3. O e-mail `luizpaulofisica@gmail.com` já vira administrador no primeiro login.
    Para outro e-mail, rode: `insert into admin_emails (email) values ('seu@email.com');`
 4. **Authentication → Providers → Google**: ative e cole o Client ID/Secret do Google Cloud

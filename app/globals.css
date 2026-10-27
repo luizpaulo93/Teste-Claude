@@ -7,11 +7,11 @@
 ------------------------------------------------------------------- */
 :root,
 [data-theme='dark'] {
-  --bg: #070b14;
-  --bg-elev: #0b1120;
-  --surface: #0f172a;
-  --surface-2: #131d33;
-  --surface-3: #1a2540;
+  --bg: #07080c;
+  --bg-elev: #0b0d13;
+  --surface: #10131b;
+  --surface-2: #161a24;
+  --surface-3: #1e2330;
   --line: rgb(148 163 184 / 0.12);
   --line-strong: rgb(148 163 184 / 0.22);
   --ink: #f1f5f9;
@@ -267,3 +267,33 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
   [data-reveal] { opacity: 1; transform: none; }
   .lp-mockup { animation: none; transform: perspective(1600px) rotateX(8deg); }
 }
+
+/* Ícone do app sendo tocado (landing) */
+@keyframes tap-finger {
+  0%, 15% { transform: translate(60px, 90px) scale(1); opacity: 0; }
+  35% { transform: translate(10px, 18px) scale(1); opacity: 1; }
+  45% { transform: translate(10px, 18px) scale(0.85); opacity: 1; }
+  60% { transform: translate(10px, 18px) scale(1); opacity: 1; }
+  80%, 100% { transform: translate(60px, 90px) scale(1); opacity: 0; }
+}
+@keyframes tap-icon {
+  0%, 40% { transform: scale(1); }
+  45% { transform: scale(0.9); }
+  55%, 100% { transform: scale(1); }
+}
+@keyframes tap-ripple {
+  0%, 44% { transform: scale(0.4); opacity: 0; }
+  46% { opacity: 0.8; }
+  90%, 100% { transform: scale(2.6); opacity: 0; }
+}
+@keyframes rays {
+  0%, 44% { opacity: 0.25; transform: scale(0.92); }
+  52% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 0.25; transform: scale(0.92); }
+}
+.lp-tap-finger { animation: tap-finger 3.2s ease-in-out infinite; }
+.lp-tap-icon { animation: tap-icon 3.2s ease-in-out infinite; }
+.lp-tap-ripple { animation: tap-ripple 3.2s ease-out infinite; }
+.lp-rays { animation: rays 3.2s ease-in-out infinite; }
+@keyframes lp-spin { to { transform: rotate(360deg); } }
+.lp-rays-spin { animation: lp-spin 40s linear infinite; }

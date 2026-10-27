@@ -3,7 +3,7 @@
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, FileText, Heart, Download, PlayCircle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
@@ -16,7 +16,7 @@ interface Props {
   lesson: Lesson;
   materials: LessonMaterial[];
   modules: { id: string; title: string }[];
-  lessons: { id: string; title: string; duration: string; module_id: string }[];
+  lessons: { id: string; title: string; duration: string; module_id: string; thumb: string }[];
   completedIds: string[];
   initialCompleted: boolean;
   initialFavorite: boolean;
@@ -25,6 +25,7 @@ interface Props {
   nextId: string | null;
   userId: string;
   watermark: string;
+  comments?: ReactNode;
 }
 
 export function LessonView(p: Props) {
@@ -197,6 +198,8 @@ export function LessonView(p: Props) {
             <p className="text-sm leading-relaxed whitespace-pre-line text-ink-2">{linkify(p.lesson.description)}</p>
           </Card>
         )}
+
+        {p.comments}
       </div>
 
       {/* Lista de aulas */}
@@ -229,17 +232,30 @@ export function LessonView(p: Props) {
                         href={`/aula/${l.id}`}
                         scroll={false}
                         className={cn(
-                          'flex items-center gap-3 border-l-2 px-4 py-3 text-sm transition',
+                          'flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm transition',
                           active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2',
                         )}
                       >
-                        {isDone ? (
-                          <CheckCircle2 className="size-4 shrink-0 text-success" />
-                        ) : (
-                          <PlayCircle className={cn('size-4 shrink-0', active ? 'text-brand' : 'text-muted')} />
-                        )}
-                        <span className="min-w-0 flex-1 truncate">{l.title}</span>
-                        {l.duration && <span className="text-[11px] text-muted tabular-nums">{l.duration}</span>}
+                        <span className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-surface-3">
+                          {l.thumb ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={l.thumb} alt="" loading="lazy" className="size-full object-cover" />
+                          ) : (
+                            <FileText className="absolute inset-0 m-auto size-4 text-muted" />
+                          )}
+                          {active && (
+                            <span className="absolute inset-0 grid place-items-center bg-black/45">
+                              <PlayCircle className="size-5 text-white" />
+                            </span>
+                          )}
+                          {isDone && !active && (
+                            <span className="absolute top-1 right-1 grid size-4 place-items-center rounded-full bg-success text-white">
+                              <CheckCircle2 className="size-3" />
+                            </span>
+                          )}
+                          {l.duration && <span className="absolute right-1 bottom-1 rounded bg-black/75 px-1 text-[9px] font-semibold text-white tabular-nums">{l.duration}</span>}
+                        </span>
+                        <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug">{l.title}</span>
                       </Link>
                     );
                   })}

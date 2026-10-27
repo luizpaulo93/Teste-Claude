@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import type { Metadata } from 'next';
 import { AnimatedBubbles, Counter, LandingNav, LandingRoot, LoginButton } from '@/components/landing/interactive';
-import { DesktopMockup, PhoneMockup, TriCard } from '@/components/landing/mockups';
+import { AppIconTap, DesktopMockup, LaptopPhoneMockup, TriCard } from '@/components/landing/mockups';
 import { Logo } from '@/components/logo';
 import { getSettings } from '@/lib/session';
 
@@ -273,31 +273,33 @@ export default async function LandingPage() {
           </div>
         </section>
 
-        {/* Celular */}
-        <section className="relative overflow-hidden py-24">
-          <div className="mx-auto grid max-w-7xl items-center gap-14 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
-            <div data-reveal className="order-2 lg:order-1">
-              <div className="lp-float-slow">
-                <PhoneMockup />
-              </div>
+        {/* Aplicativo */}
+        <section id="app" className="relative scroll-mt-24 overflow-hidden py-24">
+          <div className="pointer-events-none absolute inset-0 bg-[image:radial-gradient(900px_500px_at_50%_30%,rgba(37,99,235,0.28),transparent_70%)]" />
+          <div className="relative mx-auto grid max-w-7xl items-center gap-10 px-4 sm:px-6 lg:grid-cols-2 lg:px-8">
+            <div data-reveal>
+              <AppIconTap />
             </div>
-            <div data-reveal style={{ ['--d' as string]: '120ms' }} className="order-1 lg:order-2">
+            <div data-reveal style={{ ['--d' as string]: '120ms' }}>
               <span className="grid size-12 place-items-center rounded-2xl bg-cyan-500/15 text-cyan-300">
                 <Smartphone className="size-6" />
               </span>
-              <h2 className="mt-5 text-3xl font-extrabold tracking-tight sm:text-5xl">Estude de qualquer lugar</h2>
+              <h2 className="mt-5 text-3xl font-extrabold tracking-tight sm:text-5xl">O Vértice como aplicativo no seu celular</h2>
               <p className="mt-5 text-white/60 sm:text-lg">
-                No ônibus, no intervalo ou em casa: a plataforma é rápida no celular, guarda seu progresso e pode ser instalada na tela inicial
-                como um aplicativo.
+                Instale na tela inicial com um toque e abra direto nas suas aulas — sem loja de aplicativos, sem ocupar espaço e sempre
+                atualizado. No ônibus, no intervalo ou em casa.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
-                {['Tema claro e escuro', 'Retoma de onde parou', 'Leve e rápida'].map((t) => (
+                {['Ícone na tela inicial', 'Abre em tela cheia', 'Retoma de onde parou', 'Tema claro e escuro'].map((t) => (
                   <span key={t} className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/75">
                     {t}
                   </span>
                 ))}
               </div>
             </div>
+          </div>
+          <div data-reveal className="relative mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
+            <LaptopPhoneMockup />
           </div>
         </section>
 

@@ -6,7 +6,8 @@ import { Card } from '@/components/ui';
 import { getCourseTree } from '@/lib/data';
 import { requireViewer } from '@/lib/session';
 import { createClient } from '@/lib/supabase/server';
-import type { Lesson, LessonMaterial } from '@/lib/types';
+import type { Lesson, LessonComment, LessonMaterial, ProfileCard } from '@/lib/types';
+import { LessonComments } from './lesson-comments';
 import { LessonView } from './lesson-view';
 
 export const metadata: Metadata = { title: 'Aula' };
@@ -17,12 +18,16 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   const viewer = await requireViewer();
   const supabase = await createClient();
 
-  const [{ data: lesson }, { data: materials }, { data: prog }, { data: fav }] = await Promise.all([
+  const [{ data: lesson }, { data: materials }, { data: prog }, { data: fav }, { data: comments }] = await Promise.all([
     supabase.from('lessons').select('*').eq('id', id).maybeSingle(),
     supabase.from('lesson_materials').select('*').eq('lesson_id', id).order('position'),
     supabase.from('lesson_progress').select('completed,position_sec').eq('user_id', viewer.userId).eq('lesson_id', id).maybeSingle(),
     supabase.from('favorites').select('lesson_id').eq('user_id', viewer.userId).eq('lesson_id', id).maybeSingle(),
+    supabase.from('lesson_comments').select('*').eq('lesson_id', id).order('created_at', { ascending: false }).limit(100),
   ]);
+  const commentList = (comments ?? []) as LessonComment[];
+  const authorIds = [...new Set(commentList.map((c) => c.author_id))];
+  const { data: cards } = authorIds.length ? await supabase.from('profile_cards').select('*').in('id', authorIds) : { data: [] };
 
   if (!lesson) {
     return (
@@ -62,7 +67,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         lesson={lesson as Lesson}
         materials={(materials ?? []) as LessonMaterial[]}
         modules={modules.map((m) => ({ id: m.id, title: m.title }))}
-        lessons={ordered.map((l) => ({ id: l.id, title: l.title, duration: l.duration, module_id: l.module_id }))}
+        lessons={ordered.map((l) => ({ id: l.id, title: l.title, duration: l.duration, module_id: l.module_id, thumb: l.thumbnail_url || (l.youtube_id ? `https://i.ytimg.com/vi/${l.youtube_id}/mqdefault.jpg` : '') }))}
         completedIds={(progressRows ?? []).map((r: { lesson_id: string }) => r.lesson_id)}
         initialCompleted={Boolean(prog?.completed)}
         initialFavorite={Boolean(fav)}
@@ -71,6 +76,15 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         nextId={idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1].id : null}
         userId={viewer.userId}
         watermark={`${viewer.profile.full_name || ''} · ${viewer.email}`.trim()}
+        comments={
+          <LessonComments
+            lessonId={id}
+            initial={commentList}
+            authors={(cards ?? []) as ProfileCard[]}
+            me={{ id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role }}
+            isAdmin={viewer.isAdmin}
+          />
+        }
       />
     </>
   );

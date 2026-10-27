@@ -22,6 +22,7 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Logo } from '@/components/logo';
 import { Avatar } from '@/components/ui';
+import { InstallApp } from '@/components/install-app';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -106,6 +107,7 @@ export function AppShell({
           )}
         </nav>
         <div className="border-t border-line p-3">
+          <InstallApp className="mb-2" />
           <Link href="/perfil" className="flex items-center gap-3 rounded-xl p-2 transition hover:bg-surface-2">
             <Avatar name={user.name} src={user.avatar} size={36} />
             <div className="min-w-0 flex-1">
@@ -211,6 +213,7 @@ export function AppShell({
                   </Link>
                 ),
               )}
+              <InstallApp compact />
             </div>
           </div>
         </div>

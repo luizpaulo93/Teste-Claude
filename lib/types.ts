@@ -251,3 +251,11 @@ export const TASK_KINDS: Record<TaskKind, string> = {
   revisao: 'Revisão',
   outro: 'Outro',
 };
+
+export interface LessonComment {
+  id: string;
+  lesson_id: string;
+  author_id: string;
+  text: string;
+  created_at: string;
+}
