@@ -5,6 +5,18 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL, hasSupabaseEnv } from './env';
 const PUBLIC_PATHS = ['/login', '/auth', '/configurar', '/site'];
 
 export async function updateSession(request: NextRequest) {
+  try {
+    return await handle(request);
+  } catch (e) {
+    // Nunca derruba o site: registra o erro e segue sem checar a sessão
+    console.error('[proxy] falha ao verificar sessão:', e instanceof Error ? e.message : e);
+    const path = request.nextUrl.pathname;
+    if (path === '/') return NextResponse.rewrite(new URL('/site', request.url));
+    return NextResponse.next();
+  }
+}
+
+async function handle(request: NextRequest) {
   const path = request.nextUrl.pathname;
   if (!hasSupabaseEnv) {
     if (path.startsWith('/configurar')) return NextResponse.next();
@@ -35,7 +47,7 @@ export async function updateSession(request: NextRequest) {
   if (!isLogged && path === '/') {
     const url = request.nextUrl.clone();
     url.pathname = '/site';
-    const rewrite = NextResponse.rewrite(url, { request });
+    const rewrite = NextResponse.rewrite(url);
     response.cookies.getAll().forEach((c) => rewrite.cookies.set(c));
     return rewrite;
   }
