@@ -1,13 +1,13 @@
 # Como conectar o Cloudflare R2
 
 O R2 guarda os **arquivos** da plataforma: capas, banners, fotos das dúvidas e PDFs das aulas e
-dos simulados. O **Supabase continua** com o banco de dados e o login.
+dos simulados. O **Firebase** cuida do banco de dados e do login (veja [`FIREBASE.md`](FIREBASE.md)).
 
 Vantagens: armazenamento barato (os primeiros 10 GB por mês são grátis) e **sem cobrança de
 download**. Não importa quantos alunos baixem os PDFs ao mesmo tempo.
 
-> Enquanto o R2 não estiver configurado, a plataforma continua usando o Supabase Storage.
-> Nada quebra; assim que as variáveis abaixo existirem na Vercel, os novos arquivos vão para o R2.
+> Enquanto o R2 não estiver configurado, o site funciona normalmente, mas o envio de capas, PDFs
+> e fotos mostra o aviso "Armazenamento não configurado" dizendo qual variável falta.
 
 ---
 
@@ -127,10 +127,6 @@ Depois vá em **Deployments → ⋯ no último deploy → Redeploy** para valer.
 **Quanto custa?** Aproximadamente (confira no site da Cloudflare): 10 GB grátis por mês, depois
 cerca de US$ 0,015 por GB/mês. Download é **grátis**. Operações têm cota gratuita grande
 (milhões por mês), mais do que suficiente para uma escola.
-
-**E os arquivos que já enviei pelo Supabase?** Capas e imagens antigas continuam funcionando,
-porque o endereço completo fica salvo. PDFs enviados antes da troca ficam no Supabase. O mais
-simples é reenviar esses PDFs pelo painel (editar a aula → remover → adicionar de novo).
 
 **Meus dados precisam ficar na Europa?** Crie os buckets com jurisdição UE e adicione a
 variável `R2_ENDPOINT=https://ID-DA-CONTA.eu.r2.cloudflarestorage.com`.

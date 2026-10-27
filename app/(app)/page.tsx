@@ -5,9 +5,9 @@ import { HeroCarousel, type HeroSlide } from '@/components/home/hero-carousel';
 import { LiveCard } from '@/components/live/live-card';
 import { Rail } from '@/components/home/rail';
 import { Card, Img, ProgressBar } from '@/components/ui';
-import { courseProgress, getCatalog, getMyProgress, getUpcomingEvents, LESSON_LIST_COLUMNS, type LessonSummary } from '@/lib/data';
+import { courseProgress, getCatalog, getMyProgress, getUpcomingEvents, visibleLessons, type LessonSummary } from '@/lib/data';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { visibleLives } from '@/lib/live';
 import type { Course, LiveSession } from '@/lib/types';
 import { firstName, formatDate, youtubeThumb } from '@/lib/utils';
 
@@ -23,23 +23,17 @@ export default async function HomePage() {
   const recent = progress.filter((p) => !p.completed).slice(0, 10);
   let continueLessons: LessonSummary[] = [];
   if (recent.length) {
-    const supabase = await createClient();
-    const { data } = await supabase.from('lessons').select(LESSON_LIST_COLUMNS).in('id', recent.map((r) => r.lesson_id));
-    const byId = new Map((data ?? []).map((l: LessonSummary) => [l.id, l]));
+    const ids = new Set(recent.map((r) => r.lesson_id));
+    const list = await visibleLessons(viewer, (l) => ids.has(l.id));
+    const byId = new Map(list.map((l) => [l.id, l]));
     continueLessons = recent.map((r) => byId.get(r.lesson_id)).filter(Boolean) as LessonSummary[];
   }
 
   let lives: LiveSession[] = [];
   if (viewer.isMember) {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from('live_sessions')
-      .select('*')
-      .eq('is_published', true)
-      .in('status', ['live', 'scheduled'])
-      .order('starts_at')
-      .limit(12);
-    lives = ((data ?? []) as LiveSession[]).sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live'));
+    lives = (await visibleLives(viewer, ['live', 'scheduled']))
+      .sort((a, b) => Number(b.status === 'live') - Number(a.status === 'live') || a.starts_at.localeCompare(b.starts_at))
+      .slice(0, 12);
   }
 
   const restrict = settings.restrict_to_student_list;

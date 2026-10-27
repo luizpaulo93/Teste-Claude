@@ -1,7 +1,10 @@
 'use server';
 
+import { isDocId } from '@/lib/utils';
+
 import { revalidatePath } from 'next/cache';
-import { adminClient, bool, fail, str, type ActionResult } from '@/lib/admin/guard';
+import { bool, fail, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
+import { db, nowIso } from '@/lib/db';
 import { extractYoutubeId } from '@/lib/utils';
 
 function refresh() {
@@ -11,7 +14,7 @@ function refresh() {
 
 export async function saveLive(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
     const startsLocal = str(fd, 'starts_at', 20);
     const tz = str(fd, 'tz_offset', 6);
@@ -23,16 +26,21 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
       description: str(fd, 'description', 2000),
       youtube_id: extractYoutubeId(str(fd, 'youtube', 300)),
       cover_url: str(fd, 'cover_url', 2000),
-      course_id: /^[0-9a-f-]{36}$/i.test(courseId) ? courseId : null,
+      course_id: isDocId(courseId) ? courseId : null,
       starts_at: starts.toISOString(),
       show_replay: bool(fd, 'show_replay'),
       chat_enabled: bool(fd, 'chat_enabled'),
       is_published: bool(fd, 'is_published'),
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso(),
     };
     if (!row.title) return { error: 'Informe o título.' };
-    const { error } = id ? await supabase.from('live_sessions').update(row).eq('id', id) : await supabase.from('live_sessions').insert(row);
-    if (error) throw error;
+    if (id) {
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      await db().doc(`live_sessions/${id}`).update(row);
+    } else {
+      const ref = await db().collection('live_sessions').add({ ...row, status: 'scheduled', created_at: nowIso() });
+      await db().doc(`live_status/${ref.id}`).set({ status: 'scheduled' });
+    }
     refresh();
     return { ok: true };
   } catch (e) {
@@ -42,13 +50,13 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
 
 export async function setLiveStatus(id: string, status: 'scheduled' | 'live' | 'ended'): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    if (status === 'live') {
-      const { data } = await supabase.from('live_sessions').select('youtube_id').eq('id', id).maybeSingle();
-      if (!data?.youtube_id) return { error: 'Cole o link da transmissão do YouTube antes de iniciar.' };
-    }
-    const { error } = await supabase.from('live_sessions').update({ status, updated_at: new Date().toISOString() }).eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id) || !['scheduled', 'live', 'ended'].includes(status)) return { error: 'Inválido.' };
+    const ref = db().doc(`live_sessions/${id}`);
+    if (status === 'live' && !(await ref.get()).get('youtube_id')) return { error: 'Cole o link da transmissão do YouTube antes de iniciar.' };
+    await ref.update({ status, updated_at: nowIso() });
+    // Espelho público mínimo: os alunos são avisados em tempo real (sem expor o link do vídeo)
+    await db().doc(`live_status/${id}`).set({ status });
     refresh();
     return { ok: true };
   } catch (e) {
@@ -58,9 +66,10 @@ export async function setLiveStatus(id: string, status: 'scheduled' | 'live' | '
 
 export async function deleteLive(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('live_sessions').delete().eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    await db().recursiveDelete(db().doc(`live_sessions/${id}`));
+    await db().doc(`live_status/${id}`).delete();
     refresh();
     return { ok: true };
   } catch (e) {

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { finishSimulado, saveAnswers } from '../actions';
 import type { Simulado, SimuladoSubmission } from '@/lib/types';
 import { cn, formatClock } from '@/lib/utils';
 
@@ -24,7 +24,6 @@ export function ExamRunner({
   serverNow: number;
 }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const n = simulado.question_count;
   const [answers, setAnswers] = useState(() => (submission.answers || '').padEnd(n, '-').slice(0, n));
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -50,12 +49,23 @@ export function ExamRunner({
     const value = pending.current;
     pending.current = null;
     setSaveState('saving');
-    const { error } = await supabase.from('simulado_submissions').update({ answers: value }).eq('id', submission.id);
-    if (error) {
+    let r: Awaited<ReturnType<typeof saveAnswers>>;
+    try {
+      r = await saveAnswers(simulado.id, value);
+    } catch {
+      r = { error: 'rede' };
+    }
+    if (r && 'completed' in r && r.completed) {
+      finishedRef.current = true;
+      toast.error(r.error ?? 'Prova entregue.');
+      router.refresh();
+      return;
+    }
+    if (r?.error) {
       pending.current = pending.current ?? value;
       setSaveState('error');
     } else if (pending.current === null) setSaveState('saved');
-  }, [supabase, submission.id]);
+  }, [simulado.id, router]);
 
   const queueSave = useCallback(
     (value: string) => {
@@ -99,7 +109,12 @@ export function ExamRunner({
       finishedRef.current = true;
       setFinishing(true);
       if (timer.current) window.clearTimeout(timer.current);
-      const { error } = await supabase.from('simulado_submissions').update({ answers, status: 'completed' }).eq('id', submission.id);
+      let error = '';
+      try {
+        error = (await finishSimulado(simulado.id, answers)).error ?? '';
+      } catch {
+        error = 'rede';
+      }
       if (error) {
         finishedRef.current = false;
         setFinishing(false);
@@ -108,7 +123,7 @@ export function ExamRunner({
       toast(auto ? 'Tempo esgotado — prova entregue automaticamente.' : 'Prova entregue com sucesso!');
       router.refresh();
     },
-    [answers, supabase, submission.id, router],
+    [answers, simulado.id, router],
   );
 
   const remaining = limitMs ? startedMs + limitMs - now : null;

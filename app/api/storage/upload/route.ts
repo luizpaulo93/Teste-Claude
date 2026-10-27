@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getViewer } from '@/lib/session';
-import { createUploadUrl, type BucketKind } from '@/lib/storage/server';
+import { createUploadUrl, storageProblem, type BucketKind } from '@/lib/storage/server';
 
 const LIMITS: Record<BucketKind, number> = { media: 10 * 1024 * 1024, materials: 50 * 1024 * 1024 };
 const SAFE_FOLDER = /^[a-z0-9][a-z0-9/_-]{0,120}$/i;
@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
 
   const ext = kind === 'materials' ? 'pdf' : contentType.split('/')[1].replace('jpeg', 'jpg');
   const key = `${folder}/${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}.${ext}`;
+  const problem = storageProblem();
+  if (problem) return NextResponse.json({ error: problem }, { status: 503 });
   try {
     const r = await createUploadUrl(kind, key, contentType);
     return NextResponse.json({ ...r, path: key });

@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { LiveCard } from '@/components/live/live-card';
 import { EmptyState, PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { visibleLives } from '@/lib/live';
 import type { LiveSession } from '@/lib/types';
 
 export const metadata: Metadata = { title: 'Ao vivo' };
@@ -18,9 +18,7 @@ export default async function LivesPage() {
       </>
     );
   }
-  const supabase = await createClient();
-  const { data } = await supabase.from('live_sessions').select('*').eq('is_published', true).order('starts_at', { ascending: false }).limit(200);
-  const all = (data ?? []) as LiveSession[];
+  const all = (await visibleLives(viewer)).filter((l) => l.is_published);
   const now = all.filter((l) => l.status === 'live');
   const next = all.filter((l) => l.status === 'scheduled').reverse();
   const past = all.filter((l) => l.status === 'ended' && l.show_replay && l.youtube_id);

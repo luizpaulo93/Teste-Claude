@@ -1,19 +1,29 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { adminClient, bool, fail, str, type ActionResult } from '@/lib/admin/guard';
+import { bool, fail, refreshCatalog, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
+import { byPosition, db, nowIso } from '@/lib/db';
 import { removeObjects } from '@/lib/storage/server';
-import { extractYoutubeId } from '@/lib/utils';
+import type { LessonMaterial } from '@/lib/types';
+import { extractYoutubeId, isDocId } from '@/lib/utils';
 
 function revalidateContent(courseId?: string) {
+  refreshCatalog();
   revalidatePath('/', 'layout');
   if (courseId) revalidatePath(`/admin/cursos/${courseId}`);
+}
+
+async function nextPosition(collection: string, field?: string, value?: string) {
+  let q: FirebaseFirestore.Query = db().collection(collection);
+  if (field && value) q = q.where(field, '==', value);
+  const snap = await q.select('position').get();
+  return snap.docs.reduce((m, d) => Math.max(m, Number(d.get('position') ?? 0)), -1) + 1;
 }
 
 // ---------------- Cursos
 export async function saveCourse(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
     const row = {
       title: str(fd, 'title', 160),
@@ -25,24 +35,18 @@ export async function saveCourse(fd: FormData): Promise<ActionResult> {
       featured: bool(fd, 'featured'),
       is_free: bool(fd, 'is_free'),
       is_published: bool(fd, 'is_published'),
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso(),
     };
     if (!row.title) return { error: 'Informe o título.' };
     if (id) {
-      const { error } = await supabase.from('courses').update(row).eq('id', id);
-      if (error) throw error;
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      await db().doc(`courses/${id}`).update(row);
       revalidateContent(id);
       return { ok: true, id };
     }
-    const { data: last } = await supabase.from('courses').select('position').order('position', { ascending: false }).limit(1);
-    const { data, error } = await supabase
-      .from('courses')
-      .insert({ ...row, position: (last?.[0]?.position ?? 0) + 1 })
-      .select('id')
-      .single();
-    if (error) throw error;
+    const ref = await db().collection('courses').add({ ...row, position: await nextPosition('courses'), created_at: nowIso() });
     revalidateContent();
-    return { ok: true, id: data.id };
+    return { ok: true, id: ref.id };
   } catch (e) {
     return fail(e);
   }
@@ -50,9 +54,20 @@ export async function saveCourse(fd: FormData): Promise<ActionResult> {
 
 export async function deleteCourse(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('courses').delete().eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const d = db();
+    const [mods, lessons] = await Promise.all([
+      d.collection('modules').where('course_id', '==', id).get(),
+      d.collection('lessons').where('course_id', '==', id).get(),
+    ]);
+    const files = lessons.docs.flatMap((l) => ((l.get('materials') ?? []) as LessonMaterial[]).map((m) => m.file_path));
+    await Promise.all(lessons.docs.map((l) => d.recursiveDelete(l.ref)));
+    const batch = d.batch();
+    mods.docs.forEach((m) => batch.delete(m.ref));
+    batch.delete(d.doc(`courses/${id}`));
+    await batch.commit();
+    await removeObjects('materials', files);
     revalidateContent();
     return { ok: true };
   } catch (e) {
@@ -65,17 +80,20 @@ export async function moveItem(table: 'courses' | 'modules' | 'lessons', id: str
   try {
     if (!['courses', 'modules', 'lessons'].includes(table)) return { error: 'Inválido' };
     if (scope && !['course_id', 'module_id'].includes(scope.column)) return { error: 'Inválido' };
-    const { supabase } = await adminClient();
-    let q = supabase.from(table).select('id,position').order('position').order('created_at');
-    if (scope) q = q.eq(scope.column, scope.value);
-    const { data } = await q;
-    const list = (data ?? []) as { id: string; position: number }[];
+    await requireAdminAction();
+    let q: FirebaseFirestore.Query = db().collection(table);
+    if (scope) q = q.where(scope.column, '==', scope.value);
+    const snap = await q.select('position', 'created_at').get();
+    const list = snap.docs.map((d) => ({ id: d.id, position: Number(d.get('position') ?? 0), created_at: String(d.get('created_at') ?? '') })).sort(byPosition);
     const i = list.findIndex((x) => x.id === id);
     const j = i + dir;
     if (i < 0 || j < 0 || j >= list.length) return { ok: true };
     [list[i], list[j]] = [list[j], list[i]];
-    await Promise.all(list.map((x, idx) => (x.position !== idx ? supabase.from(table).update({ position: idx }).eq('id', x.id) : null)));
-    revalidateContent(table === 'courses' ? undefined : scope?.value);
+    const batch = db().batch();
+    list.forEach((x, idx) => x.position !== idx && batch.update(db().doc(`${table}/${x.id}`), { position: idx }));
+    await batch.commit();
+    revalidateContent(table === 'courses' ? undefined : scope?.column === 'course_id' ? scope.value : undefined);
+    if (table === 'lessons') revalidatePath('/admin/cursos/[id]', 'page');
     return { ok: true };
   } catch (e) {
     return fail(e);
@@ -85,24 +103,19 @@ export async function moveItem(table: 'courses' | 'modules' | 'lessons', id: str
 // ---------------- Módulos
 export async function saveModule(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
     const course_id = str(fd, 'course_id', 64);
+    if (!isDocId(course_id)) return { error: 'Curso inválido.' };
     const row = {
       title: str(fd, 'title', 160),
       description: str(fd, 'description', 1500),
       is_published: bool(fd, 'is_published'),
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso(),
     };
     if (!row.title) return { error: 'Informe o nome do módulo.' };
-    if (id) {
-      const { error } = await supabase.from('modules').update(row).eq('id', id);
-      if (error) throw error;
-    } else {
-      const { count } = await supabase.from('modules').select('id', { count: 'exact', head: true }).eq('course_id', course_id);
-      const { error } = await supabase.from('modules').insert({ ...row, course_id, position: count ?? 0 });
-      if (error) throw error;
-    }
+    if (id) await db().doc(`modules/${id}`).update(row);
+    else await db().collection('modules').add({ ...row, course_id, cover_url: '', position: await nextPosition('modules', 'course_id', course_id), created_at: nowIso() });
     revalidateContent(course_id);
     return { ok: true };
   } catch (e) {
@@ -112,9 +125,13 @@ export async function saveModule(fd: FormData): Promise<ActionResult> {
 
 export async function deleteModule(id: string, courseId: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('modules').delete().eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const lessons = await db().collection('lessons').where('module_id', '==', id).get();
+    const files = lessons.docs.flatMap((l) => ((l.get('materials') ?? []) as LessonMaterial[]).map((m) => m.file_path));
+    await Promise.all(lessons.docs.map((l) => db().recursiveDelete(l.ref)));
+    await db().doc(`modules/${id}`).delete();
+    await removeObjects('materials', files);
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {
@@ -132,10 +149,26 @@ export interface MaterialInput {
 
 export async function saveLesson(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
     const course_id = str(fd, 'course_id', 64);
     const module_id = str(fd, 'module_id', 64);
+    if (!isDocId(course_id) || !isDocId(module_id)) return { error: 'Módulo inválido.' };
+    let input: MaterialInput[] = [];
+    try {
+      input = JSON.parse(String(fd.get('materials') || '[]'));
+    } catch {
+      input = [];
+    }
+    const materials: LessonMaterial[] = input
+      .filter((m) => typeof m.file_path === 'string' && /^[\w/.-]{1,300}$/.test(m.file_path))
+      .slice(0, 20)
+      .map((m) => ({
+        id: m.id && isDocId(m.id) ? m.id : db().collection('_').doc().id,
+        title: String(m.title ?? '').slice(0, 160) || 'Material',
+        file_path: m.file_path,
+        size_label: String(m.size_label ?? '').slice(0, 20),
+      }));
     const row = {
       title: str(fd, 'title', 160),
       description: str(fd, 'description', 4000),
@@ -146,53 +179,25 @@ export async function saveLesson(fd: FormData): Promise<ActionResult> {
       is_published: bool(fd, 'is_published'),
       module_id,
       course_id,
-      updated_at: new Date().toISOString(),
+      materials,
+      material_paths: materials.map((m) => m.file_path),
+      updated_at: nowIso(),
     };
     if (!row.title) return { error: 'Informe o título da aula.' };
-    let materials: MaterialInput[] = [];
-    try {
-      materials = JSON.parse(String(fd.get('materials') || '[]'));
-    } catch {
-      materials = [];
-    }
 
     let lessonId = id;
+    let removed: string[] = [];
     if (id) {
-      const { error } = await supabase.from('lessons').update(row).eq('id', id);
-      if (error) throw error;
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      const ref = db().doc(`lessons/${id}`);
+      const before = ((await ref.get()).get('materials') ?? []) as LessonMaterial[];
+      removed = before.map((m) => m.file_path).filter((p) => !row.material_paths.includes(p));
+      await ref.update(row);
     } else {
-      const { count } = await supabase.from('lessons').select('id', { count: 'exact', head: true }).eq('module_id', module_id);
-      const { data, error } = await supabase
-        .from('lessons')
-        .insert({ ...row, position: count ?? 0 })
-        .select('id')
-        .single();
-      if (error) throw error;
-      lessonId = data.id;
+      const ref = await db().collection('lessons').add({ ...row, position: await nextPosition('lessons', 'module_id', module_id), created_at: nowIso() });
+      lessonId = ref.id;
     }
-
-    // Sincroniza materiais (remove os que saíram, insere os novos, atualiza ordem/título)
-    const { data: existing } = await supabase.from('lesson_materials').select('id,file_path').eq('lesson_id', lessonId);
-    const keep = new Set(materials.filter((m) => m.id).map((m) => m.id));
-    const removed = (existing ?? []).filter((m: { id: string }) => !keep.has(m.id));
-    if (removed.length) {
-      await supabase.from('lesson_materials').delete().in('id', removed.map((m: { id: string }) => m.id));
-      await removeObjects('materials', removed.map((m: { file_path: string }) => m.file_path));
-    }
-    await Promise.all(
-      materials.slice(0, 20).map((m, position) =>
-        m.id
-          ? supabase.from('lesson_materials').update({ title: m.title.slice(0, 160) || 'Material', position }).eq('id', m.id)
-          : supabase.from('lesson_materials').insert({
-              lesson_id: lessonId,
-              title: m.title.slice(0, 160) || 'Material',
-              file_path: m.file_path,
-              size_label: m.size_label.slice(0, 20),
-              position,
-            }),
-      ),
-    );
-
+    await removeObjects('materials', removed);
     revalidateContent(course_id);
     revalidatePath(`/aula/${lessonId}`);
     return { ok: true, id: lessonId };
@@ -203,11 +208,12 @@ export async function saveLesson(fd: FormData): Promise<ActionResult> {
 
 export async function deleteLesson(id: string, courseId: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { data: mats } = await supabase.from('lesson_materials').select('file_path').eq('lesson_id', id);
-    const { error } = await supabase.from('lessons').delete().eq('id', id);
-    if (error) throw error;
-    if (mats?.length) await removeObjects('materials', mats.map((m: { file_path: string }) => m.file_path));
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const ref = db().doc(`lessons/${id}`);
+    const mats = ((await ref.get()).get('materials') ?? []) as LessonMaterial[];
+    await db().recursiveDelete(ref);
+    await removeObjects('materials', mats.map((m) => m.file_path));
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {
@@ -217,19 +223,12 @@ export async function deleteLesson(id: string, courseId: string): Promise<Action
 
 export async function toggleLessonFlag(id: string, courseId: string, field: 'is_published' | 'is_free', value: boolean): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('lessons').update({ [field]: value }).eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id) || !['is_published', 'is_free'].includes(field)) return { error: 'Inválido.' };
+    await db().doc(`lessons/${id}`).update({ [field]: value });
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {
     return fail(e);
   }
 }
-
-export async function getMaterials(lessonId: string) {
-  const { supabase } = await adminClient();
-  const { data } = await supabase.from('lesson_materials').select('id,title,file_path,size_label').eq('lesson_id', lessonId).order('position');
-  return (data ?? []) as MaterialInput[];
-}
-

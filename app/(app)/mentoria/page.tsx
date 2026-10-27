@@ -3,9 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Badge, buttonClass, Card, EmptyState, LinkButton, PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { db, emailKey, fromDoc, fromQuery } from '@/lib/db';
 import type { Mentoria, MentoriaCheckin, MentoriaMeeting, MentoriaTask } from '@/lib/types';
-import { addDays, cn, formatDate, formatDateTime, likeExact, weekStart } from '@/lib/utils';
+import { addDays, cn, formatDate, formatDateTime, weekStart } from '@/lib/utils';
 import { CheckinForm } from './checkin-form';
 import { TaskList } from './task-list';
 
@@ -14,8 +14,7 @@ export const metadata: Metadata = { title: 'Mentoria' };
 export default async function MentoriaPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
   const viewer = await requireViewer();
   const { w } = await searchParams;
-  const supabase = await createClient();
-  const { data: m } = await supabase.from('mentorias').select('*').ilike('student_email', likeExact(viewer.email)).limit(1).maybeSingle();
+  const m = fromDoc<Mentoria>(await db().doc(`mentorias/${emailKey(viewer.email)}`).get());
 
   if (!m) {
     return (
@@ -34,12 +33,22 @@ export default async function MentoriaPage({ searchParams }: { searchParams: Pro
   const current = weekStart();
   const week = /^\d{4}-\d{2}-\d{2}$/.test(w ?? '') ? weekStart(new Date(`${w}T12:00:00`)) : current;
 
-  const [{ data: tasks }, { data: checkins }, { data: meetings }] = await Promise.all([
-    supabase.from('mentoria_tasks').select('*').eq('mentoria_id', mentoria.id).eq('week_start', week).order('due_date', { nullsFirst: false }).order('created_at'),
-    supabase.from('mentoria_checkins').select('*').eq('mentoria_id', mentoria.id).order('week_start', { ascending: false }).limit(12),
-    supabase.from('mentoria_meetings').select('*').gte('starts_at', new Date(Date.now() - 3 * 3600_000).toISOString()).order('starts_at').limit(6),
+  const d = db();
+  const since = new Date(Date.now() - 3 * 3600_000).toISOString();
+  const [taskSnap, checkSnap, mineSnap, groupSnap] = await Promise.all([
+    d.collection('mentoria_tasks').where('mentoria_id', '==', mentoria.id).where('week_start', '==', week).get(),
+    d.collection('mentoria_checkins').where('mentoria_id', '==', mentoria.id).get(),
+    d.collection('mentoria_meetings').where('mentoria_id', '==', mentoria.id).get(),
+    d.collection('mentoria_meetings').where('mentoria_id', '==', null).get(),
   ]);
-  const checkinList = (checkins ?? []) as MentoriaCheckin[];
+  const tasks = fromQuery<MentoriaTask>(taskSnap).sort(
+    (a, b) => String(a.due_date ?? '9999').localeCompare(String(b.due_date ?? '9999')) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
+  );
+  const checkinList = fromQuery<MentoriaCheckin>(checkSnap).sort((a, b) => b.week_start.localeCompare(a.week_start)).slice(0, 12);
+  const meetings = [...fromQuery<MentoriaMeeting>(mineSnap), ...fromQuery<MentoriaMeeting>(groupSnap)]
+    .filter((x) => x.starts_at >= since)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 6);
   const thisCheckin = checkinList.find((c) => c.week_start === week) ?? null;
   const history = [...checkinList].reverse().slice(-8);
   const maxH = Math.max(mentoria.weekly_hours_target, ...history.map((h) => Number(h.hours_studied)), 1);
@@ -77,7 +86,7 @@ export default async function MentoriaPage({ searchParams }: { searchParams: Pro
                 </Link>
               </div>
             </div>
-            <TaskList key={week} tasks={(tasks ?? []) as MentoriaTask[]} />
+            <TaskList key={week} tasks={tasks} />
           </Card>
 
           <Card className="p-4 sm:p-5">
@@ -120,9 +129,9 @@ export default async function MentoriaPage({ searchParams }: { searchParams: Pro
             <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
               <CalendarClock className="size-4 text-brand" /> Próximos encontros
             </p>
-            {(meetings ?? []).length ? (
+            {meetings.length ? (
               <ul className="space-y-3">
-                {((meetings ?? []) as MentoriaMeeting[]).map((mt) => (
+                {meetings.map((mt) => (
                   <li key={mt.id} className="rounded-xl border border-line bg-surface-2/50 p-3">
                     <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-semibold text-ink">{mt.title}</p>

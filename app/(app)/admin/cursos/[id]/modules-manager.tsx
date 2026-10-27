@@ -16,12 +16,10 @@ export function ModulesManager({
   courseId,
   modules,
   lessons,
-  materials,
 }: {
   courseId: string;
   modules: Module[];
   lessons: Lesson[];
-  materials: LessonMaterial[];
 }) {
   const [moduleModal, setModuleModal] = useState<{ module?: Module } | null>(null);
   const [lessonModal, setLessonModal] = useState<LessonModal>(null);
@@ -99,9 +97,9 @@ export function ModulesManager({
                           <Video className="size-3" /> vídeo
                         </Badge>
                       )}
-                      {materials.some((x) => x.lesson_id === l.id) && (
+                      {(l.materials?.length ?? 0) > 0 && (
                         <Badge>
-                          <FileText className="size-3" /> {materials.filter((x) => x.lesson_id === l.id).length} PDF
+                          <FileText className="size-3" /> {l.materials!.length} PDF
                         </Badge>
                       )}
                       {l.duration && <span className="text-[11px] text-muted">{l.duration}</span>}
@@ -175,7 +173,7 @@ export function ModulesManager({
             moduleId={lessonModal.moduleId}
             modules={modules}
             lesson={lessonModal.lesson}
-            materials={materials.filter((x) => x.lesson_id === lessonModal.lesson?.id)}
+            materials={lessonModal.lesson?.materials ?? []}
             onDone={() => setLessonModal(null)}
           />
         )}

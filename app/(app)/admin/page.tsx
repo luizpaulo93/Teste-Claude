@@ -2,42 +2,37 @@ import { BookOpen, ClipboardCheck, MessageCircleQuestion, PlayCircle, UserCheck,
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Avatar, Badge, Card, PageHeader, Stat } from '@/components/ui';
-import { createClient } from '@/lib/supabase/server';
+import { db, emailKey, fromQuery, getCatalogData, getMany } from '@/lib/db';
 import { timeAgo } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Painel admin' };
 
 export default async function AdminHome() {
-  const supabase = await createClient();
-  const head = { count: 'exact' as const, head: true };
-  const since = new Date(Date.now() - 7 * 86400_000).toISOString();
-  const [students, active, courses, lessons, openDoubts, sims, users, recentProgress, recent] = await Promise.all([
-    supabase.from('students').select('id', head),
-    supabase.from('students').select('id', head).eq('status', 'active'),
-    supabase.from('courses').select('id', head),
-    supabase.from('lessons').select('id', head),
-    supabase.from('doubts').select('id', head).eq('is_resolved', false),
-    supabase.from('simulados').select('id', head).eq('is_published', true),
-    supabase.from('profiles').select('id', head),
-    supabase.from('lesson_progress').select('user_id', head).gte('updated_at', since),
-    supabase.from('profiles').select('id,email,full_name,avatar_url,role,created_at').order('created_at', { ascending: false }).limit(8),
+  const d = db();
+  const count = async (q: FirebaseFirestore.Query) => (await q.count().get()).data().count;
+  const [students, active, catalog, openDoubts, sims, users, recentSnap] = await Promise.all([
+    count(d.collection('students')),
+    count(d.collection('students').where('status', '==', 'active')),
+    getCatalogData(),
+    count(d.collection('doubts').where('is_resolved', '==', false)),
+    count(d.collection('simulados').where('is_published', '==', true)),
+    count(d.collection('users')),
+    d.collection('users').orderBy('created_at', 'desc').limit(8).get(),
   ]);
-  const recentList = (recent.data ?? []) as { id: string; email: string; full_name: string; avatar_url: string; role: string; created_at: string }[];
-  const { data: listed } = recentList.length
-    ? await supabase.from('students').select('email,status').in('email', recentList.map((r) => r.email))
-    : { data: [] };
-  const listedMap = new Map((listed ?? []).map((s: { email: string; status: string }) => [s.email.toLowerCase(), s.status]));
+  const recentList = fromQuery<{ id: string; email: string; full_name: string; avatar_url: string; role: string; created_at: string }>(recentSnap);
+  const listed = await getMany<{ id: string; email: string; status: string }>('students', recentList.map((u) => emailKey(u.email)));
+  const listedMap = new Map(listed.map((s) => [s.email.toLowerCase(), s.status]));
 
   return (
     <>
       <PageHeader title="Visão geral" subtitle="Números da plataforma em tempo real." />
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Alunos na lista" value={students.count ?? 0} hint={`${active.count ?? 0} ativos`} icon={<Users className="size-4" />} />
-        <Stat label="Contas criadas" value={users.count ?? 0} hint="Pessoas que já entraram" icon={<UserCheck className="size-4" />} />
-        <Stat label="Cursos / aulas" value={`${courses.count ?? 0} / ${lessons.count ?? 0}`} icon={<BookOpen className="size-4" />} />
-        <Stat label="Atividade (7 dias)" value={recentProgress.count ?? 0} hint="Aulas assistidas" icon={<PlayCircle className="size-4" />} />
-        <Stat label="Dúvidas abertas" value={openDoubts.count ?? 0} hint={<Link href="/duvidas?f=abertas" className="text-brand">Responder</Link>} icon={<MessageCircleQuestion className="size-4" />} />
-        <Stat label="Simulados publicados" value={sims.count ?? 0} icon={<ClipboardCheck className="size-4" />} />
+        <Stat label="Alunos na lista" value={students} hint={`${active} ativos`} icon={<Users className="size-4" />} />
+        <Stat label="Contas criadas" value={users} hint="Pessoas que já entraram" icon={<UserCheck className="size-4" />} />
+        <Stat label="Cursos / aulas" value={`${catalog.courses.length} / ${catalog.lessons.length}`} icon={<BookOpen className="size-4" />} />
+        <Stat label="Turmas" value={catalog.classes.length} hint="Grupos de acesso" icon={<PlayCircle className="size-4" />} />
+        <Stat label="Dúvidas abertas" value={openDoubts} hint={<Link href="/duvidas?f=abertas" className="text-brand">Responder</Link>} icon={<MessageCircleQuestion className="size-4" />} />
+        <Stat label="Simulados publicados" value={sims} icon={<ClipboardCheck className="size-4" />} />
       </div>
 
       <Card className="mt-6 overflow-hidden">

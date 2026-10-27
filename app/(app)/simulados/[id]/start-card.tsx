@@ -6,22 +6,20 @@ import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { startSimulado } from '../actions';
 import { ENEM_AREAS, type Simulado, type SimuladoSubmission } from '@/lib/types';
 import { formatClock } from '@/lib/utils';
 
-export function StartCard({ simulado, submission, userId }: { simulado: Simulado; submission: SimuladoSubmission | null; userId: string }) {
+export function StartCard({ simulado, submission }: { simulado: Simulado; submission: SimuladoSubmission | null }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function start() {
     setLoading(true);
-    const { error } = await createClient()
-      .from('simulado_submissions')
-      .insert({ simulado_id: simulado.id, user_id: userId, answers: '-'.repeat(simulado.question_count) });
-    if (error && !error.message.includes('duplicate')) {
+    const r = await startSimulado(simulado.id);
+    if (r.error) {
       setLoading(false);
-      return toast.error('Não foi possível iniciar o simulado.');
+      return toast.error(r.error);
     }
     router.refresh();
   }

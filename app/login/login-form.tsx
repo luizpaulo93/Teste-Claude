@@ -1,10 +1,12 @@
 'use client';
 
-import { Mail, ArrowRight, CheckCircle2 } from 'lucide-react';
-import { useState } from 'react';
+import { ArrowRight, CheckCircle2, Mail } from 'lucide-react';
+import { GoogleAuthProvider, getRedirectResult, sendSignInLinkToEmail, signInWithPopup, signInWithRedirect } from 'firebase/auth';
+import { useEffect, useState } from 'react';
 import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { clientAuth } from '@/lib/firebase/client';
+import { createServerSession, EMAIL_KEY, explainAuthError, safeNext } from '@/lib/firebase/login';
 
 function GoogleIcon() {
   return (
@@ -14,59 +16,65 @@ function GoogleIcon() {
   );
 }
 
-/** Traduz os erros mais comuns do Supabase Auth para algo que dá para resolver. */
-function explainAuthError(msg: string) {
-  const m = msg.toLowerCase();
-  if (m.includes('not authorized') || m.includes('not_authorized'))
-    return 'Este e-mail não está autorizado pelo servidor de e-mail padrão do Supabase (ele só envia para a equipe do projeto). Configure um SMTP próprio no Supabase ou entre com o Google.';
-  if (m.includes('rate limit') || m.includes('rate_limit') || m.includes('too many'))
-    return 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
-  if (m.includes('signups not allowed') || m.includes('signup is disabled') || m.includes('signups_disabled'))
-    return 'Novos cadastros estão desativados no Supabase (Authentication → Sign In / Providers → "Allow new users to sign up").';
-  if (m.includes('provider is not enabled') || m.includes('unsupported provider'))
-    return 'Este tipo de login ainda não foi ativado no Supabase (Authentication → Sign In / Providers).';
-  if (m.includes('invalid') && m.includes('email')) return 'E-mail inválido. Confira se digitou certo.';
-  if (m.includes('smtp') || m.includes('sending') || m.includes('send'))
-    return `O Supabase não conseguiu enviar o e-mail (${msg}). Confira as configurações de SMTP.`;
-  return `Não foi possível concluir: ${msg}`;
-}
-
 export function LoginForm({ next }: { next?: string }) {
   const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState<'google' | 'email' | null>(null);
+  const [loading, setLoading] = useState<'google' | 'email' | 'finish' | null>(null);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
 
-  const redirectTo = () => {
-    const url = new URL('/auth/callback', window.location.origin);
-    if (next) url.searchParams.set('next', next);
-    return url.toString();
+  const finish = async (user: Parameters<typeof createServerSession>[0]) => {
+    setLoading('finish');
+    await createServerSession(user);
+    window.location.assign(safeNext(next));
   };
+
+  // Volta de um login por redirecionamento (quando o navegador bloqueia a janela do Google)
+  useEffect(() => {
+    getRedirectResult(clientAuth())
+      .then((r) => r?.user && finish(r.user))
+      .catch((e) => setError(explainAuthError(e)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function google() {
     setLoading('google');
     setError('');
-    const { error } = await createClient().auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: redirectTo(), queryParams: { prompt: 'select_account' } },
-    });
-    if (error) {
-      setError(explainAuthError(error.message));
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    try {
+      const r = await signInWithPopup(clientAuth(), provider);
+      await finish(r.user);
+    } catch (e) {
+      const code = String((e as { code?: string })?.code ?? '');
+      if (code.includes('popup-blocked') || code.includes('operation-not-supported')) {
+        await signInWithRedirect(clientAuth(), provider);
+        return;
+      }
+      setError(explainAuthError(e));
       setLoading(null);
     }
   }
 
   async function magicLink(e: React.FormEvent) {
     e.preventDefault();
+    const addr = email.trim().toLowerCase();
     setLoading('email');
     setError('');
-    const { error } = await createClient().auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: redirectTo() },
-    });
-    setLoading(null);
-    if (error) setError(explainAuthError(error.message));
-    else setSent(true);
+    try {
+      const url = new URL('/login/finalizar', window.location.origin);
+      if (next) url.searchParams.set('next', next);
+      await sendSignInLinkToEmail(clientAuth(), addr, { url: url.toString(), handleCodeInApp: true });
+      try {
+        window.localStorage.setItem(EMAIL_KEY, addr);
+      } catch {
+        /* navegador sem armazenamento */
+      }
+      setSent(true);
+    } catch (err) {
+      setError(explainAuthError(err));
+    } finally {
+      setLoading(null);
+    }
   }
 
   if (sent) {
@@ -75,7 +83,7 @@ export function LoginForm({ next }: { next?: string }) {
         <CheckCircle2 className="mx-auto size-10 text-success" />
         <p className="mt-3 font-bold text-ink">Confira seu e-mail</p>
         <p className="mt-1 text-sm text-muted">
-          Enviamos um link de acesso para <strong className="text-ink">{email}</strong>.
+          Enviamos um link de acesso para <strong className="text-ink">{email}</strong>. Abra no mesmo aparelho. Se não achar, olhe o spam.
         </p>
         <button type="button" onClick={() => setSent(false)} className="mt-4 text-sm font-semibold text-brand">
           Usar outro e-mail
@@ -87,8 +95,8 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <div className="space-y-5">
       <button type="button" onClick={google} disabled={loading !== null} className={buttonClass('secondary', 'lg', 'w-full bg-surface')}>
-        {loading === 'google' ? <Spinner /> : <GoogleIcon />}
-        Continuar com Google
+        {loading === 'google' || loading === 'finish' ? <Spinner /> : <GoogleIcon />}
+        {loading === 'finish' ? 'Entrando…' : 'Continuar com Google'}
       </button>
 
       <div className="flex items-center gap-3 text-xs text-muted">

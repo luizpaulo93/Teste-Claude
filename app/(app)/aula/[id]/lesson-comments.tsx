@@ -1,49 +1,45 @@
 'use client';
 
 import { MessageSquare, Send, ShieldCheck, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { Avatar, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { addComment, deleteComment } from './actions';
 import type { LessonComment, ProfileCard } from '@/lib/types';
 import { timeAgo } from '@/lib/utils';
 
 export function LessonComments({
   lessonId,
   initial,
-  authors,
   me,
   isAdmin,
 }: {
   lessonId: string;
   initial: LessonComment[];
-  authors: ProfileCard[];
   me: ProfileCard;
   isAdmin: boolean;
 }) {
-  const supabase = useMemo(() => createClient(), []);
   const [list, setList] = useState(initial);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
-  const cards = useMemo(() => new Map([...authors, me].map((a) => [a.id, a])), [authors, me]);
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
     const body = text.trim();
     if (!body) return;
     setSending(true);
-    const { data, error } = await supabase.from('lesson_comments').insert({ lesson_id: lessonId, author_id: me.id, text: body.slice(0, 2000) }).select('*').single();
+    const r = await addComment(lessonId, body);
     setSending(false);
-    if (error || !data) return toast.error('Não foi possível enviar o comentário.');
-    setList((l) => [data as LessonComment, ...l]);
+    if (r.error || !r.comment) return toast.error(r.error || 'Não foi possível enviar o comentário.');
+    setList((l) => [r.comment!, ...l]);
     setText('');
   }
 
   async function remove(id: string) {
     if (!window.confirm('Excluir este comentário?')) return;
-    const { error } = await supabase.from('lesson_comments').delete().eq('id', id);
-    if (error) toast.error('Não foi possível excluir.');
+    const r = await deleteComment(lessonId, id);
+    if (r.error) toast.error(r.error);
     else setList((l) => l.filter((c) => c.id !== id));
   }
 
@@ -68,15 +64,14 @@ export function LessonComments({
       {list.length ? (
         <ul className="space-y-4">
           {list.map((c) => {
-            const a = cards.get(c.author_id);
-            const name = a?.full_name || 'Aluno';
+            const name = c.author_name || 'Aluno';
             return (
               <li key={c.id} className="flex animate-fade-in gap-3">
-                <Avatar name={name} src={a?.avatar_url} size={34} />
+                <Avatar name={name} src={c.author_avatar} size={34} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold text-ink">{name}</span>
-                    {a?.role === 'admin' && <ShieldCheck className="size-3.5 text-brand" />}
+                    {c.author_role === 'admin' && <ShieldCheck className="size-3.5 text-brand" />}
                     <span className="text-[11px] text-muted">{timeAgo(c.created_at)}</span>
                     {(c.author_id === me.id || isAdmin) && (
                       <button type="button" onClick={() => remove(c.id)} aria-label="Excluir" className="ml-auto text-muted hover:text-danger">

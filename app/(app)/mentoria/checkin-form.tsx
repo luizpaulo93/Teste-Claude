@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Field, Input, Textarea } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { saveCheckin } from './actions';
 import type { MentoriaCheckin } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -29,12 +29,9 @@ export function CheckinForm({ mentoriaId, week, checkin }: { mentoriaId: string;
       wins: wins.slice(0, 1500),
       difficulties: diff.slice(0, 1500),
     };
-    const supabase = createClient();
-    const { error } = checkin
-      ? await supabase.from('mentoria_checkins').update(payload).eq('id', checkin.id)
-      : await supabase.from('mentoria_checkins').insert({ ...payload, mentoria_id: mentoriaId, week_start: week });
+    const r = await saveCheckin(week, payload).catch(() => ({ error: 'rede' }));
     setSaving(false);
-    if (error) return toast.error('Não foi possível salvar o check-in.');
+    if (r.error) return toast.error('Não foi possível salvar o check-in.');
     toast('Check-in salvo!');
     router.refresh();
   }

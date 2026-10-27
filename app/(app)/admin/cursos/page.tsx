@@ -1,21 +1,15 @@
 import type { Metadata } from 'next';
 import { BookOpen } from 'lucide-react';
 import { EmptyState, PageHeader } from '@/components/ui';
-import { createClient } from '@/lib/supabase/server';
-import type { Course } from '@/lib/types';
+import { getCatalogData } from '@/lib/db';
 import { CourseList, NewCourseButton } from './course-list';
 
 export const metadata: Metadata = { title: 'Cursos · Admin' };
 
 export default async function AdminCourses() {
-  const supabase = await createClient();
-  const [{ data }, { data: lessons }] = await Promise.all([
-    supabase.from('courses').select('*').order('position').order('created_at'),
-    supabase.from('lessons').select('course_id'),
-  ]);
+  const { courses, lessons } = await getCatalogData();
   const counts: Record<string, number> = {};
-  (lessons ?? []).forEach((l: { course_id: string }) => (counts[l.course_id] = (counts[l.course_id] ?? 0) + 1));
-  const courses = (data ?? []) as Course[];
+  lessons.forEach((l) => (counts[l.course_id] = (counts[l.course_id] ?? 0) + 1));
   return (
     <>
       <PageHeader title="Cursos" subtitle="Crie cursos, organize em módulos e publique aulas." actions={<NewCourseButton />} />

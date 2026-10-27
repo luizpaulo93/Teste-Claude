@@ -1,9 +1,10 @@
+import { isDocId } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Badge, Card, PageHeader, Stat } from '@/components/ui';
-import { createClient } from '@/lib/supabase/server';
+import { db, fromDoc, fromQuery, getMany } from '@/lib/db';
 import { ENEM_AREAS, type Simulado, type SimuladoResult, type SimuladoStats, type SimuladoSubmission } from '@/lib/types';
 import { cn, formatClock } from '@/lib/utils';
 import { SimuladoAdminActions, ResetButton } from './simulado-admin-actions';
@@ -12,21 +13,21 @@ export const metadata: Metadata = { title: 'Simulado · Admin' };
 
 export default async function AdminSimulado({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
-  const supabase = await createClient();
-  const [{ data: sim }, { data: key }, { data: subs }, { data: results }] = await Promise.all([
-    supabase.from('simulados').select('*').eq('id', id).maybeSingle(),
-    supabase.from('simulado_keys').select('answer_key').eq('simulado_id', id).maybeSingle(),
-    supabase.from('simulado_submissions').select('*').eq('simulado_id', id).order('finished_at', { ascending: false, nullsFirst: true }),
-    supabase.from('simulado_results').select('user_id,correct,tri_score,coherence,accuracy').eq('simulado_id', id),
+  if (!isDocId(id)) notFound();
+  const d = db();
+  const [simSnap, keySnap, subsSnap, resSnap] = await Promise.all([
+    d.doc(`simulados/${id}`).get(),
+    d.doc(`simulado_keys/${id}`).get(),
+    d.collection('simulado_submissions').where('simulado_id', '==', id).get(),
+    d.collection('simulado_results').where('simulado_id', '==', id).select('user_id', 'correct', 'tri_score', 'coherence', 'accuracy').get(),
   ]);
-  if (!sim) notFound();
-  const simulado = sim as Simulado;
-  const submissions = (subs ?? []) as SimuladoSubmission[];
-  const resBy = new Map(((results ?? []) as Pick<SimuladoResult, 'user_id' | 'correct' | 'tri_score' | 'coherence' | 'accuracy'>[]).map((r) => [r.user_id, r]));
-  const userIds = submissions.map((s) => s.user_id);
-  const { data: profiles } = userIds.length ? await supabase.from('profiles').select('id,full_name,email').in('id', userIds) : { data: [] };
-  const profBy = new Map((profiles ?? []).map((p: { id: string; full_name: string; email: string }) => [p.id, p]));
+  const simulado = fromDoc<Simulado>(simSnap);
+  if (!simulado) notFound();
+  const key = { answer_key: String(keySnap.get('answer_key') ?? '') };
+  const submissions = fromQuery<SimuladoSubmission>(subsSnap);
+  const resBy = new Map(fromQuery<Pick<SimuladoResult, 'user_id' | 'correct' | 'tri_score' | 'coherence' | 'accuracy'>>(resSnap).map((r) => [r.user_id, r]));
+  const profs = await getMany<{ id: string; full_name: string; email: string }>('users', submissions.map((s) => s.user_id));
+  const profBy = new Map(profs.map((p) => [p.id, p]));
   const stats = simulado.stats as SimuladoStats;
   const answerKey = key?.answer_key ?? '';
 

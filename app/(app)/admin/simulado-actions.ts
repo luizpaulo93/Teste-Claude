@@ -1,10 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { adminClient, bool, fail, int, str, type ActionResult } from '@/lib/admin/guard';
+import { bool, fail, int, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
+import { db, fromQuery, nowIso } from '@/lib/db';
 import { removeObjects } from '@/lib/storage/server';
 import { evaluateCohort } from '@/lib/tri';
-import type { EnemArea } from '@/lib/types';
+import type { EnemArea, SimuladoSubmission } from '@/lib/types';
+import { isDocId } from '@/lib/utils';
 
 function refresh(id?: string) {
   revalidatePath('/admin/simulados');
@@ -12,9 +14,19 @@ function refresh(id?: string) {
   revalidatePath('/simulados', 'layout');
 }
 
+async function deleteWhere(collection: string, field: string, value: string) {
+  const d = db();
+  const snap = await d.collection(collection).where(field, '==', value).select().get();
+  for (let i = 0; i < snap.docs.length; i += 400) {
+    const batch = d.batch();
+    snap.docs.slice(i, i + 400).forEach((x) => batch.delete(x.ref));
+    await batch.commit();
+  }
+}
+
 export async function saveSimulado(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
     const area = str(fd, 'area', 2) as EnemArea;
     if (!['MT', 'CN', 'CH', 'LC'].includes(area)) return { error: 'Área inválida.' };
@@ -26,7 +38,7 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
       time_limit_minutes: int(fd, 'time_limit_minutes', 0, 600, 0),
       pdf_path: str(fd, 'pdf_path', 500),
       is_published: bool(fd, 'is_published'),
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso(),
     };
     if (!row.title) return { error: 'Informe o título.' };
     const key = str(fd, 'answer_key', 400).toUpperCase().replace(/[^A-E]/g, '');
@@ -34,15 +46,13 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
 
     let simId = id;
     if (id) {
-      const { error } = await supabase.from('simulados').update(row).eq('id', id);
-      if (error) throw error;
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      await db().doc(`simulados/${id}`).update(row);
     } else {
-      const { data, error } = await supabase.from('simulados').insert(row).select('id').single();
-      if (error) throw error;
-      simId = data.id;
+      simId = (await db().collection('simulados').add({ ...row, results_released: false, stats: {}, created_at: nowIso() })).id;
     }
-    const { error: kErr } = await supabase.from('simulado_keys').upsert({ simulado_id: simId, answer_key: key });
-    if (kErr) throw kErr;
+    // Gabarito em coleção separada: nunca vai para a tela do aluno antes da liberação
+    await db().doc(`simulado_keys/${simId}`).set({ answer_key: key });
     refresh(simId);
     return { ok: true, id: simId };
   } catch (e) {
@@ -52,11 +62,13 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
 
 export async function deleteSimulado(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { data } = await supabase.from('simulados').select('pdf_path').eq('id', id).maybeSingle();
-    const { error } = await supabase.from('simulados').delete().eq('id', id);
-    if (error) throw error;
-    if (data?.pdf_path) await removeObjects('materials', [data.pdf_path]);
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const ref = db().doc(`simulados/${id}`);
+    const pdf = String((await ref.get()).get('pdf_path') ?? '');
+    await Promise.all([deleteWhere('simulado_submissions', 'simulado_id', id), deleteWhere('simulado_results', 'simulado_id', id)]);
+    await Promise.all([ref.delete(), db().doc(`simulado_keys/${id}`).delete()]);
+    await removeObjects('materials', [pdf]);
     refresh();
     return { ok: true };
   } catch (e) {
@@ -66,9 +78,9 @@ export async function deleteSimulado(id: string): Promise<ActionResult> {
 
 export async function setSimuladoPublished(id: string, value: boolean): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('simulados').update({ is_published: value }).eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    await db().doc(`simulados/${id}`).update({ is_published: value });
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -77,42 +89,34 @@ export async function setSimuladoPublished(id: string, value: boolean): Promise<
 }
 
 /**
- * Calcula as notas TRI de todos os alunos que entregaram e libera os resultados.
+ * Calcula as notas TRI de todos que entregaram e libera os resultados.
  * Roda uma vez (ou ao clicar em "Recalcular"); os alunos só leem o resultado pronto.
  */
 export async function releaseResults(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const [{ data: sim }, { data: key }] = await Promise.all([
-      supabase.from('simulados').select('id,area,question_count').eq('id', id).single(),
-      supabase.from('simulado_keys').select('answer_key').eq('simulado_id', id).maybeSingle(),
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const d = db();
+    const [simSnap, keySnap, subsSnap] = await Promise.all([
+      d.doc(`simulados/${id}`).get(),
+      d.doc(`simulado_keys/${id}`).get(),
+      d.collection('simulado_submissions').where('simulado_id', '==', id).get(),
     ]);
+    const sim = simSnap.data() as { area: EnemArea; question_count: number } | undefined;
+    const answerKey = String(keySnap.get('answer_key') ?? '');
     if (!sim) return { error: 'Simulado não encontrado.' };
-    if (!key?.answer_key || key.answer_key.length !== sim.question_count) return { error: 'Cadastre o gabarito completo antes de liberar.' };
+    if (answerKey.length !== sim.question_count) return { error: 'Cadastre o gabarito completo antes de liberar.' };
 
-    // Paginação para turmas grandes
-    const subs: { user_id: string; answers: string }[] = [];
-    for (let from = 0; ; from += 1000) {
-      const { data, error } = await supabase
-        .from('simulado_submissions')
-        .select('user_id,answers')
-        .eq('simulado_id', id)
-        .eq('status', 'completed')
-        .range(from, from + 999);
-      if (error) throw error;
-      subs.push(...(data ?? []));
-      if (!data || data.length < 1000) break;
+    const subs = fromQuery<SimuladoSubmission>(subsSnap).filter((s) => s.status === 'completed');
+    const { rows, stats } = evaluateCohort(sim.area, sim.question_count, answerKey, subs);
+    await deleteWhere('simulado_results', 'simulado_id', id);
+    const now = nowIso();
+    for (let i = 0; i < rows.length; i += 400) {
+      const batch = d.batch();
+      rows.slice(i, i + 400).forEach((r) => batch.set(d.doc(`simulado_results/${id}_${r.user_id}`), { ...r, simulado_id: id, computed_at: now }));
+      await batch.commit();
     }
-
-    const { rows, stats } = evaluateCohort(sim.area as EnemArea, sim.question_count, key.answer_key, subs);
-    await supabase.from('simulado_results').delete().eq('simulado_id', id);
-    const now = new Date().toISOString();
-    for (let i = 0; i < rows.length; i += 500) {
-      const { error } = await supabase.from('simulado_results').insert(rows.slice(i, i + 500).map((r) => ({ ...r, simulado_id: id, computed_at: now })));
-      if (error) throw error;
-    }
-    const { error } = await supabase.from('simulados').update({ results_released: true, stats }).eq('id', id);
-    if (error) throw error;
+    await d.doc(`simulados/${id}`).update({ results_released: true, stats });
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -122,9 +126,9 @@ export async function releaseResults(id: string): Promise<ActionResult> {
 
 export async function hideResults(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('simulados').update({ results_released: false }).eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    await db().doc(`simulados/${id}`).update({ results_released: false });
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -135,10 +139,12 @@ export async function hideResults(id: string): Promise<ActionResult> {
 /** Permite que o aluno refaça a prova (apaga a entrega e o resultado dele). */
 export async function resetSubmission(simuladoId: string, userId: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    await supabase.from('simulado_results').delete().eq('simulado_id', simuladoId).eq('user_id', userId);
-    const { error } = await supabase.from('simulado_submissions').delete().eq('simulado_id', simuladoId).eq('user_id', userId);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(simuladoId) || !isDocId(userId)) return { error: 'Inválido.' };
+    await Promise.all([
+      db().doc(`simulado_results/${simuladoId}_${userId}`).delete(),
+      db().doc(`simulado_submissions/${simuladoId}_${userId}`).delete(),
+    ]);
     refresh(simuladoId);
     return { ok: true };
   } catch (e) {

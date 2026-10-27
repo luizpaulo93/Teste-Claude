@@ -6,7 +6,6 @@ import {
   Compass,
   Heart,
   Home,
-  LogOut,
   Menu,
   MessageCircleQuestion,
   Moon,
@@ -24,6 +23,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Logo } from '@/components/logo';
 import { Avatar } from '@/components/ui';
 import { InstallApp } from '@/components/install-app';
+import { SignOutButton } from '@/components/sign-out-button';
 import { cn } from '@/lib/utils';
 
 interface NavItem {
@@ -127,11 +127,9 @@ export function AppShell({
               {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
               {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
             </button>
-            <form action="/auth/signout" method="post" className="flex-1">
-              <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-danger">
-                <LogOut className="size-4" /> Sair
-              </button>
-            </form>
+            <div className="flex-1">
+              <SignOutButton className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-danger" />
+            </div>
           </div>
         </div>
       </aside>
@@ -163,11 +161,7 @@ export function AppShell({
                   <Settings2 className="size-4" /> Painel admin
                 </Link>
               )}
-              <form action="/auth/signout" method="post">
-                <button type="submit" className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-danger hover:bg-surface-2">
-                  <LogOut className="size-4" /> Sair
-                </button>
-              </form>
+              <SignOutButton className="flex w-full items-center gap-2.5 px-4 py-3 text-sm text-danger hover:bg-surface-2" />
             </div>
           )}
         </div>

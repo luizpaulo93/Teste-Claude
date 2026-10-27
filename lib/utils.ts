@@ -103,3 +103,8 @@ export function firstName(name: string) {
 export function likeExact(value: string) {
   return value.replace(/[\\%_]/g, (c) => `\\${c}`);
 }
+
+/** IDs de documento (Firestore gera 20 letras/números). */
+export function isDocId(s: string) {
+  return /^[A-Za-z0-9_-]{1,128}$/.test(s);
+}

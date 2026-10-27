@@ -29,6 +29,7 @@ export interface PlatformSettings {
 
 export interface Course {
   id: string;
+  created_at?: string;
   title: string;
   subtitle: string;
   description: string;
@@ -43,6 +44,7 @@ export interface Course {
 
 export interface Module {
   id: string;
+  created_at?: string;
   course_id: string;
   title: string;
   description: string;
@@ -53,6 +55,9 @@ export interface Module {
 
 export interface Lesson {
   id: string;
+  materials?: LessonMaterial[];
+  material_paths?: string[];
+  created_at?: string;
   module_id: string;
   course_id: string;
   title: string;
@@ -67,11 +72,9 @@ export interface Lesson {
 
 export interface LessonMaterial {
   id: string;
-  lesson_id: string;
   title: string;
   file_path: string;
   size_label: string;
-  position: number;
 }
 
 export interface ClassGroup {
@@ -79,6 +82,7 @@ export interface ClassGroup {
   name: string;
   description: string;
   access_all: boolean;
+  course_ids: string[];
 }
 
 export interface Student {
@@ -166,7 +170,13 @@ export interface SimuladoResult {
   breakdown: { q: number; marked: string; official: string; ok: boolean; tier: Tier }[];
 }
 
-export interface Doubt {
+export interface AuthorInfo {
+  author_name: string;
+  author_avatar: string;
+  author_role: Role;
+}
+
+export interface Doubt extends AuthorInfo {
   id: string;
   author_id: string;
   text: string;
@@ -177,7 +187,7 @@ export interface Doubt {
   created_at: string;
 }
 
-export interface DoubtReply {
+export interface DoubtReply extends AuthorInfo {
   id: string;
   doubt_id: string;
   author_id: string;
@@ -218,6 +228,7 @@ export interface MentoriaTask {
   due_date: string | null;
   done: boolean;
   done_at: string | null;
+  created_at?: string;
 }
 
 export interface MentoriaCheckin {
@@ -252,7 +263,7 @@ export const TASK_KINDS: Record<TaskKind, string> = {
   outro: 'Outro',
 };
 
-export interface LessonComment {
+export interface LessonComment extends AuthorInfo {
   id: string;
   lesson_id: string;
   author_id: string;
@@ -274,8 +285,8 @@ export interface LiveSession {
   is_published: boolean;
 }
 
-export interface LiveMessage {
-  id: number;
+export interface LiveMessage extends AuthorInfo {
+  id: string;
   live_id: string;
   author_id: string;
   text: string;

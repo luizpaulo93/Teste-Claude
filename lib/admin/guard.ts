@@ -1,14 +1,22 @@
 import 'server-only';
+import { updateTag } from 'next/cache';
 import { getViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
 
 export type ActionResult = { ok?: true; error?: string; id?: string };
 
-/** Garante que só admin executa a ação. A RLS do banco também bloqueia, isto é defesa extra + mensagem amigável. */
-export async function adminClient() {
+/** Garante que só admin executa a ação (todas as gravações do painel passam por aqui). */
+export async function requireAdminAction() {
   const viewer = await getViewer();
   if (!viewer?.isAdmin) throw new Error('Acesso negado');
-  return { supabase: await createClient(), viewer };
+  return viewer;
+}
+
+/** Renova o cache do catálogo/configurações para todos verem a mudança na hora. */
+export function refreshCatalog() {
+  updateTag('catalog');
+}
+export function refreshSettings() {
+  updateTag('settings');
 }
 
 export function str(fd: FormData, key: string, max = 4000) {

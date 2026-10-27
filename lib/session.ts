@@ -1,28 +1,15 @@
 import 'server-only';
-import { cache } from 'react';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from './supabase/server';
-import type { ClassGroup, PlatformSettings, Profile, Student } from './types';
-import { likeExact } from './utils';
+import { cache } from 'react';
+import { emailKey, fromDoc, getCatalogData, getSettings } from './db';
+import { adminAuth, adminDb } from './firebase/admin';
+import type { ClassGroup, Course, Lesson, Profile, Student } from './types';
 
-export const DEFAULT_SETTINGS: PlatformSettings = {
-  brand_name: 'CURSO VÉRTICE',
-  hero_title: 'Sua plataforma para Enem e vestibulares',
-  hero_subtitle: 'Especialista em física, química e matemática',
-  hero_cta: 'Começar agora',
-  hero_bg_url: '',
-  restrict_to_student_list: true,
-};
+export { getSettings } from './db';
 
-export const getSettings = cache(async (): Promise<PlatformSettings> => {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('platform_settings')
-    .select('brand_name,hero_title,hero_subtitle,hero_cta,hero_bg_url,restrict_to_student_list')
-    .eq('id', 1)
-    .maybeSingle();
-  return { ...DEFAULT_SETTINGS, ...(data ?? {}) };
-});
+export const SESSION_COOKIE = '__session';
+export const BOOTSTRAP_ADMIN = 'luizpaulofisica@gmail.com';
 
 export interface Viewer {
   userId: string;
@@ -36,53 +23,63 @@ export interface Viewer {
   isMember: boolean;
 }
 
-/** Contexto do usuário logado — carregado 1x por requisição, em paralelo. */
+/** Usuário logado (cookie de sessão do Firebase) — carregado 1x por requisição. */
 export const getViewer = cache(async (): Promise<Viewer | null> => {
-  const supabase = await createClient();
-  const { data: claimsData } = await supabase.auth.getClaims();
-  const claims = claimsData?.claims;
-  if (!claims?.sub) return null;
-  const userId = claims.sub as string;
-  const email = String(claims.email ?? '').toLowerCase();
-
-  const [{ data: profile }, { data: student }, settings] = await Promise.all([
-    supabase.from('profiles').select('id,email,full_name,avatar_url,phone,birth_date,role').eq('id', userId).maybeSingle(),
-    supabase.from('students').select('*').ilike('email', likeExact(email)).limit(1).maybeSingle(),
-    getSettings(),
-  ]);
-
-  let classGroup: ClassGroup | null = null;
-  let classCourseIds: string[] = [];
-  if (student?.class_id) {
-    const [{ data: cg }, { data: cc }] = await Promise.all([
-      supabase.from('classes').select('id,name,description,access_all').eq('id', student.class_id).maybeSingle(),
-      supabase.from('class_courses').select('course_id').eq('class_id', student.class_id),
-    ]);
-    classGroup = cg;
-    classCourseIds = (cc ?? []).map((r: { course_id: string }) => r.course_id);
+  const cookie = (await cookies()).get(SESSION_COOKIE)?.value;
+  if (!cookie) return null;
+  let uid: string;
+  let email: string;
+  let tokenName = '';
+  let tokenPicture = '';
+  try {
+    const decoded = await adminAuth().verifySessionCookie(cookie);
+    uid = decoded.uid;
+    email = String(decoded.email ?? '').toLowerCase();
+    tokenName = String(decoded.name ?? '');
+    tokenPicture = String(decoded.picture ?? '');
+  } catch {
+    return null;
   }
 
-  const safeProfile: Profile = profile ?? {
-    id: userId,
+  const db = adminDb();
+  const [profileSnap, studentSnap, settings, catalog] = await Promise.all([
+    db.doc(`users/${uid}`).get(),
+    email ? db.doc(`students/${emailKey(email)}`).get() : Promise.resolve(null),
+    getSettings(),
+    getCatalogData(),
+  ]);
+
+  const profile: Profile = {
+    id: uid,
     email,
-    full_name: email.split('@')[0],
-    avatar_url: '',
+    full_name: tokenName || email.split('@')[0],
+    avatar_url: tokenPicture,
     phone: '',
     birth_date: null,
-    role: 'student',
+    role: email === BOOTSTRAP_ADMIN ? 'admin' : 'student',
+    ...((profileSnap.data() as Partial<Profile> | undefined) ?? {}),
   };
-  const isAdmin = safeProfile.role === 'admin';
+  const student = studentSnap ? fromDoc<Student>(studentSnap) : null;
+  const classGroup = student?.class_id ? (catalog.classes.find((c) => c.id === student.class_id) ?? null) : null;
+  const isAdmin = profile.role === 'admin';
   const isMember =
-    isAdmin ||
-    !settings.restrict_to_student_list ||
-    Boolean(student && student.status === 'active' && student.class_id);
+    isAdmin || !settings.restrict_to_student_list || Boolean(student && student.status === 'active' && classGroup);
 
-  return { userId, email, profile: safeProfile, isAdmin, student, classGroup, classCourseIds, isMember };
+  return {
+    userId: uid,
+    email,
+    profile,
+    isAdmin,
+    student,
+    classGroup,
+    classCourseIds: classGroup?.course_ids ?? [],
+    isMember,
+  };
 });
 
 export async function requireViewer(): Promise<Viewer> {
   const viewer = await getViewer();
-  if (!viewer) redirect('/login');
+  if (!viewer) redirect('/auth/expirado');
   return viewer;
 }
 
@@ -92,8 +89,20 @@ export async function requireAdmin(): Promise<Viewer> {
   return viewer;
 }
 
-export function canAccessCourse(viewer: Viewer, course: { id: string; is_free: boolean }, restrict: boolean) {
+export function canAccessCourse(viewer: Viewer, course: Pick<Course, 'id' | 'is_free'>, restrict: boolean) {
   if (viewer.isAdmin || course.is_free || !restrict) return true;
   if (!viewer.student || viewer.student.status !== 'active' || !viewer.classGroup) return false;
   return viewer.classGroup.access_all || viewer.classCourseIds.includes(course.id);
+}
+
+/** Mesmo critério que a regra do banco tinha: admin, ou aula publicada de curso publicado e (grátis ou curso liberado). */
+export function canSeeLesson(
+  viewer: Viewer,
+  lesson: Pick<Lesson, 'is_published' | 'is_free' | 'course_id'>,
+  course: Pick<Course, 'id' | 'is_free' | 'is_published'> | undefined,
+  restrict: boolean,
+) {
+  if (viewer.isAdmin) return true;
+  if (!course || !course.is_published || !lesson.is_published) return false;
+  return lesson.is_free || canAccessCourse(viewer, course, restrict);
 }

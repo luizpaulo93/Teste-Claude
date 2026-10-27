@@ -1,68 +1,50 @@
 import 'server-only';
 import { cache } from 'react';
-import { createClient } from './supabase/server';
-import type { CalendarEvent, Course, Lesson, LessonProgress, Module } from './types';
+import { db, fromQuery, getCatalogData, getSettings, type LessonSummary } from './db';
+import { canSeeLesson, type Viewer } from './session';
+import type { CalendarEvent, Course, LessonProgress } from './types';
 
-export const LESSON_LIST_COLUMNS = 'id,module_id,course_id,title,duration,thumbnail_url,youtube_id,position,is_free';
+export type { LessonSummary } from './db';
 
-export type LessonSummary = Pick<
-  Lesson,
-  'id' | 'module_id' | 'course_id' | 'title' | 'duration' | 'thumbnail_url' | 'youtube_id' | 'position' | 'is_free'
->;
-
-/** Catálogo publicado + aulas visíveis ao usuário (a RLS filtra). Uma ida ao banco por tabela, em paralelo. */
+/** Cursos publicados + nº de aulas publicadas por curso (vem do cache, sem custo de leitura). */
 export const getCatalog = cache(async () => {
-  const supabase = await createClient();
-  const [{ data: courses }, { data: lessons }] = await Promise.all([
-    supabase.from('courses').select('*').eq('is_published', true).order('position').order('created_at'),
-    supabase.from('lessons').select('id,course_id').eq('is_published', true),
-  ]);
+  const { courses, lessons } = await getCatalogData();
+  const published = courses.filter((c) => c.is_published);
   const lessonCount = new Map<string, number>();
-  (lessons ?? []).forEach((l: { course_id: string }) => lessonCount.set(l.course_id, (lessonCount.get(l.course_id) ?? 0) + 1));
-  return { courses: (courses ?? []) as Course[], lessonCount };
+  lessons.forEach((l) => l.is_published && lessonCount.set(l.course_id, (lessonCount.get(l.course_id) ?? 0) + 1));
+  return { courses: published, lessonCount };
 });
+
+/** Aulas que este usuário pode ver (mesma regra de antes: publicada e liberada, ou grátis). */
+export async function visibleLessons(viewer: Viewer, filter?: (l: LessonSummary) => boolean) {
+  const [{ courses, lessons }, settings] = await Promise.all([getCatalogData(), getSettings()]);
+  const byId = new Map(courses.map((c) => [c.id, c]));
+  return lessons.filter((l) => (!filter || filter(l)) && canSeeLesson(viewer, l, byId.get(l.course_id), settings.restrict_to_student_list));
+}
 
 export const getMyProgress = cache(async (userId: string) => {
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('lesson_progress')
-    .select('lesson_id,course_id,completed,position_sec,duration_sec,updated_at')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1000);
-  return (data ?? []) as LessonProgress[];
+  const snap = await db().collection(`users/${userId}/progress`).orderBy('updated_at', 'desc').limit(1000).get();
+  return snap.docs.map((d) => ({ lesson_id: d.id, ...d.data() }) as LessonProgress);
 });
 
-export const getCourseTree = cache(async (courseId: string) => {
-  const supabase = await createClient();
-  const [{ data: course }, { data: modules }, { data: lessons }] = await Promise.all([
-    supabase.from('courses').select('*').eq('id', courseId).maybeSingle(),
-    supabase.from('modules').select('*').eq('course_id', courseId).eq('is_published', true).order('position').order('created_at'),
-    supabase
-      .from('lessons')
-      .select(LESSON_LIST_COLUMNS)
-      .eq('course_id', courseId)
-      .eq('is_published', true)
-      .order('position')
-      .order('created_at'),
-  ]);
+export const getCourseTree = cache(async (courseId: string, viewer: Viewer) => {
+  const { courses, modules } = await getCatalogData();
+  const course = (courses.find((c) => c.id === courseId) ?? null) as Course | null;
+  if (!course || (!course.is_published && !viewer.isAdmin)) return { course: null, modules: [], lessons: [] as LessonSummary[] };
   return {
-    course: course as Course | null,
-    modules: (modules ?? []) as Module[],
-    lessons: (lessons ?? []) as LessonSummary[],
+    course,
+    modules: modules.filter((m) => m.course_id === courseId && (m.is_published || viewer.isAdmin)),
+    lessons: await visibleLessons(viewer, (l) => l.course_id === courseId),
   };
 });
 
 export const getUpcomingEvents = cache(async (limit = 5) => {
-  const supabase = await createClient();
   const today = new Date().toISOString().slice(0, 10);
-  const { data } = await supabase
-    .from('calendar_events')
-    .select('*')
-    .gte('end_date', today)
-    .order('start_date')
-    .limit(limit);
-  return (data ?? []) as CalendarEvent[];
+  const snap = await db().collection('calendar_events').where('end_date', '>=', today).orderBy('end_date').limit(50).get();
+  return fromQuery<CalendarEvent>(snap)
+    .filter((e) => e.is_published)
+    .sort((a, b) => a.start_date.localeCompare(b.start_date))
+    .slice(0, limit);
 });
 
 export function courseProgress(courseId: string, total: number, progress: LessonProgress[]) {

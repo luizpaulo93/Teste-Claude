@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { LineChart } from '@/components/charts/line-chart';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { db, fromQuery } from '@/lib/db';
 import { ENEM_AREAS, type Simulado, type SimuladoResult, type SimuladoSubmission } from '@/lib/types';
 
 export const metadata: Metadata = { title: 'Simulados' };
@@ -13,15 +13,15 @@ export const metadata: Metadata = { title: 'Simulados' };
 export default async function SimuladosPage() {
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
-  const supabase = await createClient();
-  const [{ data: sims }, { data: subs }, { data: results }] = await Promise.all([
-    supabase.from('simulados').select('id,title,area,question_count,time_limit_minutes,results_released,created_at').eq('is_published', true).order('created_at', { ascending: false }),
-    supabase.from('simulado_submissions').select('simulado_id,status').eq('user_id', viewer.userId),
-    supabase.from('simulado_results').select('simulado_id,tri_score,correct,accuracy').eq('user_id', viewer.userId),
+  const d = db();
+  const [sims, subs, results] = await Promise.all([
+    d.collection('simulados').where('is_published', '==', true).select('title', 'area', 'question_count', 'time_limit_minutes', 'results_released', 'created_at').get(),
+    d.collection('simulado_submissions').where('user_id', '==', viewer.userId).select('simulado_id', 'status').get(),
+    d.collection('simulado_results').where('user_id', '==', viewer.userId).select('simulado_id', 'tri_score', 'correct', 'accuracy').get(),
   ]);
-  const simulados = (sims ?? []) as Simulado[];
-  const subBy = new Map((subs ?? []).map((s: Pick<SimuladoSubmission, 'simulado_id' | 'status'>) => [s.simulado_id, s.status]));
-  const resBy = new Map((results ?? []).map((r: Pick<SimuladoResult, 'simulado_id' | 'tri_score' | 'correct' | 'accuracy'>) => [r.simulado_id, r]));
+  const simulados = fromQuery<Simulado>(sims).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const subBy = new Map(fromQuery<SimuladoSubmission>(subs).map((s) => [s.simulado_id, s.status]));
+  const resBy = new Map(fromQuery<SimuladoResult>(results).map((r) => [r.simulado_id, r]));
 
   const chart = simulados
     .filter((s) => resBy.has(s.id))

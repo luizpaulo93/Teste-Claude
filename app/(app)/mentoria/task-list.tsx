@@ -4,7 +4,7 @@ import { Check } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { Badge } from '@/components/ui';
-import { createClient } from '@/lib/supabase/client';
+import { toggleTask } from './actions';
 import { TASK_KINDS, type MentoriaTask } from '@/lib/types';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -15,8 +15,8 @@ export function TaskList({ tasks }: { tasks: MentoriaTask[] }) {
   const toggle = async (t: MentoriaTask) => {
     const next = !t.done;
     setList((l) => l.map((x) => (x.id === t.id ? { ...x, done: next } : x)));
-    const { error } = await createClient().from('mentoria_tasks').update({ done: next }).eq('id', t.id);
-    if (error) {
+    const r = await toggleTask(t.id, next).catch(() => ({ error: 'rede' }));
+    if (r.error) {
       setList((l) => l.map((x) => (x.id === t.id ? { ...x, done: !next } : x)));
       toast.error('Não foi possível salvar.');
     }

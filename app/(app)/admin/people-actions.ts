@@ -1,9 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { adminClient, bool, dateOrNull, fail, str, type ActionResult } from '@/lib/admin/guard';
+import { bool, dateOrNull, fail, refreshCatalog, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
+import { syncClaimsByEmail } from '@/lib/claims';
+import { db, emailKey, nowIso } from '@/lib/db';
+import { isDocId } from '@/lib/utils';
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]{2,}$/;
 
 function refresh() {
   revalidatePath('/admin/alunos');
@@ -11,24 +14,40 @@ function refresh() {
   revalidatePath('/', 'layout');
 }
 
+/** O ID do aluno é o próprio e-mail (busca instantânea no login). */
 export async function saveStudent(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const id = str(fd, 'id', 64);
+    await requireAdminAction();
+    const id = str(fd, 'id', 200);
     const email = str(fd, 'email', 200).toLowerCase();
     if (!EMAIL_RE.test(email)) return { error: 'E-mail inválido.' };
+    const classId = str(fd, 'class_id', 64);
     const row = {
       email,
       name: str(fd, 'name', 160),
       phone: str(fd, 'phone', 30),
       cpf: str(fd, 'cpf', 20).replace(/\D/g, ''),
       birth_date: dateOrNull(fd, 'birth_date'),
-      class_id: str(fd, 'class_id', 64) || null,
+      class_id: isDocId(classId) ? classId : null,
       status: str(fd, 'status', 10) === 'blocked' ? 'blocked' : 'active',
-      updated_at: new Date().toISOString(),
+      updated_at: nowIso(),
     };
-    const { error } = id ? await supabase.from('students').update(row).eq('id', id) : await supabase.from('students').insert(row);
-    if (error) throw error;
+    const newKey = emailKey(email);
+    const ref = db().doc(`students/${newKey}`);
+    if (id && id !== newKey) {
+      // Trocou o e-mail: move o registro
+      const old = db().doc(`students/${id}`);
+      const snap = await old.get();
+      if ((await ref.get()).exists) return { error: 'Já existe um aluno com esse e-mail.' };
+      await ref.set({ ...(snap.data() ?? {}), ...row });
+      await old.delete();
+    } else if (id) {
+      await ref.set(row, { merge: true });
+    } else {
+      if ((await ref.get()).exists) return { error: 'Já existe um aluno com esse e-mail.' };
+      await ref.set({ ...row, created_at: nowIso() });
+    }
+    await syncClaimsByEmail([email]);
     refresh();
     return { ok: true };
   } catch (e) {
@@ -39,10 +58,11 @@ export async function saveStudent(fd: FormData): Promise<ActionResult> {
 /** Importação em lote: uma linha por aluno — "nome; email; telefone" (ou só o e-mail). */
 export async function importStudents(fd: FormData): Promise<ActionResult & { count?: number }> {
   try {
-    const { supabase } = await adminClient();
-    const class_id = str(fd, 'class_id', 64) || null;
+    await requireAdminAction();
+    const cls = str(fd, 'class_id', 64);
+    const class_id = isDocId(cls) ? cls : null;
     const lines = str(fd, 'lines', 200_000).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const rows = new Map<string, { email: string; name: string; phone: string; class_id: string | null; status: 'active' }>();
+    const rows = new Map<string, { email: string; name: string; phone: string }>();
     for (const line of lines) {
       const parts = line.split(/[;,\t]/).map((p) => p.trim());
       const email = parts.find((p) => EMAIL_RE.test(p))?.toLowerCase();
@@ -50,25 +70,27 @@ export async function importStudents(fd: FormData): Promise<ActionResult & { cou
       const others = parts.filter((p) => p && p.toLowerCase() !== email);
       const phone = others.find((p) => /^[\d()+\s-]{8,}$/.test(p)) ?? '';
       const name = others.find((p) => p !== phone) ?? '';
-      rows.set(email, { email, name: name.slice(0, 160), phone: phone.slice(0, 30), class_id, status: 'active' });
+      rows.set(email, { email, name: name.slice(0, 160), phone: phone.slice(0, 30) });
     }
     if (!rows.size) return { error: 'Nenhum e-mail válido encontrado.' };
     const list = [...rows.values()];
-    // Evita sobrescrever nomes já cadastrados com vazio: atualiza só turma/status para quem já existe
-    const { data: existing } = await supabase.from('students').select('id,email').in('email', list.map((r) => r.email));
-    const existingSet = new Map((existing ?? []).map((s: { id: string; email: string }) => [s.email.toLowerCase(), s.id]));
-    const toInsert = list.filter((r) => !existingSet.has(r.email));
-    const toUpdate = list.filter((r) => existingSet.has(r.email));
-    for (let i = 0; i < toInsert.length; i += 500) {
-      const { error } = await supabase.from('students').insert(toInsert.slice(i, i + 500));
-      if (error) throw error;
+    const d = db();
+    for (let i = 0; i < list.length; i += 400) {
+      const chunk = list.slice(i, i + 400);
+      const snaps = await d.getAll(...chunk.map((r) => d.doc(`students/${emailKey(r.email)}`)));
+      const batch = d.batch();
+      chunk.forEach((r, k) => {
+        const ref = snaps[k].ref;
+        if (snaps[k].exists) {
+          // Já cadastrado: não apaga nome/telefone; só atualiza turma e reativa
+          if (class_id) batch.update(ref, { class_id, status: 'active', updated_at: nowIso() });
+        } else {
+          batch.set(ref, { ...r, cpf: '', birth_date: null, class_id, status: 'active', created_at: nowIso(), updated_at: nowIso() });
+        }
+      });
+      await batch.commit();
     }
-    if (toUpdate.length && class_id) {
-      await supabase
-        .from('students')
-        .update({ class_id, status: 'active' })
-        .in('id', toUpdate.map((r) => existingSet.get(r.email)!));
-    }
+    await syncClaimsByEmail(list.map((r) => r.email));
     refresh();
     return { ok: true, count: list.length };
   } catch (e) {
@@ -77,29 +99,30 @@ export async function importStudents(fd: FormData): Promise<ActionResult & { cou
 }
 
 export async function setStudentStatus(id: string, status: 'active' | 'blocked'): Promise<ActionResult> {
-  try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('students').update({ status }).eq('id', id);
-    if (error) throw error;
-    refresh();
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
+  return bulkStudents([id], { status });
 }
 
 export async function bulkStudents(ids: string[], op: { class_id?: string | null; status?: 'active' | 'blocked'; remove?: boolean }): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const safe = ids.filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 2000);
+    await requireAdminAction();
+    const safe = ids.filter((x) => typeof x === 'string' && x.length <= 200 && !x.includes('/')).slice(0, 2000);
     if (!safe.length) return { ok: true };
-    const { error } = op.remove
-      ? await supabase.from('students').delete().in('id', safe)
-      : await supabase
-          .from('students')
-          .update({ ...(op.class_id !== undefined ? { class_id: op.class_id } : {}), ...(op.status ? { status: op.status } : {}) })
-          .in('id', safe);
-    if (error) throw error;
+    const d = db();
+    const update: Record<string, unknown> = { updated_at: nowIso() };
+    if (op.class_id !== undefined) update.class_id = op.class_id && isDocId(op.class_id) ? op.class_id : null;
+    if (op.status) update.status = op.status === 'blocked' ? 'blocked' : 'active';
+    const emails: string[] = [];
+    for (let i = 0; i < safe.length; i += 400) {
+      const batch = d.batch();
+      safe.slice(i, i + 400).forEach((id) => {
+        const ref = d.doc(`students/${id}`);
+        if (op.remove) batch.delete(ref);
+        else batch.set(ref, update, { merge: true });
+        emails.push(id);
+      });
+      await batch.commit();
+    }
+    await syncClaimsByEmail(emails);
     refresh();
     return { ok: true };
   } catch (e) {
@@ -114,25 +137,24 @@ export async function deleteStudent(id: string): Promise<ActionResult> {
 // ---------------- Turmas
 export async function saveClass(fd: FormData): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
+    await requireAdminAction();
     const id = str(fd, 'id', 64);
-    const row = { name: str(fd, 'name', 120), description: str(fd, 'description', 1000), access_all: bool(fd, 'access_all'), updated_at: new Date().toISOString() };
+    const row = {
+      name: str(fd, 'name', 120),
+      description: str(fd, 'description', 1000),
+      access_all: bool(fd, 'access_all'),
+      course_ids: fd.getAll('course_ids').map(String).filter((x) => isDocId(x)).slice(0, 500),
+      updated_at: nowIso(),
+    };
     if (!row.name) return { error: 'Informe o nome da turma.' };
-    const courseIds = fd.getAll('course_ids').map(String).filter((x) => /^[0-9a-f-]{36}$/i.test(x));
     let classId = id;
     if (id) {
-      const { error } = await supabase.from('classes').update(row).eq('id', id);
-      if (error) throw error;
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      await db().doc(`classes/${id}`).update(row);
     } else {
-      const { data, error } = await supabase.from('classes').insert(row).select('id').single();
-      if (error) throw error;
-      classId = data.id;
+      classId = (await db().collection('classes').add({ ...row, created_at: nowIso() })).id;
     }
-    await supabase.from('class_courses').delete().eq('class_id', classId);
-    if (courseIds.length) {
-      const { error } = await supabase.from('class_courses').insert(courseIds.map((course_id) => ({ class_id: classId, course_id })));
-      if (error) throw error;
-    }
+    refreshCatalog();
     refresh();
     return { ok: true, id: classId };
   } catch (e) {
@@ -142,9 +164,18 @@ export async function saveClass(fd: FormData): Promise<ActionResult> {
 
 export async function deleteClass(id: string): Promise<ActionResult> {
   try {
-    const { supabase } = await adminClient();
-    const { error } = await supabase.from('classes').delete().eq('id', id);
-    if (error) throw error;
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const d = db();
+    const students = await d.collection('students').where('class_id', '==', id).get();
+    for (let i = 0; i < students.docs.length; i += 400) {
+      const batch = d.batch();
+      students.docs.slice(i, i + 400).forEach((s) => batch.update(s.ref, { class_id: null }));
+      await batch.commit();
+    }
+    await d.doc(`classes/${id}`).delete();
+    refreshCatalog();
+    await syncClaimsByEmail(students.docs.map((s) => String(s.get('email'))));
     refresh();
     return { ok: true };
   } catch (e) {

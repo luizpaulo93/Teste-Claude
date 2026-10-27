@@ -3,10 +3,11 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
-import { getCourseTree } from '@/lib/data';
-import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
-import type { Lesson, LessonComment, LessonMaterial, ProfileCard } from '@/lib/types';
+import { getCourseTree, getMyProgress } from '@/lib/data';
+import { db, fromDoc, fromQuery, getCatalogData } from '@/lib/db';
+import { canSeeLesson, getSettings, requireViewer } from '@/lib/session';
+import type { Lesson, LessonComment } from '@/lib/types';
+import { isDocId } from '@/lib/utils';
 import { LessonComments } from './lesson-comments';
 import { LessonView } from './lesson-view';
 
@@ -14,22 +15,13 @@ export const metadata: Metadata = { title: 'Aula' };
 
 export default async function LessonPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
-  const supabase = await createClient();
+  const [snap, settings, catalog] = await Promise.all([db().doc(`lessons/${id}`).get(), getSettings(), getCatalogData()]);
+  const lesson = fromDoc<Lesson>(snap);
+  const course = lesson ? catalog.courses.find((c) => c.id === lesson.course_id) : undefined;
 
-  const [{ data: lesson }, { data: materials }, { data: prog }, { data: fav }, { data: comments }] = await Promise.all([
-    supabase.from('lessons').select('*').eq('id', id).maybeSingle(),
-    supabase.from('lesson_materials').select('*').eq('lesson_id', id).order('position'),
-    supabase.from('lesson_progress').select('completed,position_sec').eq('user_id', viewer.userId).eq('lesson_id', id).maybeSingle(),
-    supabase.from('favorites').select('lesson_id').eq('user_id', viewer.userId).eq('lesson_id', id).maybeSingle(),
-    supabase.from('lesson_comments').select('*').eq('lesson_id', id).order('created_at', { ascending: false }).limit(100),
-  ]);
-  const commentList = (comments ?? []) as LessonComment[];
-  const authorIds = [...new Set(commentList.map((c) => c.author_id))];
-  const { data: cards } = authorIds.length ? await supabase.from('profile_cards').select('*').in('id', authorIds) : { data: [] };
-
-  if (!lesson) {
+  if (!lesson || !canSeeLesson(viewer, lesson, course, settings.restrict_to_student_list)) {
     return (
       <Card className="mx-auto mt-10 flex max-w-md flex-col items-center p-10 text-center">
         <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand">
@@ -44,33 +36,37 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const { course, modules, lessons } = await getCourseTree((lesson as Lesson).course_id);
-  const { data: progressRows } = await supabase
-    .from('lesson_progress')
-    .select('lesson_id')
-    .eq('user_id', viewer.userId)
-    .eq('course_id', (lesson as Lesson).course_id)
-    .eq('completed', true);
-
-  const ordered = modules.flatMap((m) => lessons.filter((l) => l.module_id === m.id));
+  const [progSnap, favSnap, commentsSnap, tree, progress] = await Promise.all([
+    db().doc(`users/${viewer.userId}/progress/${id}`).get(),
+    db().doc(`users/${viewer.userId}/favorites/${id}`).get(),
+    db().collection(`lessons/${id}/comments`).orderBy('created_at', 'desc').limit(100).get(),
+    getCourseTree(lesson.course_id, viewer),
+    getMyProgress(viewer.userId),
+  ]);
+  const prog = progSnap.data() as { completed?: boolean; position_sec?: number } | undefined;
+  const ordered = tree.modules.flatMap((m) => tree.lessons.filter((l) => l.module_id === m.id));
   const idx = ordered.findIndex((l) => l.id === id);
+  const completedIds = progress.filter((p) => p.course_id === lesson.course_id && p.completed).map((p) => p.lesson_id);
 
   return (
     <>
-      <Link
-        href={`/cursos/${(lesson as Lesson).course_id}`}
-        className="mb-4 inline-flex max-w-full items-center gap-1 truncate text-sm font-semibold text-muted hover:text-ink"
-      >
+      <Link href={`/cursos/${lesson.course_id}`} className="mb-4 inline-flex max-w-full items-center gap-1 truncate text-sm font-semibold text-muted hover:text-ink">
         <ChevronLeft className="size-4 shrink-0" /> <span className="truncate">{course?.title ?? 'Curso'}</span>
       </Link>
       <LessonView
-        lesson={lesson as Lesson}
-        materials={(materials ?? []) as LessonMaterial[]}
-        modules={modules.map((m) => ({ id: m.id, title: m.title }))}
-        lessons={ordered.map((l) => ({ id: l.id, title: l.title, duration: l.duration, module_id: l.module_id, thumb: l.thumbnail_url || (l.youtube_id ? `https://i.ytimg.com/vi/${l.youtube_id}/mqdefault.jpg` : '') }))}
-        completedIds={(progressRows ?? []).map((r: { lesson_id: string }) => r.lesson_id)}
+        lesson={lesson}
+        materials={lesson.materials ?? []}
+        modules={tree.modules.map((m) => ({ id: m.id, title: m.title }))}
+        lessons={ordered.map((l) => ({
+          id: l.id,
+          title: l.title,
+          duration: l.duration,
+          module_id: l.module_id,
+          thumb: l.thumbnail_url || (l.youtube_id ? `https://i.ytimg.com/vi/${l.youtube_id}/mqdefault.jpg` : ''),
+        }))}
+        completedIds={completedIds}
         initialCompleted={Boolean(prog?.completed)}
-        initialFavorite={Boolean(fav)}
+        initialFavorite={favSnap.exists}
         startAt={prog?.completed ? 0 : (prog?.position_sec ?? 0)}
         prevId={idx > 0 ? ordered[idx - 1].id : null}
         nextId={idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1].id : null}
@@ -79,8 +75,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         comments={
           <LessonComments
             lessonId={id}
-            initial={commentList}
-            authors={(cards ?? []) as ProfileCard[]}
+            initial={fromQuery<LessonComment>(commentsSnap)}
             me={{ id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role }}
             isAdmin={viewer.isAdmin}
           />

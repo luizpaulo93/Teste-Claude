@@ -3,13 +3,15 @@
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, FileText, Heart, Download, PlayCircle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { getFileUrl } from '@/lib/storage/client';
-import { createClient } from '@/lib/supabase/client';
+import { deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { clientAuth, clientDb } from '@/lib/firebase/client';
+import { saveProgressServer, setFavoriteServer } from './actions';
 import type { Lesson, LessonMaterial } from '@/lib/types';
 import { cn, youtubeThumb } from '@/lib/utils';
 
@@ -31,7 +33,6 @@ interface Props {
 
 export function LessonView(p: Props) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
   const [completed, setCompleted] = useState(p.initialCompleted);
   const [favorite, setFavorite] = useState(p.initialFavorite);
   const [doneSet, setDoneSet] = useState(() => new Set(p.completedIds));
@@ -39,16 +40,28 @@ export function LessonView(p: Props) {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const savingRef = useRef(false);
 
-  // Grava direto no Supabase (sem passar por função serverless) — escala com muitos alunos simultâneos.
+  // Grava direto no Firestore pelo navegador (sem passar pela Vercel) — escala com muitos alunos.
+  // Se o navegador não estiver logado no Firebase, grava pelo servidor.
   const saveProgress = useCallback(
     async (patch: { completed?: boolean; position_sec?: number; duration_sec?: number }) => {
-      const { error } = await supabase.from('lesson_progress').upsert(
-        { user_id: p.userId, lesson_id: p.lesson.id, course_id: p.lesson.course_id, updated_at: new Date().toISOString(), ...patch },
-        { onConflict: 'user_id,lesson_id' },
-      );
-      return error;
+      try {
+        const auth = clientAuth();
+        await auth.authStateReady();
+        if (auth.currentUser?.uid === p.userId) {
+          await setDoc(
+            doc(clientDb(), 'users', p.userId, 'progress', p.lesson.id),
+            { lesson_id: p.lesson.id, course_id: p.lesson.course_id, updated_at: new Date().toISOString(), ...patch },
+            { merge: true },
+          );
+          return null;
+        }
+      } catch {
+        /* tenta pelo servidor */
+      }
+      const r = await saveProgressServer(p.lesson.id, p.lesson.course_id, patch);
+      return r.error ?? null;
     },
-    [supabase, p.userId, p.lesson.id, p.lesson.course_id],
+    [p.userId, p.lesson.id, p.lesson.course_id],
   );
 
   const onProgress = useCallback(
@@ -78,9 +91,17 @@ export function LessonView(p: Props) {
   const toggleFav = async () => {
     const next = !favorite;
     setFavorite(next);
-    const { error } = next
-      ? await supabase.from('favorites').upsert({ user_id: p.userId, lesson_id: p.lesson.id })
-      : await supabase.from('favorites').delete().eq('user_id', p.userId).eq('lesson_id', p.lesson.id);
+    let error = false;
+    try {
+      const auth = clientAuth();
+      await auth.authStateReady();
+      if (auth.currentUser?.uid !== p.userId) throw new Error('sem login no navegador');
+      const ref = doc(clientDb(), 'users', p.userId, 'favorites', p.lesson.id);
+      if (next) await setDoc(ref, { lesson_id: p.lesson.id, created_at: new Date().toISOString() });
+      else await deleteDoc(ref);
+    } catch {
+      error = Boolean((await setFavoriteServer(p.lesson.id, next)).error);
+    }
     if (error) {
       setFavorite(!next);
       toast.error('Não foi possível atualizar favoritos.');

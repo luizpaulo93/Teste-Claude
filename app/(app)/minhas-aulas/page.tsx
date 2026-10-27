@@ -3,9 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CoverFallback } from '@/components/course/course-card';
 import { EmptyState, Img, PageHeader } from '@/components/ui';
-import { LESSON_LIST_COLUMNS, type LessonSummary } from '@/lib/data';
+import { getMyProgress, visibleLessons, type LessonSummary } from '@/lib/data';
+import { db } from '@/lib/db';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
 import { cn, youtubeThumb } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Minhas aulas' };
@@ -13,16 +13,14 @@ export const metadata: Metadata = { title: 'Minhas aulas' };
 export default async function MyLessonsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const viewer = await requireViewer();
   const { tab = 'favoritas' } = await searchParams;
-  const supabase = await createClient();
-
-  const ids =
+  const lessonIds =
     tab === 'concluidas'
-      ? ((await supabase.from('lesson_progress').select('lesson_id').eq('user_id', viewer.userId).eq('completed', true).order('updated_at', { ascending: false }).limit(200)).data ?? [])
-      : ((await supabase.from('favorites').select('lesson_id').eq('user_id', viewer.userId).order('created_at', { ascending: false }).limit(200)).data ?? []);
+      ? (await getMyProgress(viewer.userId)).filter((p) => p.completed).map((p) => p.lesson_id)
+      : (await db().collection(`users/${viewer.userId}/favorites`).orderBy('created_at', 'desc').limit(200).get()).docs.map((d) => d.id);
 
-  const lessonIds = ids.map((r: { lesson_id: string }) => r.lesson_id);
-  const { data } = lessonIds.length ? await supabase.from('lessons').select(LESSON_LIST_COLUMNS).in('id', lessonIds) : { data: [] };
-  const byId = new Map((data ?? []).map((l: LessonSummary) => [l.id, l]));
+  const idSet = new Set(lessonIds);
+  const visible = await visibleLessons(viewer, (l) => idSet.has(l.id));
+  const byId = new Map(visible.map((l) => [l.id, l]));
   const lessons = lessonIds.map((id) => byId.get(id)).filter(Boolean) as LessonSummary[];
 
   const tabs = [

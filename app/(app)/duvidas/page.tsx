@@ -3,8 +3,8 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
-import type { Doubt, ProfileCard } from '@/lib/types';
+import { db, fromQuery } from '@/lib/db';
+import type { Doubt } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { DoubtComposer } from './doubt-composer';
 import { DoubtFeed } from './doubt-feed';
@@ -23,22 +23,20 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
   if (!viewer.isMember) redirect('/');
   const { f = 'todas', n } = await searchParams;
   const limit = Math.min(200, Math.max(20, Number(n) || 20));
-  const supabase = await createClient();
-
-  let q = supabase.from('doubts').select('*').order('created_at', { ascending: false }).limit(limit + 1);
-  if (f === 'abertas') q = q.eq('is_resolved', false).eq('replies_count', 0);
-  if (f === 'resolvidas') q = q.eq('is_resolved', true);
-  if (f === 'minhas') q = q.eq('author_id', viewer.userId);
-  const { data } = await q;
-  const rows = (data ?? []) as Doubt[];
+  // "Todas" usa a ordem do banco; os filtros usam um campo só (não exigem índices extras) e ordenam aqui
+  const col = db().collection('doubts');
+  let rows: Doubt[];
+  if (f === 'todas') rows = fromQuery<Doubt>(await col.orderBy('created_at', 'desc').limit(limit + 1).get());
+  else {
+    const q = f === 'minhas' ? col.where('author_id', '==', viewer.userId) : col.where('is_resolved', '==', f === 'resolvidas');
+    rows = fromQuery<Doubt>(await q.limit(300).get())
+      .filter((d) => f !== 'abertas' || d.replies_count === 0)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }
   const hasMore = rows.length > limit;
   const doubts = rows.slice(0, limit);
-
-  const authorIds = [...new Set(doubts.map((d) => d.author_id))];
-  const [{ data: cards }, { data: likes }] = await Promise.all([
-    authorIds.length ? supabase.from('profile_cards').select('*').in('id', authorIds) : Promise.resolve({ data: [] }),
-    doubts.length ? supabase.from('doubt_likes').select('doubt_id').eq('user_id', viewer.userId).in('doubt_id', doubts.map((d) => d.id)) : Promise.resolve({ data: [] }),
-  ]);
+  const likeSnaps = doubts.length ? await db().getAll(...doubts.map((d) => db().doc(`doubts/${d.id}/likes/${viewer.userId}`))) : [];
+  const likedIds = likeSnaps.filter((s) => s.exists).map((s) => s.ref.parent.parent!.id);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -62,8 +60,7 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
       <DoubtFeed
         key={`${f}-${limit}`}
         doubts={doubts}
-        authors={(cards ?? []) as ProfileCard[]}
-        likedIds={(likes ?? []).map((l: { doubt_id: string }) => l.doubt_id)}
+        likedIds={likedIds}
         viewerId={viewer.userId}
         isAdmin={viewer.isAdmin}
       />

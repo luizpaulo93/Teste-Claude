@@ -2,19 +2,27 @@
 
 import { Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { Avatar, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { createClient } from '@/lib/supabase/client';
+import { collection, doc, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { clientAuth, clientDb } from '@/lib/firebase/client';
 import type { LiveMessage, LiveSession, ProfileCard } from '@/lib/types';
+import { deleteLiveMessage, pollLive, sendLiveMessage } from '../actions';
+
+/** Espera o login do Firebase no navegador (necessário para ouvir em tempo real). */
+async function clientReady() {
+  const auth = clientAuth();
+  await auth.authStateReady();
+  return Boolean(auth.currentUser);
+}
 import { cn, youtubeThumb } from '@/lib/utils';
 
 export function LiveRoom({
   live,
   messages,
-  authors,
   me,
   isAdmin,
   watermark,
@@ -24,7 +32,6 @@ export function LiveRoom({
 }: {
   live: LiveSession;
   messages: LiveMessage[];
-  authors: ProfileCard[];
   me: ProfileCard;
   isAdmin: boolean;
   watermark: string;
@@ -33,18 +40,37 @@ export function LiveRoom({
   icons: { scheduled: ReactNode; live: ReactNode };
 }) {
   const router = useRouter();
-  const supabase = useMemo(() => createClient(), []);
-
-  // Verifica a cada 20 s se a transmissão começou/terminou (sem recarregar a página toda)
+  // Atualiza na hora quando o professor inicia/encerra (tempo real do Firestore; sem login no navegador, consulta a cada 20 s)
   useEffect(() => {
     if (live.status === 'ended') return;
-    const t = window.setInterval(async () => {
-      if (document.visibilityState !== 'visible') return;
-      const { data } = await supabase.from('live_sessions').select('status').eq('id', live.id).maybeSingle();
-      if (data && data.status !== live.status) router.refresh();
-    }, 20000);
-    return () => window.clearInterval(t);
-  }, [live.id, live.status, supabase, router]);
+    let unsub: (() => void) | null = null;
+    let timer: number | null = null;
+    let alive = true;
+    const poll = () => {
+      timer = window.setInterval(async () => {
+        if (document.visibilityState !== 'visible') return;
+        const r = await pollLive(live.id, new Date().toISOString()).catch(() => null);
+        if (r && r.status !== live.status) router.refresh();
+      }, 20000);
+    };
+    clientReady().then((ok) => {
+      if (!alive) return;
+      if (!ok) return poll();
+      unsub = onSnapshot(
+        doc(clientDb(), 'live_status', live.id),
+        (snap) => {
+          const st = snap.data()?.status;
+          if (st && st !== live.status) router.refresh();
+        },
+        () => poll(),
+      );
+    });
+    return () => {
+      alive = false;
+      unsub?.();
+      if (timer) window.clearInterval(timer);
+    };
+  }, [live.id, live.status, router]);
 
   const showChat = live.chat_enabled || messages.length > 0;
 
@@ -76,7 +102,7 @@ export function LiveRoom({
         </div>
       </div>
       {showChat && (
-        <LiveChat liveId={live.id} initial={messages} authors={authors} me={me} isAdmin={isAdmin} canSend={live.chat_enabled && live.status !== 'ended'} isLive={live.status === 'live'} />
+        <LiveChat liveId={live.id} initial={messages} me={me} isAdmin={isAdmin} canSend={live.chat_enabled && live.status !== 'ended'} isLive={live.status === 'live'} />
       )}
     </div>
   );
@@ -125,7 +151,6 @@ function Countdown({ startsAt, serverNow, label, icon, cover }: { startsAt: stri
 function LiveChat({
   liveId,
   initial,
-  authors,
   me,
   isAdmin,
   canSend,
@@ -133,46 +158,62 @@ function LiveChat({
 }: {
   liveId: string;
   initial: LiveMessage[];
-  authors: ProfileCard[];
   me: ProfileCard;
   isAdmin: boolean;
   canSend: boolean;
   isLive: boolean;
 }) {
-  const supabase = useMemo(() => createClient(), []);
   const [list, setList] = useState(initial);
-  const [cards, setCards] = useState(() => new Map([...authors, me].map((a) => [a.id, a])));
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
-  const lastId = useRef(initial.at(-1)?.id ?? 0);
   const stick = useRef(true);
+  const lastAt = useRef(initial.at(-1)?.created_at ?? '');
+  useEffect(() => {
+    lastAt.current = list.at(-1)?.created_at ?? '';
+  }, [list]);
 
-  // Busca novas mensagens a cada 4 s só durante a live e com a aba visível (leve para o servidor)
+  const merge = (fresh: LiveMessage[]) =>
+    setList((l) => {
+      const map = new Map(l.map((m) => [m.id, m]));
+      fresh.forEach((m) => map.set(m.id, m));
+      return [...map.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-300);
+    });
+
+  // Mensagens em tempo real pelo Firestore (o servidor da Vercel não é chamado a cada mensagem)
   useEffect(() => {
     if (!isLive) return;
-    let busy = false;
-    const poll = async () => {
-      if (busy || document.visibilityState !== 'visible') return;
-      busy = true;
-      const { data } = await supabase.from('live_messages').select('*').eq('live_id', liveId).gt('id', lastId.current).order('id').limit(100);
-      busy = false;
-      const fresh = (data ?? []) as LiveMessage[];
-      if (!fresh.length) return;
-      lastId.current = fresh.at(-1)!.id;
-      const missing = [...new Set(fresh.map((m) => m.author_id))].filter((id) => !cards.has(id));
-      if (missing.length) {
-        const { data: c } = await supabase.from('profile_cards').select('*').in('id', missing);
-        setCards((m) => new Map([...m, ...((c ?? []) as ProfileCard[]).map((x) => [x.id, x] as const)]));
-      }
-      setList((l) => {
-        const seen = new Set(l.map((x) => x.id));
-        return [...l, ...fresh.filter((x) => !seen.has(x.id))].slice(-300);
-      });
+    let unsub: (() => void) | null = null;
+    let timer: number | null = null;
+    let alive = true;
+    const poll = () => {
+      timer = window.setInterval(async () => {
+        if (document.visibilityState !== 'visible') return;
+        const r = await pollLive(liveId, lastAt.current).catch(() => null);
+        if (r?.messages.length) merge(r.messages);
+      }, 5000);
     };
-    const t = window.setInterval(poll, 4000);
-    return () => window.clearInterval(t);
-  }, [isLive, liveId, supabase, cards]);
+    clientReady().then((ok) => {
+      if (!alive) return;
+      if (!ok) return poll();
+      const q = query(collection(clientDb(), 'live_sessions', liveId, 'messages'), orderBy('created_at'), limitToLast(100));
+      unsub = onSnapshot(
+        q,
+        (snap) => {
+          const fresh = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LiveMessage);
+          const removed = new Set(snap.docChanges().filter((c) => c.type === 'removed').map((c) => c.doc.id));
+          setList((l) => l.filter((m) => !removed.has(m.id)));
+          merge(fresh);
+        },
+        () => poll(),
+      );
+    });
+    return () => {
+      alive = false;
+      unsub?.();
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isLive, liveId]);
 
   useEffect(() => {
     const el = boxRef.current;
@@ -184,18 +225,17 @@ function LiveChat({
     const body = text.trim();
     if (!body) return;
     setSending(true);
-    const { data, error } = await supabase.from('live_messages').insert({ live_id: liveId, author_id: me.id, text: body.slice(0, 500) }).select('*').single();
+    const r = await sendLiveMessage(liveId, body).catch(() => ({ error: 'Não foi possível enviar.' }) as { error?: string; message?: LiveMessage });
     setSending(false);
-    if (error || !data) return toast.error('Não foi possível enviar.');
+    if (r.error || !r.message) return toast.error(r.error || 'Não foi possível enviar.');
     stick.current = true;
-    lastId.current = Math.max(lastId.current, (data as LiveMessage).id);
-    setList((l) => [...l, data as LiveMessage]);
+    merge([r.message]);
     setText('');
   }
 
-  async function remove(id: number) {
-    const { error } = await supabase.from('live_messages').delete().eq('id', id);
-    if (!error) setList((l) => l.filter((m) => m.id !== id));
+  async function remove(id: string) {
+    const r = await deleteLiveMessage(liveId, id);
+    if (!r.error) setList((l) => l.filter((m) => m.id !== id));
   }
 
   return (
@@ -214,14 +254,13 @@ function LiveChat({
       >
         {!list.length && <p className="pt-6 text-center text-sm text-muted">Nenhuma mensagem ainda. Diga oi! 👋</p>}
         {list.map((m) => {
-          const a = cards.get(m.author_id);
-          const admin = a?.role === 'admin';
+          const admin = m.author_role === 'admin';
           return (
             <div key={m.id} className="group flex animate-fade-in gap-2.5">
-              <Avatar name={a?.full_name || 'Aluno'} src={a?.avatar_url} size={26} />
+              <Avatar name={m.author_name || 'Aluno'} src={m.author_avatar} size={26} />
               <div className="min-w-0 flex-1 text-sm">
                 <span className={cn('mr-1.5 font-semibold', admin ? 'text-brand' : 'text-ink')}>
-                  {a?.full_name || 'Aluno'}
+                  {m.author_name || 'Aluno'}
                   {admin && <ShieldCheck className="ml-1 inline size-3.5" />}
                 </span>
                 <span className="break-words text-ink-2">{m.text}</span>

@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { buttonClass, Card, PageHeader } from '@/components/ui';
 import { EVENT_CATEGORIES, EVENT_COLORS, holidays } from '@/lib/calendar';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
+import { db, fromQuery } from '@/lib/db';
 import type { CalendarEvent } from '@/lib/types';
 import { cn, formatDate, toISODate } from '@/lib/utils';
 
@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: 'Calendário' };
 const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ m?: string }> }) {
-  await requireViewer();
+  const viewer = await requireViewer();
   const { m } = await searchParams;
   const now = new Date();
   const [y, mo] = /^\d{4}-\d{2}$/.test(m ?? '') ? m!.split('-').map(Number) : [now.getFullYear(), now.getMonth() + 1];
@@ -27,14 +27,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     return d;
   });
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from('calendar_events')
-    .select('*')
-    .lte('start_date', toISODate(days[days.length - 1]))
-    .gte('end_date', toISODate(days[0]))
-    .order('start_date');
-  const events = [...((data ?? []) as CalendarEvent[]), ...holidays(y)];
+  const snap = await db().collection('calendar_events').where('end_date', '>=', toISODate(days[0])).orderBy('end_date').limit(500).get();
+  const fromDb = fromQuery<CalendarEvent>(snap).filter((e) => e.start_date <= toISODate(days[days.length - 1]) && (e.is_published || viewer.isAdmin));
+  const events = [...fromDb, ...holidays(y)];
   const eventsOn = (iso: string) => events.filter((e) => e.start_date <= iso && e.end_date >= iso);
 
   const prev = new Date(y, mo - 2, 1);

@@ -1,28 +1,27 @@
 import type { Metadata } from 'next';
 import { PageHeader } from '@/components/ui';
-import { createClient } from '@/lib/supabase/server';
-import type { ClassGroup, Course } from '@/lib/types';
+import { db, getCatalogData } from '@/lib/db';
 import { ClassesManager } from './classes-manager';
 
 export const metadata: Metadata = { title: 'Turmas · Admin' };
 
 export default async function AdminClasses() {
-  const supabase = await createClient();
-  const [{ data: classes }, { data: links }, { data: courses }, { data: students }] = await Promise.all([
-    supabase.from('classes').select('*').order('name'),
-    supabase.from('class_courses').select('class_id,course_id'),
-    supabase.from('courses').select('id,title,is_free').order('position'),
-    supabase.from('students').select('class_id'),
-  ]);
+  const [catalog, studentsSnap] = await Promise.all([getCatalogData(), db().collection('students').select('class_id').get()]);
   const counts: Record<string, number> = {};
-  (students ?? []).forEach((s: { class_id: string | null }) => s.class_id && (counts[s.class_id] = (counts[s.class_id] ?? 0) + 1));
+  studentsSnap.docs.forEach((s) => {
+    const c = s.get('class_id') as string | null;
+    if (c) counts[c] = (counts[c] ?? 0) + 1;
+  });
+  const classes = [...catalog.classes].sort((a, b) => a.name.localeCompare(b.name));
+  const links = classes.flatMap((c) => c.course_ids.map((course_id) => ({ class_id: c.id, course_id })));
+
   return (
     <>
       <PageHeader title="Turmas" subtitle="Cada turma define quais cursos seus alunos podem acessar." />
       <ClassesManager
-        classes={(classes ?? []) as ClassGroup[]}
-        links={(links ?? []) as { class_id: string; course_id: string }[]}
-        courses={(courses ?? []) as Pick<Course, 'id' | 'title' | 'is_free'>[]}
+        classes={classes}
+        links={links}
+        courses={catalog.courses.map((c) => ({ id: c.id, title: c.title, is_free: c.is_free }))}
         counts={counts}
       />
     </>

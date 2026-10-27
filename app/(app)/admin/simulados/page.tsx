@@ -2,20 +2,20 @@ import { ClipboardCheck } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
-import { createClient } from '@/lib/supabase/server';
+import { db, fromQuery } from '@/lib/db';
 import { ENEM_AREAS, type Simulado } from '@/lib/types';
 import { NewSimuladoButton } from './new-simulado';
 
 export const metadata: Metadata = { title: 'Simulados · Admin' };
 
 export default async function AdminSimulados() {
-  const supabase = await createClient();
-  const [{ data }, { data: subs }] = await Promise.all([
-    supabase.from('simulados').select('*').order('created_at', { ascending: false }),
-    supabase.from('simulado_submissions').select('simulado_id,status'),
+  const [simSnap, subSnap] = await Promise.all([
+    db().collection('simulados').get(),
+    db().collection('simulado_submissions').select('simulado_id', 'status').get(),
   ]);
-  const sims = (data ?? []) as Simulado[];
-  const count = (id: string, st: string) => (subs ?? []).filter((s: { simulado_id: string; status: string }) => s.simulado_id === id && s.status === st).length;
+  const sims = fromQuery<Simulado>(simSnap).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const subs = subSnap.docs.map((x) => ({ simulado_id: String(x.get('simulado_id')), status: String(x.get('status')) }));
+  const count = (id: string, st: string) => subs.filter((s) => s.simulado_id === id && s.status === st).length;
   return (
     <>
       <PageHeader title="Simulados" subtitle="Crie provas no padrão ENEM, acompanhe entregas e libere a nota TRI." actions={<NewSimuladoButton />} />

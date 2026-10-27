@@ -8,7 +8,7 @@ import { Avatar, buttonClass, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { compressImage } from '@/lib/image';
 import { uploadFile } from '@/lib/storage/client';
-import { createClient } from '@/lib/supabase/client';
+import { addReply, createDoubt } from './actions';
 
 export async function uploadDoubtImage(userId: string, file: File) {
   const blob = await compressImage(file, 1600);
@@ -36,11 +36,8 @@ export function DoubtComposer({ userId, name, avatar, doubtId, onDone, compact }
     setSending(true);
     try {
       const image_url = file ? await uploadDoubtImage(userId, file) : '';
-      const supabase = createClient();
-      const { error } = doubtId
-        ? await supabase.from('doubt_replies').insert({ doubt_id: doubtId, author_id: userId, text: text.trim(), image_url })
-        : await supabase.from('doubts').insert({ author_id: userId, text: text.trim(), image_url });
-      if (error) throw error;
+      const r = doubtId ? await addReply(doubtId, text.trim(), image_url) : await createDoubt(text.trim(), image_url);
+      if (r.error) throw new Error(r.error);
       setText('');
       pick(null);
       toast(doubtId ? 'Resposta enviada' : 'Dúvida publicada');

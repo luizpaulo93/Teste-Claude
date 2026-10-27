@@ -1,12 +1,14 @@
 import type { Metadata } from 'next';
 import { Logo } from '@/components/logo';
-import { getSettings } from '@/lib/session';
+import { redirect } from 'next/navigation';
+import { getSettings, getViewer } from '@/lib/session';
 import { LoginForm } from './login-form';
 
 export const metadata: Metadata = { title: 'Entrar' };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ erro?: string; next?: string }> }) {
-  const [{ erro, next }, settings] = await Promise.all([searchParams, getSettings()]);
+  const [{ erro, next }, settings, viewer] = await Promise.all([searchParams, getSettings(), getViewer()]);
+  if (viewer) redirect(next && next.startsWith('/') && !next.startsWith('//') ? next : '/');
   return (
     <main className="relative grid min-h-dvh lg:grid-cols-[1.1fr_1fr]">
       <section className="relative hidden overflow-hidden lg:block">
@@ -41,7 +43,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
           {erro && (
             <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-4 py-3 text-sm text-danger">
-              O link expirou ou é inválido. Tente novamente.
+              Não foi possível concluir o login. Tente novamente.
             </div>
           )}
           <LoginForm next={next} />

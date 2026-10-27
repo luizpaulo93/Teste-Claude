@@ -1,10 +1,11 @@
+import { isDocId } from '@/lib/utils';
 import { ChevronLeft } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { requireViewer } from '@/lib/session';
 import { createDownloadUrl } from '@/lib/storage/server';
-import { createClient } from '@/lib/supabase/server';
+import { db, fromDoc } from '@/lib/db';
 import type { Simulado, SimuladoResult, SimuladoStats, SimuladoSubmission } from '@/lib/types';
 import { ExamRunner } from './exam-runner';
 import { ResultView } from './result-view';
@@ -14,18 +15,19 @@ export const metadata: Metadata = { title: 'Simulado' };
 
 export default async function SimuladoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
-  const supabase = await createClient();
-  const [{ data: sim }, { data: sub }, { data: result }] = await Promise.all([
-    supabase.from('simulados').select('*').eq('id', id).maybeSingle(),
-    supabase.from('simulado_submissions').select('*').eq('simulado_id', id).eq('user_id', viewer.userId).maybeSingle(),
-    supabase.from('simulado_results').select('*').eq('simulado_id', id).eq('user_id', viewer.userId).maybeSingle(),
+  const d = db();
+  const [simSnap, subSnap, resSnap] = await Promise.all([
+    d.doc(`simulados/${id}`).get(),
+    d.doc(`simulado_submissions/${id}_${viewer.userId}`).get(),
+    d.doc(`simulado_results/${id}_${viewer.userId}`).get(),
   ]);
-  if (!sim) notFound();
-  const simulado = sim as Simulado;
-  const submission = sub as SimuladoSubmission | null;
+  const simulado = fromDoc<Simulado>(simSnap);
+  if (!simulado || (!simulado.is_published && !viewer.isAdmin)) notFound();
+  const submission = fromDoc<SimuladoSubmission>(subSnap);
+  const result = fromDoc<SimuladoResult>(resSnap);
 
   let pdfUrl = '';
   if (simulado.pdf_path && (!submission || submission.status === 'in_progress' || simulado.results_released)) {
@@ -34,11 +36,11 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
 
   let body: React.ReactNode;
   if (result && simulado.results_released) {
-    body = <ResultView simulado={simulado} result={result as SimuladoResult} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} />;
+    body = <ResultView simulado={simulado} result={result} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} />;
   } else if (submission?.status === 'in_progress' && !simulado.results_released) {
     body = <ExamRunner simulado={simulado} submission={submission} pdfUrl={pdfUrl} serverNow={Date.now()} />;
   } else {
-    body = <StartCard simulado={simulado} submission={submission} userId={viewer.userId} />;
+    body = <StartCard simulado={simulado} submission={submission} />;
   }
 
   return (

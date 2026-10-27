@@ -9,16 +9,17 @@ import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const { course } = await getCourseTree(id);
+  const viewer = await requireViewer();
+  const { course } = await getCourseTree(id, viewer);
   return { title: course?.title ?? 'Curso' };
 }
 
 export default async function CoursePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!/^[\w-]{1,64}$/.test(id)) notFound();
   const viewer = await requireViewer();
   const [{ course, modules, lessons }, progress, settings] = await Promise.all([
-    getCourseTree(id),
+    getCourseTree(id, viewer),
     getMyProgress(viewer.userId),
     getSettings(),
   ]);

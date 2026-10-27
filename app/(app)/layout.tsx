@@ -1,22 +1,22 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/app-shell';
+import { db, emailKey } from '@/lib/db';
+import { visibleLives } from '@/lib/live';
 import { getSettings, getViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [viewer, settings] = await Promise.all([getViewer(), getSettings()]);
-  if (!viewer) redirect('/login');
+  if (!viewer) redirect('/auth/expirado');
 
   let hasMentoria = viewer.isAdmin;
   let liveNow = false;
   if (viewer.isMember) {
-    const supabase = await createClient();
-    const [{ data: m }, { data: l }] = await Promise.all([
-      hasMentoria ? Promise.resolve({ data: [1] }) : supabase.from('mentorias').select('id').eq('status', 'active').limit(1),
-      supabase.from('live_sessions').select('id').eq('status', 'live').eq('is_published', true).limit(1),
+    const [m, lives] = await Promise.all([
+      hasMentoria ? Promise.resolve(null) : db().doc(`mentorias/${emailKey(viewer.email)}`).get(),
+      visibleLives(viewer, ['live']),
     ]);
-    hasMentoria = Boolean(m?.length);
-    liveNow = Boolean(l?.length);
+    if (m) hasMentoria = m.exists && m.data()?.status === 'active';
+    liveNow = lives.length > 0;
   }
 
   return (

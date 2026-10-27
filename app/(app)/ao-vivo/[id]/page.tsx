@@ -1,11 +1,13 @@
+import { isDocId } from '@/lib/utils';
 import { CalendarClock, ChevronLeft, Lock, Radio } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { createClient } from '@/lib/supabase/server';
-import type { LiveMessage, LiveSession, ProfileCard } from '@/lib/types';
+import { db, fromDoc, fromQuery } from '@/lib/db';
+import { canSeeLive } from '@/lib/live';
+import type { LiveMessage, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
 import { LiveRoom } from './live-room';
 
@@ -13,12 +15,10 @@ export const metadata: Metadata = { title: 'Ao vivo' };
 
 export default async function LivePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
-  const supabase = await createClient();
-  const { data } = await supabase.from('live_sessions').select('*').eq('id', id).maybeSingle();
-
-  if (!data) {
+  const live = fromDoc<LiveSession>(await db().doc(`live_sessions/${id}`).get());
+  if (!live || !(await canSeeLive(viewer, live))) {
     return (
       <Card className="mx-auto mt-10 flex max-w-md flex-col items-center p-10 text-center">
         <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand">
@@ -32,12 +32,8 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
       </Card>
     );
   }
-  const live = data as LiveSession;
-
-  const { data: msgs } = await supabase.from('live_messages').select('*').eq('live_id', id).order('id', { ascending: false }).limit(80);
-  const messages = ((msgs ?? []) as LiveMessage[]).reverse();
-  const ids = [...new Set(messages.map((m) => m.author_id))];
-  const { data: cards } = ids.length ? await supabase.from('profile_cards').select('*').in('id', ids) : { data: [] };
+  const msgSnap = await db().collection(`live_sessions/${id}/messages`).orderBy('created_at', 'desc').limit(80).get();
+  const messages = fromQuery<LiveMessage>(msgSnap).reverse();
 
   return (
     <>
@@ -47,7 +43,6 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
       <LiveRoom
         live={{ ...live, youtube_id: live.status === 'ended' && !live.show_replay ? '' : live.youtube_id }}
         messages={messages}
-        authors={(cards ?? []) as ProfileCard[]}
         me={{ id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role }}
         isAdmin={viewer.isAdmin}
         watermark={`${viewer.profile.full_name || ''} · ${viewer.email}`.trim()}
