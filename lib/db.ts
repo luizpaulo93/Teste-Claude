@@ -8,6 +8,9 @@ export const db = () => adminDb();
 export const nowIso = () => new Date().toISOString();
 export const newId = () => adminDb().collection('_').doc().id;
 
+/** Documento único com progresso e favoritos do aluno. */
+export const stateDocPath = (uid: string) => `users/${uid}/state/main`;
+
 /** ID de documento a partir do e-mail (minúsculo, sem "/"). */
 export function emailKey(email: string) {
   return email.trim().toLowerCase().replace(/\//g, '_');

@@ -184,7 +184,7 @@ export function VideoPlayer({ videoId, poster, watermark, startAt = 0, onProgres
       setTime(t);
       if (d) setDuration(d);
       setBuffered((p.getVideoLoadedFraction?.() || 0) * 100);
-      if (p.getPlayerState?.() === 1 && Math.abs(t - lastReport) >= 15) {
+      if (p.getPlayerState?.() === 1 && Math.abs(t - lastReport) >= 30) {
         lastReport = t;
         onProgressRef.current?.(Math.floor(t), Math.floor(d));
       }

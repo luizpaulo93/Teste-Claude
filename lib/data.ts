@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { db, fromQuery, getCatalogData, getSettings, type LessonSummary } from './db';
+import { db, fromQuery, getCatalogData, getSettings, stateDocPath, type LessonSummary } from './db';
 import { canSeeLesson, type Viewer } from './session';
 import type { CalendarEvent, Course, LessonProgress } from './types';
 
@@ -22,10 +22,33 @@ export async function visibleLessons(viewer: Viewer, filter?: (l: LessonSummary)
   return lessons.filter((l) => (!filter || filter(l)) && canSeeLesson(viewer, l, byId.get(l.course_id), settings.restrict_to_student_list));
 }
 
-export const getMyProgress = cache(async (userId: string) => {
-  const snap = await db().collection(`users/${userId}/progress`).orderBy('updated_at', 'desc').limit(1000).get();
-  return snap.docs.map((d) => ({ lesson_id: d.id, ...d.data() }) as LessonProgress);
+/**
+ * Progresso e favoritos do aluno ficam num ÚNICO documento (users/{uid}/state/main):
+ * 1 leitura por página, não importa quantas aulas ele já assistiu.
+ */
+export const getMyState = cache(async (userId: string) => {
+  const data = ((await db().doc(stateDocPath(userId)).get()).data() ?? {}) as {
+    progress?: Record<string, Partial<LessonProgress>>;
+    favorites?: Record<string, string>;
+  };
+  const progress: LessonProgress[] = Object.entries(data.progress ?? {})
+    .filter(([, v]) => v && typeof v === 'object')
+    .map(([lesson_id, v]) => ({
+      lesson_id,
+      course_id: String(v.course_id ?? ''),
+      completed: v.completed === true,
+      position_sec: Number(v.position_sec) || 0,
+      duration_sec: Number(v.duration_sec) || 0,
+      updated_at: String(v.updated_at ?? ''),
+    }))
+    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  const favorites = Object.entries(data.favorites ?? {})
+    .map(([lesson_id, at]) => ({ lesson_id, created_at: String(at) }))
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  return { progress, favorites };
 });
+
+export const getMyProgress = cache(async (userId: string) => (await getMyState(userId)).progress);
 
 export const getCourseTree = cache(async (courseId: string, viewer: Viewer) => {
   const { courses, modules } = await getCatalogData();

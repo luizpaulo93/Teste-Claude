@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { Avatar, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { addComment, deleteComment } from './actions';
+import { addComment, deleteComment, moreComments } from './actions';
 import type { LessonComment, ProfileCard } from '@/lib/types';
 import { timeAgo } from '@/lib/utils';
 
@@ -23,6 +23,18 @@ export function LessonComments({
   const [list, setList] = useState(initial);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [hasMore, setHasMore] = useState(initial.length >= 30);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  async function loadMore() {
+    const last = list.at(-1);
+    if (!last) return;
+    setLoadingMore(true);
+    const more = await moreComments(lessonId, last.created_at).catch(() => []);
+    setLoadingMore(false);
+    setHasMore(more.length >= 30);
+    setList((l) => [...l, ...more.filter((m) => !l.some((x) => x.id === m.id))]);
+  }
 
   async function send(e: React.FormEvent) {
     e.preventDefault();
@@ -85,7 +97,13 @@ export function LessonComments({
             );
           })}
         </ul>
-      ) : (
+      ) : null}
+      {list.length > 0 && hasMore && (
+        <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 w-full rounded-xl py-2 text-sm font-semibold text-brand hover:bg-brand-soft">
+          {loadingMore ? 'Carregando…' : 'Ver comentários anteriores'}
+        </button>
+      )}
+      {list.length ? null : (
         <p className="text-sm text-muted">Seja o primeiro a comentar esta aula.</p>
       )}
     </Card>

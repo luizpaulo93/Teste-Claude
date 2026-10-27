@@ -14,26 +14,17 @@ service cloud.firestore {
       return signedIn() && (request.auth.token.member == true || request.auth.token.admin == true);
     }
 
-    // Progresso das aulas: cada aluno só lê/grava o dele, com campos limitados
-    match /users/{uid}/progress/{lessonId} {
+    // Progresso e favoritos do aluno: um único documento por pessoa (barato de ler).
+    // Cada um só lê/grava o seu, com tamanho limitado; o servidor valida os valores ao ler.
+    match /users/{uid}/state/main {
       allow read: if signedIn() && request.auth.uid == uid;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['lesson_id', 'course_id', 'completed', 'position_sec', 'duration_sec', 'updated_at'])
-        && request.resource.data.lesson_id == lessonId
-        && request.resource.data.course_id is string && request.resource.data.course_id.size() <= 128
-        && (!('completed' in request.resource.data) || request.resource.data.completed is bool)
-        && (!('position_sec' in request.resource.data) || (request.resource.data.position_sec is int && request.resource.data.position_sec >= 0))
-        && (!('duration_sec' in request.resource.data) || (request.resource.data.duration_sec is int && request.resource.data.duration_sec >= 0))
-        && request.resource.data.updated_at is string && request.resource.data.updated_at.size() <= 40;
+        && request.resource.data.keys().hasOnly(['progress', 'favorites'])
+        && request.resource.data.get('progress', {}) is map
+        && request.resource.data.get('favorites', {}) is map
+        && request.resource.data.get('progress', {}).size() <= 3000
+        && request.resource.data.get('favorites', {}).size() <= 1000;
       allow delete: if false;
-    }
-
-    // Favoritos
-    match /users/{uid}/favorites/{lessonId} {
-      allow read, delete: if signedIn() && request.auth.uid == uid;
-      allow create: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['lesson_id', 'created_at'])
-        && request.resource.data.lesson_id == lessonId;
     }
 
     // Aulas ao vivo: alunos liberados ouvem o status e o chat em tempo real (envio é pelo servidor)

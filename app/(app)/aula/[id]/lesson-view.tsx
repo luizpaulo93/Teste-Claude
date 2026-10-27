@@ -9,7 +9,7 @@ import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { getFileUrl } from '@/lib/storage/client';
-import { deleteDoc, doc, setDoc } from 'firebase/firestore';
+import { deleteField, doc, setDoc } from 'firebase/firestore';
 import { clientAuth, clientDb } from '@/lib/firebase/client';
 import { saveProgressServer, setFavoriteServer } from './actions';
 import type { Lesson, LessonMaterial } from '@/lib/types';
@@ -49,8 +49,8 @@ export function LessonView(p: Props) {
         await auth.authStateReady();
         if (auth.currentUser?.uid === p.userId) {
           await setDoc(
-            doc(clientDb(), 'users', p.userId, 'progress', p.lesson.id),
-            { lesson_id: p.lesson.id, course_id: p.lesson.course_id, updated_at: new Date().toISOString(), ...patch },
+            doc(clientDb(), 'users', p.userId, 'state', 'main'),
+            { progress: { [p.lesson.id]: { course_id: p.lesson.course_id, updated_at: new Date().toISOString(), ...patch } } },
             { merge: true },
           );
           return null;
@@ -96,9 +96,11 @@ export function LessonView(p: Props) {
       const auth = clientAuth();
       await auth.authStateReady();
       if (auth.currentUser?.uid !== p.userId) throw new Error('sem login no navegador');
-      const ref = doc(clientDb(), 'users', p.userId, 'favorites', p.lesson.id);
-      if (next) await setDoc(ref, { lesson_id: p.lesson.id, created_at: new Date().toISOString() });
-      else await deleteDoc(ref);
+      await setDoc(
+        doc(clientDb(), 'users', p.userId, 'state', 'main'),
+        { favorites: { [p.lesson.id]: next ? new Date().toISOString() : deleteField() } },
+        { merge: true },
+      );
     } catch {
       error = Boolean((await setFavoriteServer(p.lesson.id, next)).error);
     }

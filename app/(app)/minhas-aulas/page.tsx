@@ -3,8 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { CoverFallback } from '@/components/course/course-card';
 import { EmptyState, Img, PageHeader } from '@/components/ui';
-import { getMyProgress, visibleLessons, type LessonSummary } from '@/lib/data';
-import { db } from '@/lib/db';
+import { getMyState, visibleLessons, type LessonSummary } from '@/lib/data';
 import { requireViewer } from '@/lib/session';
 import { cn, youtubeThumb } from '@/lib/utils';
 
@@ -13,10 +12,8 @@ export const metadata: Metadata = { title: 'Minhas aulas' };
 export default async function MyLessonsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const viewer = await requireViewer();
   const { tab = 'favoritas' } = await searchParams;
-  const lessonIds =
-    tab === 'concluidas'
-      ? (await getMyProgress(viewer.userId)).filter((p) => p.completed).map((p) => p.lesson_id)
-      : (await db().collection(`users/${viewer.userId}/favorites`).orderBy('created_at', 'desc').limit(200).get()).docs.map((d) => d.id);
+  const state = await getMyState(viewer.userId);
+  const lessonIds = tab === 'concluidas' ? state.progress.filter((p) => p.completed).map((p) => p.lesson_id) : state.favorites.map((f) => f.lesson_id);
 
   const idSet = new Set(lessonIds);
   const visible = await visibleLessons(viewer, (l) => idSet.has(l.id));

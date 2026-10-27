@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
-import { getCourseTree, getMyProgress } from '@/lib/data';
+import { getCourseTree, getMyState } from '@/lib/data';
 import { db, fromDoc, fromQuery, getCatalogData } from '@/lib/db';
 import { canSeeLesson, getSettings, requireViewer } from '@/lib/session';
 import type { Lesson, LessonComment } from '@/lib/types';
@@ -36,14 +36,13 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [progSnap, favSnap, commentsSnap, tree, progress] = await Promise.all([
-    db().doc(`users/${viewer.userId}/progress/${id}`).get(),
-    db().doc(`users/${viewer.userId}/favorites/${id}`).get(),
-    db().collection(`lessons/${id}/comments`).orderBy('created_at', 'desc').limit(100).get(),
+  const [commentsSnap, tree, state] = await Promise.all([
+    db().collection(`lessons/${id}/comments`).orderBy('created_at', 'desc').limit(30).get(),
     getCourseTree(lesson.course_id, viewer),
-    getMyProgress(viewer.userId),
+    getMyState(viewer.userId),
   ]);
-  const prog = progSnap.data() as { completed?: boolean; position_sec?: number } | undefined;
+  const progress = state.progress;
+  const prog = progress.find((x) => x.lesson_id === id);
   const ordered = tree.modules.flatMap((m) => tree.lessons.filter((l) => l.module_id === m.id));
   const idx = ordered.findIndex((l) => l.id === id);
   const completedIds = progress.filter((p) => p.course_id === lesson.course_id && p.completed).map((p) => p.lesson_id);
@@ -66,7 +65,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         }))}
         completedIds={completedIds}
         initialCompleted={Boolean(prog?.completed)}
-        initialFavorite={favSnap.exists}
+        initialFavorite={state.favorites.some((f) => f.lesson_id === id)}
         startAt={prog?.completed ? 0 : (prog?.position_sec ?? 0)}
         prevId={idx > 0 ? ordered[idx - 1].id : null}
         nextId={idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1].id : null}
