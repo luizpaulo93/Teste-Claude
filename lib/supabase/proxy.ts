@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { SUPABASE_ANON_KEY, SUPABASE_URL, hasSupabaseEnv } from './env';
 
-const PUBLIC_PATHS = ['/login', '/auth', '/configurar'];
+const PUBLIC_PATHS = ['/login', '/auth', '/configurar', '/site'];
 
 export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -31,6 +31,17 @@ export async function updateSession(request: NextRequest) {
   const isLogged = Boolean(data?.claims?.sub);
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
 
+  // Visitante na raiz vê a página de apresentação (a URL continua "/")
+  if (!isLogged && path === '/') {
+    const url = request.nextUrl.clone();
+    url.pathname = '/site';
+    const rewrite = NextResponse.rewrite(url, { request });
+    response.cookies.getAll().forEach((c) => rewrite.cookies.set(c));
+    return rewrite;
+  }
+  if (isLogged && path === '/site') {
+    return NextResponse.redirect(new URL('/', request.url));
+  }
   if (!isLogged && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
