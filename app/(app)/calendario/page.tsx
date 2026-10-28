@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { buttonClass, Card, PageHeader } from '@/components/ui';
 import { EVENT_CATEGORIES, EVENT_COLORS, holidays } from '@/lib/calendar';
 import { requireViewer } from '@/lib/session';
-import { db, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { CalendarEvent } from '@/lib/types';
 import { cn, formatDate, toISODate } from '@/lib/utils';
 
@@ -27,8 +27,10 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     return d;
   });
 
-  const snap = await db().collection('calendar_events').where('end_date', '>=', toISODate(days[0])).orderBy('end_date').limit(500).get();
-  const fromDb = fromQuery<CalendarEvent>(snap).filter((e) => e.start_date <= toISODate(days[days.length - 1]) && (e.is_published || viewer.isAdmin));
+  const fromDb = await sql.query<CalendarEvent>(
+    `select * from calendar_events where end_date >= $1 and start_date <= $2 and (is_published or $3) order by start_date limit 500`,
+    [toISODate(days[0]), toISODate(days[days.length - 1]), viewer.isAdmin],
+  );
   const events = [...fromDb, ...holidays(y)];
   const eventsOn = (iso: string) => events.filter((e) => e.start_date <= iso && e.end_date >= iso);
 

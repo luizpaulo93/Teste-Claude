@@ -6,14 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "db:schema": "node scripts/build-schema.mjs"
   },
   "dependencies": {
+    "@vercel/functions": "^3.10.4",
     "aws4fetch": "^1.0.20",
     "firebase": "^12.19.0",
     "firebase-admin": "^13.10.0",
     "lucide-react": "^1.61.0",
     "next": "^16.4.3",
+    "pg": "^8.23.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "server-only": "^0.0.1"
@@ -21,6 +24,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.3",

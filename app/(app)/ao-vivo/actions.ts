@@ -1,8 +1,9 @@
 'use server';
 
+import { updateTag } from 'next/cache';
 import { authorOf } from '@/lib/author';
-import { db, fromDoc, fromQuery, nowIso } from '@/lib/db';
-import { canSeeLive } from '@/lib/live';
+import { newId, sql } from '@/lib/db';
+import { canSeeLive, liveFeed } from '@/lib/live';
 import { getViewer } from '@/lib/session';
 import type { LiveMessage, LiveSession } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -10,7 +11,7 @@ import { isDocId } from '@/lib/utils';
 async function access(liveId: string) {
   const viewer = await getViewer();
   if (!viewer || !isDocId(liveId)) return null;
-  const live = fromDoc<LiveSession>(await db().doc(`live_sessions/${liveId}`).get());
+  const live = await sql.one<LiveSession>(`select * from live_sessions where id = $1`, [liveId]);
   if (!live || !(await canSeeLive(viewer, live))) return null;
   return { viewer, live };
 }
@@ -20,27 +21,34 @@ export async function sendLiveMessage(liveId: string, text: string): Promise<{ e
   const body = text.trim().slice(0, 500);
   if (!a || !body) return { error: 'Não foi possível enviar.' };
   if (!a.live.chat_enabled || a.live.status === 'ended') return { error: 'O chat está fechado.' };
-  const ref = db().collection(`live_sessions/${liveId}/messages`).doc();
-  const message = { live_id: liveId, author_id: a.viewer.userId, ...authorOf(a.viewer), text: body, created_at: nowIso() };
-  await ref.set(message);
-  return { message: { id: ref.id, ...message } };
+  const au = authorOf(a.viewer);
+  const message = await sql.one<LiveMessage>(
+    `insert into live_messages (id, live_id, author_id, author_name, author_avatar, author_role, text)
+     values ($1, $2, $3, $4, $5, $6, $7) returning *`,
+    [newId(), liveId, a.viewer.userId, au.author_name, au.author_avatar, au.author_role, body],
+  );
+  updateTag(`live-${liveId}`);
+  return message ? { message } : { error: 'Não foi possível enviar.' };
 }
 
 export async function deleteLiveMessage(liveId: string, messageId: string) {
   const a = await access(liveId);
   if (!a || !isDocId(messageId)) return { error: 'Sem acesso.' };
-  const ref = db().doc(`live_sessions/${liveId}/messages/${messageId}`);
-  const snap = await ref.get();
-  if (snap.exists && snap.data()?.author_id !== a.viewer.userId && !a.viewer.isAdmin) return { error: 'Sem permissão.' };
-  await ref.delete();
+  const row = await sql.one<{ author_id: string }>(`select author_id from live_messages where id = $1 and live_id = $2`, [messageId, liveId]);
+  if (row && row.author_id !== a.viewer.userId && !a.viewer.isAdmin) return { error: 'Sem permissão.' };
+  await sql.exec(`delete from live_messages where id = $1 and live_id = $2`, [messageId, liveId]);
+  updateTag(`live-${liveId}`);
   return { ok: true };
 }
 
-/** Plano B (sem login do Firebase no navegador): busca mensagens novas e o status pelo servidor. */
-export async function pollLive(liveId: string, after: string) {
-  const a = await access(liveId);
-  if (!a) return { status: 'ended' as const, messages: [] as LiveMessage[] };
-  let q = db().collection(`live_sessions/${liveId}/messages`).orderBy('created_at').limit(100);
-  if (after) q = q.where('created_at', '>', after);
-  return { status: a.live.status, messages: fromQuery<LiveMessage>(await q.get()) };
+/**
+ * Chamado a cada poucos segundos pela sala ao vivo: devolve o status e as últimas mensagens.
+ * O resultado fica em cache por 2 s, então mil alunos na mesma live não viram mil consultas.
+ */
+export async function pollLive(liveId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !isDocId(liveId)) return { status: 'ended' as const, messages: [] as LiveMessage[] };
+  const feed = await liveFeed(liveId);
+  if (!feed.live || !(await canSeeLive(viewer, feed.live))) return { status: 'ended' as const, messages: [] as LiveMessage[] };
+  return { status: feed.live.status, messages: feed.messages };
 }

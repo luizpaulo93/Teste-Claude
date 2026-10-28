@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { db, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { Doubt } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { DoubtComposer } from './doubt-composer';
@@ -23,20 +23,16 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
   if (!viewer.isMember) redirect('/');
   const { f = 'todas', n } = await searchParams;
   const limit = Math.min(200, Math.max(20, Number(n) || 20));
-  // "Todas" usa a ordem do banco; os filtros usam um campo só (não exigem índices extras) e ordenam aqui
-  const col = db().collection('doubts');
-  let rows: Doubt[];
-  if (f === 'todas') rows = fromQuery<Doubt>(await col.orderBy('created_at', 'desc').limit(limit + 1).get());
-  else {
-    const q = f === 'minhas' ? col.where('author_id', '==', viewer.userId) : col.where('is_resolved', '==', f === 'resolvidas');
-    rows = fromQuery<Doubt>(await q.limit(300).get())
-      .filter((d) => f !== 'abertas' || d.replies_count === 0)
-      .sort((a, b) => b.created_at.localeCompare(a.created_at));
-  }
+  const where =
+    f === 'minhas' ? 'author_id = $2' : f === 'resolvidas' ? 'is_resolved' : f === 'abertas' ? 'not is_resolved and replies_count = 0' : 'true';
+  const rows = await sql.query<Doubt & { liked: boolean }>(
+    `select d.*, exists(select 1 from doubt_likes l where l.doubt_id = d.id and l.user_id = $2) as liked
+       from doubts d where ${where} order by created_at desc limit $1`,
+    [limit + 1, viewer.userId],
+  );
   const hasMore = rows.length > limit;
   const doubts = rows.slice(0, limit);
-  const likeSnaps = doubts.length ? await db().getAll(...doubts.map((d) => db().doc(`doubts/${d.id}/likes/${viewer.userId}`))) : [];
-  const likedIds = likeSnaps.filter((s) => s.exists).map((s) => s.ref.parent.parent!.id);
+  const likedIds = doubts.filter((d) => d.liked).map((d) => d.id);
 
   return (
     <div className="mx-auto max-w-3xl">

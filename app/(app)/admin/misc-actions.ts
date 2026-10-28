@@ -3,8 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { EVENT_CATEGORIES, EVENT_COLORS } from '@/lib/calendar';
-import { syncClaims } from '@/lib/claims';
-import { db, emailKey, nowIso } from '@/lib/db';
+import { emailKey, newId, sql, tx } from '@/lib/db';
 import { BOOTSTRAP_ADMIN } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
 
@@ -31,10 +30,19 @@ export async function saveEvent(fd: FormData): Promise<ActionResult> {
       is_published: bool(fd, 'is_published'),
     };
     if (!row.title) return { error: 'Informe o título.' };
+    const values = [row.title, row.description, row.category, row.color, row.start_date, row.end_date, row.is_published];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      await db().doc(`calendar_events/${id}`).update(row);
-    } else await db().collection('calendar_events').add({ ...row, created_at: nowIso() });
+      await sql.exec(
+        `update calendar_events set title = $2, description = $3, category = $4, color = $5, start_date = $6, end_date = $7, is_published = $8 where id = $1`,
+        [id, ...values],
+      );
+    } else {
+      await sql.exec(
+        `insert into calendar_events (id, title, description, category, color, start_date, end_date, is_published) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [newId(), ...values],
+      );
+    }
     revalidatePath('/calendario');
     revalidatePath('/admin/calendario');
     revalidatePath('/');
@@ -48,7 +56,7 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await db().doc(`calendar_events/${id}`).delete();
+    await sql.exec(`delete from calendar_events where id = $1`, [id]);
     revalidatePath('/calendario');
     revalidatePath('/admin/calendario');
     return { ok: true };
@@ -61,20 +69,18 @@ export async function deleteEvent(id: string): Promise<ActionResult> {
 export async function saveSettings(fd: FormData): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    await db()
-      .doc('settings/platform')
-      .set(
-        {
-          brand_name: str(fd, 'brand_name', 80) || 'CURSO VÉRTICE',
-          hero_title: str(fd, 'hero_title', 160),
-          hero_subtitle: str(fd, 'hero_subtitle', 240),
-          hero_cta: str(fd, 'hero_cta', 60) || 'Começar agora',
-          hero_bg_url: str(fd, 'hero_bg_url', 2000),
-          restrict_to_student_list: bool(fd, 'restrict_to_student_list'),
-          updated_at: nowIso(),
-        },
-        { merge: true },
-      );
+    const data = {
+      brand_name: str(fd, 'brand_name', 80) || 'CURSO VÉRTICE',
+      hero_title: str(fd, 'hero_title', 160),
+      hero_subtitle: str(fd, 'hero_subtitle', 240),
+      hero_cta: str(fd, 'hero_cta', 60) || 'Começar agora',
+      hero_bg_url: str(fd, 'hero_bg_url', 2000),
+      restrict_to_student_list: bool(fd, 'restrict_to_student_list'),
+    };
+    await sql.exec(
+      `insert into settings (id, data) values ('platform', $1) on conflict (id) do update set data = settings.data || excluded.data, updated_at = now()`,
+      [JSON.stringify(data)],
+    );
     refreshSettings();
     revalidatePath('/', 'layout');
     return { ok: true };
@@ -84,13 +90,7 @@ export async function saveSettings(fd: FormData): Promise<ActionResult> {
 }
 
 async function setRoleByEmail(email: string, role: 'admin' | 'student') {
-  const users = await db().collection('users').where('email', '==', email).get();
-  await Promise.all(
-    users.docs.map(async (u) => {
-      await u.ref.update({ role });
-      await syncClaims(u.id, email, role === 'admin').catch(() => null);
-    }),
-  );
+  await sql.exec(`update users set role = $2 where email = $1`, [email, role]);
 }
 
 export async function addAdmin(fd: FormData): Promise<ActionResult> {
@@ -98,7 +98,7 @@ export async function addAdmin(fd: FormData): Promise<ActionResult> {
     await requireAdminAction();
     const email = str(fd, 'email', 200).toLowerCase();
     if (!EMAIL_RE.test(email)) return { error: 'E-mail inválido.' };
-    await db().doc(`admins/${emailKey(email)}`).set({ email, created_at: nowIso() });
+    await sql.exec(`insert into admins (email) values ($1) on conflict do nothing`, [email]);
     await setRoleByEmail(email, 'admin');
     revalidatePath('/admin/config');
     return { ok: true };
@@ -113,7 +113,7 @@ export async function removeAdmin(email: string): Promise<ActionResult> {
     const e = String(email).toLowerCase();
     if (e === viewer.email) return { error: 'Você não pode remover a si mesmo.' };
     if (e === BOOTSTRAP_ADMIN) return { error: 'Este é o administrador principal.' };
-    await db().doc(`admins/${emailKey(e)}`).delete();
+    await sql.exec(`delete from admins where email = $1`, [e]);
     await setRoleByEmail(e, 'student');
     revalidatePath('/admin/config');
     return { ok: true };
@@ -137,14 +137,25 @@ export async function saveMentoria(fd: FormData): Promise<ActionResult> {
       weekly_hours_target: int(fd, 'weekly_hours_target', 0, 100, 20),
       start_date: dateOrNull(fd, 'start_date') ?? new Date().toISOString().slice(0, 10),
       end_date: dateOrNull(fd, 'end_date'),
-      updated_at: nowIso(),
     };
     if (!EMAIL_RE.test(row.student_email)) return { error: 'E-mail do aluno inválido.' };
     const key = emailKey(row.student_email);
     if (id && id !== key) return { error: 'Não dá para trocar o e-mail de uma mentoria. Crie uma nova para o outro e-mail.' };
-    const ref = db().doc(`mentorias/${key}`);
-    if (!id && (await ref.get()).exists) return { error: 'Este aluno já tem mentoria.' };
-    await ref.set(id ? row : { ...row, created_at: nowIso() }, { merge: true });
+    const values = [key, row.student_email, row.student_name, row.status, row.goal, row.exam_target, row.weekly_hours_target, row.start_date, row.end_date];
+    if (id) {
+      await sql.exec(
+        `update mentorias set student_email = $2, student_name = $3, status = $4, goal = $5, exam_target = $6, weekly_hours_target = $7,
+           start_date = $8, end_date = $9, updated_at = now() where id = $1`,
+        values,
+      );
+    } else {
+      const n = await sql.exec(
+        `insert into mentorias (id, student_email, student_name, status, goal, exam_target, weekly_hours_target, start_date, end_date)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict do nothing`,
+        values,
+      );
+      if (!n) return { error: 'Este aluno já tem mentoria.' };
+    }
     revalidatePath('/admin/mentoria');
     revalidatePath(`/admin/mentoria/${key}`);
     return { ok: true, id: key };
@@ -157,19 +168,7 @@ export async function deleteMentoria(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!id || id.includes('/')) return { error: 'Inválido.' };
-    const d = db();
-    const [t, c, m] = await Promise.all([
-      d.collection('mentoria_tasks').where('mentoria_id', '==', id).select().get(),
-      d.collection('mentoria_checkins').where('mentoria_id', '==', id).select().get(),
-      d.collection('mentoria_meetings').where('mentoria_id', '==', id).select().get(),
-    ]);
-    const refs = [...t.docs, ...c.docs, ...m.docs].map((x) => x.ref);
-    for (let i = 0; i < refs.length; i += 400) {
-      const batch = d.batch();
-      refs.slice(i, i + 400).forEach((r) => batch.delete(r));
-      await batch.commit();
-    }
-    await d.doc(`mentorias/${id}`).delete();
+    await sql.exec(`delete from mentorias where id = $1`, [id]); // tarefas, check-ins e encontros vão junto
     revalidatePath('/admin/mentoria');
     return { ok: true };
   } catch (e) {
@@ -192,10 +191,19 @@ export async function saveTask(fd: FormData): Promise<ActionResult> {
       due_date: dateOrNull(fd, 'due_date'),
     };
     if (!row.title || !row.week_start || !mentoria_id) return { error: 'Informe o título e a semana.' };
+    const values = [row.mentoria_id, row.week_start, row.title, row.description, row.kind, row.due_date];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      await db().doc(`mentoria_tasks/${id}`).update(row);
-    } else await db().collection('mentoria_tasks').add({ ...row, done: false, done_at: null, created_at: nowIso() });
+      await sql.exec(
+        `update mentoria_tasks set mentoria_id = $2, week_start = $3, title = $4, description = $5, kind = $6, due_date = $7 where id = $1`,
+        [id, ...values],
+      );
+    } else {
+      await sql.exec(
+        `insert into mentoria_tasks (id, mentoria_id, week_start, title, description, kind, due_date) values ($1, $2, $3, $4, $5, $6, $7)`,
+        [newId(), ...values],
+      );
+    }
     revalidatePath(`/admin/mentoria/${mentoria_id}`);
     return { ok: true };
   } catch (e) {
@@ -207,7 +215,7 @@ export async function deleteTask(id: string, mentoriaId: string): Promise<Action
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await db().doc(`mentoria_tasks/${id}`).delete();
+    await sql.exec(`delete from mentoria_tasks where id = $1`, [id]);
     revalidatePath(`/admin/mentoria/${mentoriaId}`);
     return { ok: true };
   } catch (e) {
@@ -219,23 +227,20 @@ export async function deleteTask(id: string, mentoriaId: string): Promise<Action
 export async function copyWeek(mentoriaId: string, from: string, to: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    const snap = await db().collection('mentoria_tasks').where('mentoria_id', '==', mentoriaId).where('week_start', '==', from).get();
-    if (snap.empty) return { error: 'Não há tarefas nessa semana.' };
-    const batch = db().batch();
-    snap.docs.forEach((t) =>
-      batch.set(db().collection('mentoria_tasks').doc(), {
-        mentoria_id: mentoriaId,
-        week_start: to,
-        title: t.get('title'),
-        description: t.get('description') ?? '',
-        kind: t.get('kind') ?? 'outro',
-        due_date: null,
-        done: false,
-        done_at: null,
-        created_at: nowIso(),
-      }),
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return { error: 'Semana inválida.' };
+    const tasks = await sql.query<{ title: string; description: string; kind: string }>(
+      `select title, description, kind from mentoria_tasks where mentoria_id = $1 and week_start = $2 order by created_at`,
+      [mentoriaId, from],
     );
-    await batch.commit();
+    if (!tasks.length) return { error: 'Não há tarefas nessa semana.' };
+    await tx(async (t) => {
+      for (const task of tasks) {
+        await t.exec(
+          `insert into mentoria_tasks (id, mentoria_id, week_start, title, description, kind) values ($1, $2, $3, $4, $5, $6)`,
+          [newId(), mentoriaId, to, task.title, task.description, task.kind],
+        );
+      }
+    });
     revalidatePath(`/admin/mentoria/${mentoriaId}`);
     return { ok: true };
   } catch (e) {
@@ -249,7 +254,7 @@ export async function saveFeedback(fd: FormData): Promise<ActionResult> {
     const id = str(fd, 'id', 260);
     const mentoriaId = str(fd, 'mentoria_id', 200);
     if (!id || id.includes('/')) return { error: 'Inválido.' };
-    await db().doc(`mentoria_checkins/${id}`).update({ mentor_feedback: str(fd, 'mentor_feedback', 3000), feedback_at: nowIso() });
+    await sql.exec(`update mentoria_checkins set mentor_feedback = $2, feedback_at = now() where id = $1`, [id, str(fd, 'mentor_feedback', 3000)]);
     revalidatePath(`/admin/mentoria/${mentoriaId}`);
     return { ok: true };
   } catch (e) {
@@ -278,10 +283,19 @@ export async function saveMeeting(fd: FormData): Promise<ActionResult> {
       notes: str(fd, 'notes', 3000),
     };
     if (!row.title) return { error: 'Informe o título.' };
+    const values = [row.mentoria_id, row.title, row.description, row.starts_at, row.duration_min, row.link, row.notes];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      await db().doc(`mentoria_meetings/${id}`).update(row);
-    } else await db().collection('mentoria_meetings').add({ ...row, created_at: nowIso() });
+      await sql.exec(
+        `update mentoria_meetings set mentoria_id = $2, title = $3, description = $4, starts_at = $5, duration_min = $6, link = $7, notes = $8 where id = $1`,
+        [id, ...values],
+      );
+    } else {
+      await sql.exec(
+        `insert into mentoria_meetings (id, mentoria_id, title, description, starts_at, duration_min, link, notes) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [newId(), ...values],
+      );
+    }
     revalidatePath('/admin/mentoria', 'layout');
     return { ok: true };
   } catch (e) {
@@ -293,7 +307,7 @@ export async function deleteMeeting(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await db().doc(`mentoria_meetings/${id}`).delete();
+    await sql.exec(`delete from mentoria_meetings where id = $1`, [id]);
     revalidatePath('/admin/mentoria', 'layout');
     return { ok: true };
   } catch (e) {

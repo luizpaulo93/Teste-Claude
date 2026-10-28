@@ -7,17 +7,9 @@ import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { Avatar, Card } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { collection, doc, limitToLast, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { clientAuth, clientDb } from '@/lib/firebase/client';
 import type { LiveMessage, LiveSession, ProfileCard } from '@/lib/types';
 import { deleteLiveMessage, pollLive, sendLiveMessage } from '../actions';
 
-/** Espera o login do Firebase no navegador (necessário para ouvir em tempo real). */
-async function clientReady() {
-  const auth = clientAuth();
-  await auth.authStateReady();
-  return Boolean(auth.currentUser);
-}
 import { cn, youtubeThumb } from '@/lib/utils';
 
 export function LiveRoom({
@@ -40,36 +32,16 @@ export function LiveRoom({
   icons: { scheduled: ReactNode; live: ReactNode };
 }) {
   const router = useRouter();
-  // Atualiza na hora quando o professor inicia/encerra (tempo real do Firestore; sem login no navegador, consulta a cada 20 s)
+  // Confere o status a cada poucos segundos e recarrega quando o professor inicia/encerra
   useEffect(() => {
     if (live.status === 'ended') return;
-    let unsub: (() => void) | null = null;
-    let timer: number | null = null;
-    let alive = true;
-    const poll = () => {
-      timer = window.setInterval(async () => {
-        if (document.visibilityState !== 'visible') return;
-        const r = await pollLive(live.id, new Date().toISOString()).catch(() => null);
-        if (r && r.status !== live.status) router.refresh();
-      }, 20000);
-    };
-    clientReady().then((ok) => {
-      if (!alive) return;
-      if (!ok) return poll();
-      unsub = onSnapshot(
-        doc(clientDb(), 'live_status', live.id),
-        (snap) => {
-          const st = snap.data()?.status;
-          if (st && st !== live.status) router.refresh();
-        },
-        () => poll(),
-      );
-    });
-    return () => {
-      alive = false;
-      unsub?.();
-      if (timer) window.clearInterval(timer);
-    };
+    const every = live.status === 'live' ? 10000 : 5000;
+    const timer = window.setInterval(async () => {
+      if (document.visibilityState !== 'visible') return;
+      const r = await pollLive(live.id).catch(() => null);
+      if (r && r.status !== live.status) router.refresh();
+    }, every);
+    return () => window.clearInterval(timer);
   }, [live.id, live.status, router]);
 
   const showChat = live.chat_enabled || messages.length > 0;
@@ -168,11 +140,8 @@ function LiveChat({
   const [sending, setSending] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const lastAt = useRef(initial.at(-1)?.created_at ?? '');
-  useEffect(() => {
-    lastAt.current = list.at(-1)?.created_at ?? '';
-  }, [list]);
-
+  // Mensagens que eu acabei de enviar (o cache do servidor pode levar 2 s para mostrá-las)
+  const sentRef = useRef(new Set<string>());
   const merge = (fresh: LiveMessage[]) =>
     setList((l) => {
       const map = new Map(l.map((m) => [m.id, m]));
@@ -180,39 +149,25 @@ function LiveChat({
       return [...map.values()].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-300);
     });
 
-  // Mensagens em tempo real pelo Firestore (o servidor da Vercel não é chamado a cada mensagem)
+  // Busca mensagens novas a cada 3 s (o servidor guarda o resultado em cache para todos os alunos)
   useEffect(() => {
     if (!isLive) return;
-    let unsub: (() => void) | null = null;
-    let timer: number | null = null;
-    let alive = true;
-    const poll = () => {
-      timer = window.setInterval(async () => {
-        if (document.visibilityState !== 'visible') return;
-        const r = await pollLive(liveId, lastAt.current).catch(() => null);
-        if (r?.messages.length) merge(r.messages);
-      }, 5000);
-    };
-    clientReady().then((ok) => {
-      if (!alive) return;
-      if (!ok) return poll();
-      const q = query(collection(clientDb(), 'live_sessions', liveId, 'messages'), orderBy('created_at'), limitToLast(100));
-      unsub = onSnapshot(
-        q,
-        (snap) => {
-          const fresh = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as LiveMessage);
-          const removed = new Set(snap.docChanges().filter((c) => c.type === 'removed').map((c) => c.doc.id));
-          setList((l) => l.filter((m) => !removed.has(m.id)));
-          merge(fresh);
-        },
-        () => poll(),
-      );
-    });
-    return () => {
-      alive = false;
-      unsub?.();
-      if (timer) window.clearInterval(timer);
-    };
+    let busy = false;
+    const timer = window.setInterval(async () => {
+      if (busy || document.visibilityState !== 'visible') return;
+      busy = true;
+      const r = await pollLive(liveId).catch(() => null);
+      busy = false;
+      if (!r) return;
+      const ids = new Set(r.messages.map((m) => m.id));
+      const oldest = r.messages[0]?.created_at ?? '';
+      // Mantém as antigas, troca as recentes pela versão do servidor (assim mensagens apagadas somem)
+      setList((l) => {
+        const keep = l.filter((m) => (r.messages.length >= 100 && m.created_at < oldest) || (!ids.has(m.id) && sentRef.current.has(m.id)));
+        return [...keep, ...r.messages].sort((a, b) => a.created_at.localeCompare(b.created_at)).slice(-300);
+      });
+    }, 3000);
+    return () => window.clearInterval(timer);
   }, [isLive, liveId]);
 
   useEffect(() => {
@@ -229,13 +184,17 @@ function LiveChat({
     setSending(false);
     if (r.error || !r.message) return toast.error(r.error || 'Não foi possível enviar.');
     stick.current = true;
+    sentRef.current.add(r.message.id);
     merge([r.message]);
     setText('');
   }
 
   async function remove(id: string) {
     const r = await deleteLiveMessage(liveId, id);
-    if (!r.error) setList((l) => l.filter((m) => m.id !== id));
+    if (!r.error) {
+      sentRef.current.delete(id);
+      setList((l) => l.filter((m) => m.id !== id));
+    }
   }
 
   return (

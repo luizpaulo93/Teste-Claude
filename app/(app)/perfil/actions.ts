@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { db } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { requireViewer } from '@/lib/session';
 
 export async function updateProfile(_: unknown, form: FormData) {
@@ -11,9 +11,11 @@ export async function updateProfile(_: unknown, form: FormData) {
   const birth = String(form.get('birth_date') ?? '');
   if (full_name.length < 2) return { error: 'Informe seu nome completo.' };
   try {
-    await db()
-      .doc(`users/${viewer.userId}`)
-      .set({ full_name, phone, birth_date: /^\d{4}-\d{2}-\d{2}$/.test(birth) ? birth : null }, { merge: true });
+    await sql.exec(
+      `insert into users (id, email, full_name, phone, birth_date, role) values ($1, $2, $3, $4, $5, $6)
+       on conflict (id) do update set full_name = excluded.full_name, phone = excluded.phone, birth_date = excluded.birth_date`,
+      [viewer.userId, viewer.email, full_name, phone, /^\d{4}-\d{2}-\d{2}$/.test(birth) ? birth : null, viewer.profile.role],
+    );
   } catch {
     return { error: 'Não foi possível salvar.' };
   }

@@ -3,24 +3,35 @@
 import { revalidatePath } from 'next/cache';
 import { fail, refreshCatalog, requireAdminAction, type ActionResult } from '@/lib/admin/guard';
 import { authorOf } from '@/lib/author';
-import { db, nowIso } from '@/lib/db';
+import { sql, tx, type Queryable } from '@/lib/db';
 
 // Vídeos públicos da Khan Academy Brasil (liberados para incorporação), só para teste.
 // Troque pelos links das suas aulas quando for usar de verdade.
 const LIVE_VIDEO = 'TSn6RPZAMzw';
-const DEMO_COLLECTIONS = ['courses', 'modules', 'lessons', 'classes', 'calendar_events', 'simulados', 'live_sessions', 'doubts'] as const;
+
+const DEMO_TABLES = ['lessons', 'modules', 'courses', 'classes', 'calendar_events', 'simulados', 'live_sessions', 'doubts'] as const;
+const TABLES = new Set<string>(DEMO_TABLES);
+
+function insert(t: Queryable, table: string, data: Record<string, unknown>) {
+  if (!TABLES.has(table)) throw new Error('tabela inválida');
+  const cols = Object.keys(data);
+  const values = cols.map((c) => (data[c] !== null && typeof data[c] === 'object' && !Array.isArray(data[c]) ? JSON.stringify(data[c]) : data[c]));
+  return t.exec(`insert into ${table} (${cols.join(', ')}) values (${cols.map((_, i) => `$${i + 1}`).join(', ')})`, values);
+}
 
 /** Cria um conjunto de conteúdo de exemplo (tudo marcado com demo: true) para testar a plataforma. */
 export async function loadDemo(): Promise<ActionResult> {
   try {
     const viewer = await requireAdminAction();
-    const d = db();
-    if ((await d.doc('courses/demo_fisica').get()).exists) return { error: 'O conteúdo de exemplo já foi carregado.' };
+    if (await sql.one(`select 1 from courses where id = 'demo_fisica'`)) return { error: 'O conteúdo de exemplo já foi carregado.' };
     const now = Date.now();
     const iso = (ms = 0) => new Date(now + ms).toISOString();
     const day = (n: number) => new Date(now + n * 86400_000).toISOString().slice(0, 10);
-    const b = d.batch();
-    const set = (path: string, data: Record<string, unknown>) => b.set(d.doc(path), { ...data, demo: true });
+    const rows: [string, Record<string, unknown>][] = [];
+    const set = (path: string, data: Record<string, unknown>) => {
+      const [table, id] = path.split('/');
+      rows.push([table, { id, ...data, demo: true }]);
+    };
 
     const course = (id: string, title: string, subtitle: string, category: string, position: number, featured: boolean, is_free: boolean) =>
       set(`courses/${id}`, { title, subtitle, description: `Curso de exemplo de ${category}. Edite ou apague no painel.`, category, cover_url: '', banner_url: '', position, featured, is_free, is_published: true, created_at: iso() });
@@ -39,7 +50,7 @@ export async function loadDemo(): Promise<ActionResult> {
       set(`lessons/${id}`, {
         module_id, course_id, title, youtube_id, position, is_free, is_published: true,
         description: 'Aula de exemplo com vídeo da Khan Academy Brasil. No painel, troque pelo link da sua aula.',
-        duration: '', thumbnail_url: '', materials: [], material_paths: [], created_at: iso(),
+        duration: '', thumbnail_url: '', materials: '[]', material_paths: [], created_at: iso(),
       });
     lesson('demo_l1', 'demo_m_cin', 'demo_fisica', 'Velocidade média e instantânea', 'kDr0yBQLk6g', 0);
     lesson('demo_l2', 'demo_m_cin', 'demo_fisica', 'Escolhendo as equações da cinemática', 'Zwsn-aTwW18', 1);
@@ -55,14 +66,15 @@ export async function loadDemo(): Promise<ActionResult> {
     set('calendar_events/demo_e2', { title: 'Simulado de exemplo', description: '', category: 'simulado', start_date: day(3), end_date: day(3), color: 'violet', is_published: true, created_at: iso() });
 
     set('simulados/demo_sim', { title: 'Simulado de exemplo — Ciências da Natureza', area: 'CN', question_count: 10, time_limit_minutes: 30, pdf_path: '', is_published: true, results_released: false, stats: {}, created_at: iso() });
-    b.set(d.doc('simulado_keys/demo_sim'), { answer_key: 'ABCDEABCDE', demo: true });
 
     set('live_sessions/demo_live', { title: 'Aulão ao vivo de exemplo', description: 'Para testar: clique em Iniciar em Admin → Ao vivo.', youtube_id: LIVE_VIDEO, cover_url: '', course_id: null, starts_at: iso(86400_000), status: 'scheduled', show_replay: true, chat_enabled: true, is_published: true, created_at: iso() });
-    b.set(d.doc('live_status/demo_live'), { status: 'scheduled', demo: true });
 
     set('doubts/demo_d1', { author_id: viewer.userId, ...authorOf(viewer), text: 'Bem-vindos ao fórum de dúvidas! Mandem suas perguntas aqui (pode enviar foto da questão).', image_url: '', is_resolved: false, likes_count: 0, replies_count: 0, created_at: iso() });
 
-    await b.commit();
+    await tx(async (t) => {
+      for (const [table, data] of rows) await insert(t, table, data);
+      await t.exec(`insert into simulado_keys (simulado_id, answer_key) values ('demo_sim', 'ABCDEABCDE')`);
+    });
     refreshCatalog();
     revalidatePath('/', 'layout');
     return { ok: true };
@@ -75,17 +87,10 @@ export async function loadDemo(): Promise<ActionResult> {
 export async function removeDemo(): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    const d = db();
-    for (const col of DEMO_COLLECTIONS) {
-      const snap = await d.collection(col).where('demo', '==', true).select().get();
-      await Promise.all(snap.docs.map((x) => d.recursiveDelete(x.ref)));
-    }
-    await Promise.all([d.doc('simulado_keys/demo_sim').delete(), d.doc('live_status/demo_live').delete()]);
-    const subs = await d.collection('simulado_submissions').where('simulado_id', '==', 'demo_sim').select().get();
-    const res = await d.collection('simulado_results').where('simulado_id', '==', 'demo_sim').select().get();
-    await Promise.all([...subs.docs, ...res.docs].map((x) => x.ref.delete()));
-    const students = await d.collection('students').where('class_id', '==', 'demo_turma').select().get();
-    await Promise.all(students.docs.map((x) => x.ref.update({ class_id: null, updated_at: nowIso() })));
+    // Apagar o curso/simulado/live/dúvida leva junto módulos, aulas, comentários, entregas e mensagens
+    await tx(async (t) => {
+      for (const table of DEMO_TABLES) await t.exec(`delete from ${table} where demo`);
+    });
     refreshCatalog();
     revalidatePath('/', 'layout');
     return { ok: true };

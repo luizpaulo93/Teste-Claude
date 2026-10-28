@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Badge, buttonClass, Card, EmptyState, LinkButton, PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { db, emailKey, fromDoc, fromQuery } from '@/lib/db';
+import { emailKey, sql } from '@/lib/db';
 import type { Mentoria, MentoriaCheckin, MentoriaMeeting, MentoriaTask } from '@/lib/types';
 import { addDays, cn, formatDate, formatDateTime, weekStart } from '@/lib/utils';
 import { CheckinForm } from './checkin-form';
@@ -14,7 +14,7 @@ export const metadata: Metadata = { title: 'Mentoria' };
 export default async function MentoriaPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
   const viewer = await requireViewer();
   const { w } = await searchParams;
-  const m = fromDoc<Mentoria>(await db().doc(`mentorias/${emailKey(viewer.email)}`).get());
+  const m = await sql.one<Mentoria>(`select * from mentorias where id = $1`, [emailKey(viewer.email)]);
 
   if (!m) {
     return (
@@ -33,22 +33,18 @@ export default async function MentoriaPage({ searchParams }: { searchParams: Pro
   const current = weekStart();
   const week = /^\d{4}-\d{2}-\d{2}$/.test(w ?? '') ? weekStart(new Date(`${w}T12:00:00`)) : current;
 
-  const d = db();
   const since = new Date(Date.now() - 3 * 3600_000).toISOString();
-  const [taskSnap, checkSnap, mineSnap, groupSnap] = await Promise.all([
-    d.collection('mentoria_tasks').where('mentoria_id', '==', mentoria.id).where('week_start', '==', week).get(),
-    d.collection('mentoria_checkins').where('mentoria_id', '==', mentoria.id).get(),
-    d.collection('mentoria_meetings').where('mentoria_id', '==', mentoria.id).get(),
-    d.collection('mentoria_meetings').where('mentoria_id', '==', null).get(),
+  const [tasks, checkinList, meetings] = await Promise.all([
+    sql.query<MentoriaTask>(
+      `select * from mentoria_tasks where mentoria_id = $1 and week_start = $2 order by due_date nulls last, created_at`,
+      [mentoria.id, week],
+    ),
+    sql.query<MentoriaCheckin>(`select * from mentoria_checkins where mentoria_id = $1 order by week_start desc limit 12`, [mentoria.id]),
+    sql.query<MentoriaMeeting>(
+      `select * from mentoria_meetings where (mentoria_id = $1 or mentoria_id is null) and starts_at >= $2 order by starts_at limit 6`,
+      [mentoria.id, since],
+    ),
   ]);
-  const tasks = fromQuery<MentoriaTask>(taskSnap).sort(
-    (a, b) => String(a.due_date ?? '9999').localeCompare(String(b.due_date ?? '9999')) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')),
-  );
-  const checkinList = fromQuery<MentoriaCheckin>(checkSnap).sort((a, b) => b.week_start.localeCompare(a.week_start)).slice(0, 12);
-  const meetings = [...fromQuery<MentoriaMeeting>(mineSnap), ...fromQuery<MentoriaMeeting>(groupSnap)]
-    .filter((x) => x.starts_at >= since)
-    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
-    .slice(0, 6);
   const thisCheckin = checkinList.find((c) => c.week_start === week) ?? null;
   const history = [...checkinList].reverse().slice(-8);
   const maxH = Math.max(mentoria.weekly_hours_target, ...history.map((h) => Number(h.hours_studied)), 1);

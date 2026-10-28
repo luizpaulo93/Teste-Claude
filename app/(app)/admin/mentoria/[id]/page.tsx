@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/ui';
-import { db, fromDoc, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { Mentoria, MentoriaCheckin, MentoriaMeeting, MentoriaTask } from '@/lib/types';
 import { weekStart } from '@/lib/utils';
 import { MentoriaDetail } from './mentoria-detail';
@@ -14,18 +14,14 @@ export default async function AdminMentoriaDetail({ params, searchParams }: { pa
   const [{ id }, { w }] = await Promise.all([params, searchParams]);
   if (!id || id.includes('/') || id.length > 200) notFound();
   const week = /^\d{4}-\d{2}-\d{2}$/.test(w ?? '') ? weekStart(new Date(`${w}T12:00:00`)) : weekStart();
-  const d = db();
-  const [mSnap, taskSnap, checkSnap, meetSnap] = await Promise.all([
-    d.doc(`mentorias/${decodeURIComponent(id)}`).get(),
-    d.collection('mentoria_tasks').where('mentoria_id', '==', decodeURIComponent(id)).where('week_start', '==', week).get(),
-    d.collection('mentoria_checkins').where('mentoria_id', '==', decodeURIComponent(id)).get(),
-    d.collection('mentoria_meetings').where('mentoria_id', '==', decodeURIComponent(id)).get(),
+  const mid = decodeURIComponent(id);
+  const [m, tasks, checkins, meetings] = await Promise.all([
+    sql.one<Mentoria>(`select * from mentorias where id = $1`, [mid]),
+    sql.query<MentoriaTask>(`select * from mentoria_tasks where mentoria_id = $1 and week_start = $2 order by created_at`, [mid, week]),
+    sql.query<MentoriaCheckin>(`select * from mentoria_checkins where mentoria_id = $1 order by week_start desc limit 20`, [mid]),
+    sql.query<MentoriaMeeting>(`select * from mentoria_meetings where mentoria_id = $1 order by starts_at desc limit 20`, [mid]),
   ]);
-  const m = fromDoc<Mentoria>(mSnap);
   if (!m) notFound();
-  const tasks = fromQuery<MentoriaTask>(taskSnap).sort((a, b) => String(a.created_at ?? '').localeCompare(String(b.created_at ?? '')));
-  const checkins = fromQuery<MentoriaCheckin>(checkSnap).sort((a, b) => b.week_start.localeCompare(a.week_start)).slice(0, 20);
-  const meetings = fromQuery<MentoriaMeeting>(meetSnap).sort((a, b) => b.starts_at.localeCompare(a.starts_at)).slice(0, 20);
   return (
     <>
       <Link href="/admin/mentoria" className="mb-3 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">

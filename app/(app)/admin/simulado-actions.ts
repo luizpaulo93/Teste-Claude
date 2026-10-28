@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { bool, fail, int, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
-import { db, fromQuery, nowIso } from '@/lib/db';
+import { newId, sql, tx } from '@/lib/db';
 import { removeObjects } from '@/lib/storage/server';
 import { evaluateCohort } from '@/lib/tri';
 import type { EnemArea, SimuladoSubmission } from '@/lib/types';
@@ -14,16 +14,6 @@ function refresh(id?: string) {
   revalidatePath('/simulados', 'layout');
 }
 
-async function deleteWhere(collection: string, field: string, value: string) {
-  const d = db();
-  const snap = await d.collection(collection).where(field, '==', value).select().get();
-  for (let i = 0; i < snap.docs.length; i += 400) {
-    const batch = d.batch();
-    snap.docs.slice(i, i + 400).forEach((x) => batch.delete(x.ref));
-    await batch.commit();
-  }
-}
-
 export async function saveSimulado(fd: FormData): Promise<ActionResult> {
   try {
     await requireAdminAction();
@@ -31,28 +21,32 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
     const area = str(fd, 'area', 2) as EnemArea;
     if (!['MT', 'CN', 'CH', 'LC'].includes(area)) return { error: 'Área inválida.' };
     const question_count = int(fd, 'question_count', 1, 180, 45);
-    const row = {
-      title: str(fd, 'title', 160),
-      area,
-      question_count,
-      time_limit_minutes: int(fd, 'time_limit_minutes', 0, 600, 0),
-      pdf_path: str(fd, 'pdf_path', 500),
-      is_published: bool(fd, 'is_published'),
-      updated_at: nowIso(),
-    };
-    if (!row.title) return { error: 'Informe o título.' };
+    const title = str(fd, 'title', 160);
+    if (!title) return { error: 'Informe o título.' };
     const key = str(fd, 'answer_key', 400).toUpperCase().replace(/[^A-E]/g, '');
     if (key && key.length !== question_count) return { error: `O gabarito tem ${key.length} letras, mas a prova tem ${question_count} questões.` };
+    if (id && !isDocId(id)) return { error: 'Inválido.' };
+    const simId = id || newId();
+    const values = [simId, title, area, question_count, int(fd, 'time_limit_minutes', 0, 600, 0), str(fd, 'pdf_path', 500), bool(fd, 'is_published')];
 
-    let simId = id;
-    if (id) {
-      if (!isDocId(id)) return { error: 'Inválido.' };
-      await db().doc(`simulados/${id}`).update(row);
-    } else {
-      simId = (await db().collection('simulados').add({ ...row, results_released: false, stats: {}, created_at: nowIso() })).id;
-    }
-    // Gabarito em coleção separada: nunca vai para a tela do aluno antes da liberação
-    await db().doc(`simulado_keys/${simId}`).set({ answer_key: key });
+    await tx(async (t) => {
+      if (id) {
+        await t.exec(
+          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, updated_at = now() where id = $1`,
+          values,
+        );
+      } else {
+        await t.exec(
+          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published) values ($1, $2, $3, $4, $5, $6, $7)`,
+          values,
+        );
+      }
+      // Gabarito em tabela separada: nunca vai para a tela do aluno antes da liberação
+      await t.exec(
+        `insert into simulado_keys (simulado_id, answer_key) values ($1, $2) on conflict (simulado_id) do update set answer_key = excluded.answer_key`,
+        [simId, key],
+      );
+    });
     refresh(simId);
     return { ok: true, id: simId };
   } catch (e) {
@@ -64,11 +58,9 @@ export async function deleteSimulado(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const ref = db().doc(`simulados/${id}`);
-    const pdf = String((await ref.get()).get('pdf_path') ?? '');
-    await Promise.all([deleteWhere('simulado_submissions', 'simulado_id', id), deleteWhere('simulado_results', 'simulado_id', id)]);
-    await Promise.all([ref.delete(), db().doc(`simulado_keys/${id}`).delete()]);
-    await removeObjects('materials', [pdf]);
+    // Gabarito, entregas e resultados são apagados junto (on delete cascade)
+    const row = await sql.one<{ pdf_path: string }>(`delete from simulados where id = $1 returning pdf_path`, [id]);
+    if (row?.pdf_path) await removeObjects('materials', [row.pdf_path]);
     refresh();
     return { ok: true };
   } catch (e) {
@@ -80,7 +72,7 @@ export async function setSimuladoPublished(id: string, value: boolean): Promise<
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await db().doc(`simulados/${id}`).update({ is_published: value });
+    await sql.exec(`update simulados set is_published = $2 where id = $1`, [id, value]);
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -96,27 +88,30 @@ export async function releaseResults(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const d = db();
-    const [simSnap, keySnap, subsSnap] = await Promise.all([
-      d.doc(`simulados/${id}`).get(),
-      d.doc(`simulado_keys/${id}`).get(),
-      d.collection('simulado_submissions').where('simulado_id', '==', id).get(),
+    const [sim, key, subs] = await Promise.all([
+      sql.one<{ area: EnemArea; question_count: number }>(`select area, question_count from simulados where id = $1`, [id]),
+      sql.one<{ answer_key: string }>(`select answer_key from simulado_keys where simulado_id = $1`, [id]),
+      sql.query<SimuladoSubmission>(`select * from simulado_submissions where simulado_id = $1 and status = 'completed'`, [id]),
     ]);
-    const sim = simSnap.data() as { area: EnemArea; question_count: number } | undefined;
-    const answerKey = String(keySnap.get('answer_key') ?? '');
+    const answerKey = key?.answer_key ?? '';
     if (!sim) return { error: 'Simulado não encontrado.' };
     if (answerKey.length !== sim.question_count) return { error: 'Cadastre o gabarito completo antes de liberar.' };
 
-    const subs = fromQuery<SimuladoSubmission>(subsSnap).filter((s) => s.status === 'completed');
     const { rows, stats } = evaluateCohort(sim.area, sim.question_count, answerKey, subs);
-    await deleteWhere('simulado_results', 'simulado_id', id);
-    const now = nowIso();
-    for (let i = 0; i < rows.length; i += 400) {
-      const batch = d.batch();
-      rows.slice(i, i + 400).forEach((r) => batch.set(d.doc(`simulado_results/${id}_${r.user_id}`), { ...r, simulado_id: id, computed_at: now }));
-      await batch.commit();
-    }
-    await d.doc(`simulados/${id}`).update({ results_released: true, stats });
+    await tx(async (t) => {
+      await t.exec(`delete from simulado_results where simulado_id = $1`, [id]);
+      // Grava em blocos com jsonb_to_recordset (uma consulta por bloco, mesmo com milhares de alunos)
+      for (let i = 0; i < rows.length; i += 500) {
+        await t.exec(
+          `insert into simulado_results (simulado_id, user_id, correct, wrong, blank, accuracy, coherence, tri_score, tri_min, tri_mean, tri_max, tiers, breakdown)
+           select $1, r.user_id, r.correct, r.wrong, r.blank, r.accuracy, r.coherence, r.tri_score, r.tri_min, r.tri_mean, r.tri_max, r.tiers, r.breakdown
+             from jsonb_to_recordset($2::jsonb) as r(user_id text, correct int, wrong int, blank int, accuracy float8, coherence float8,
+               tri_score float8, tri_min float8, tri_mean float8, tri_max float8, tiers jsonb, breakdown jsonb)`,
+          [id, JSON.stringify(rows.slice(i, i + 500))],
+        );
+      }
+      await t.exec(`update simulados set results_released = true, stats = $2 where id = $1`, [id, JSON.stringify(stats)]);
+    });
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -128,7 +123,7 @@ export async function hideResults(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await db().doc(`simulados/${id}`).update({ results_released: false });
+    await sql.exec(`update simulados set results_released = false where id = $1`, [id]);
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -141,10 +136,10 @@ export async function resetSubmission(simuladoId: string, userId: string): Promi
   try {
     await requireAdminAction();
     if (!isDocId(simuladoId) || !isDocId(userId)) return { error: 'Inválido.' };
-    await Promise.all([
-      db().doc(`simulado_results/${simuladoId}_${userId}`).delete(),
-      db().doc(`simulado_submissions/${simuladoId}_${userId}`).delete(),
-    ]);
+    await tx(async (t) => {
+      await t.exec(`delete from simulado_results where simulado_id = $1 and user_id = $2`, [simuladoId, userId]);
+      await t.exec(`delete from simulado_submissions where simulado_id = $1 and user_id = $2`, [simuladoId, userId]);
+    });
     refresh(simuladoId);
     return { ok: true };
   } catch (e) {

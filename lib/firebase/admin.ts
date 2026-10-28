@@ -1,16 +1,15 @@
 import 'server-only';
 import { cert, getApps, initializeApp, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore, type Firestore } from 'firebase-admin/firestore';
 
 import { adminConfigProblem, readServiceAccount } from './admin-config';
 
 export { adminConfigProblem };
 
-const emulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
+// O Firebase cuida só do login; os dados ficam no Neon (lib/db.ts)
+const emulator = Boolean(process.env.FIREBASE_AUTH_EMULATOR_HOST);
 
 let app: App | null = null;
-let db: Firestore | null = null;
 
 function adminApp() {
   if (app) return app;
@@ -27,16 +26,4 @@ function adminApp() {
 
 export function adminAuth() {
   return getAuth(adminApp());
-}
-
-export function adminDb() {
-  if (!db) {
-    db = getFirestore(adminApp());
-    try {
-      db.settings({ ignoreUndefinedProperties: true });
-    } catch {
-      /* já configurado */
-    }
-  }
-  return db;
 }

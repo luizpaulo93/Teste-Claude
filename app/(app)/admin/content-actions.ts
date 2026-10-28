@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { bool, fail, refreshCatalog, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
-import { byPosition, db, nowIso } from '@/lib/db';
+import { newId, sql, tx } from '@/lib/db';
 import { removeObjects } from '@/lib/storage/server';
 import type { LessonMaterial } from '@/lib/types';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
@@ -13,11 +13,19 @@ function revalidateContent(courseId?: string) {
   if (courseId) revalidatePath(`/admin/cursos/${courseId}`);
 }
 
-async function nextPosition(collection: string, field?: string, value?: string) {
-  let q: FirebaseFirestore.Query = db().collection(collection);
-  if (field && value) q = q.where(field, '==', value);
-  const snap = await q.select('position').get();
-  return snap.docs.reduce((m, d) => Math.max(m, Number(d.get('position') ?? 0)), -1) + 1;
+const POSITION_SQL = {
+  courses: `select coalesce(max(position), -1) + 1 as p from courses`,
+  modules: `select coalesce(max(position), -1) + 1 as p from modules where course_id = $1`,
+  lessons: `select coalesce(max(position), -1) + 1 as p from lessons where module_id = $1`,
+};
+
+async function nextPosition(table: keyof typeof POSITION_SQL, scope?: string) {
+  const row = await sql.one<{ p: number }>(POSITION_SQL[table], scope ? [scope] : []);
+  return row?.p ?? 0;
+}
+
+function filesOf(rows: { materials: LessonMaterial[] | null }[]) {
+  return rows.flatMap((r) => (r.materials ?? []).map((m) => m.file_path));
 }
 
 // ---------------- Cursos
@@ -25,28 +33,37 @@ export async function saveCourse(fd: FormData): Promise<ActionResult> {
   try {
     await requireAdminAction();
     const id = str(fd, 'id', 64);
-    const row = {
-      title: str(fd, 'title', 160),
-      subtitle: str(fd, 'subtitle', 240),
-      description: str(fd, 'description', 3000),
-      category: str(fd, 'category', 80),
-      cover_url: str(fd, 'cover_url', 2000),
-      banner_url: str(fd, 'banner_url', 2000),
-      featured: bool(fd, 'featured'),
-      is_free: bool(fd, 'is_free'),
-      is_published: bool(fd, 'is_published'),
-      updated_at: nowIso(),
-    };
-    if (!row.title) return { error: 'Informe o título.' };
+    const title = str(fd, 'title', 160);
+    if (!title) return { error: 'Informe o título.' };
+    const values = [
+      title,
+      str(fd, 'subtitle', 240),
+      str(fd, 'description', 3000),
+      str(fd, 'category', 80),
+      str(fd, 'cover_url', 2000),
+      str(fd, 'banner_url', 2000),
+      bool(fd, 'featured'),
+      bool(fd, 'is_free'),
+      bool(fd, 'is_published'),
+    ];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      await db().doc(`courses/${id}`).update(row);
+      await sql.exec(
+        `update courses set title = $2, subtitle = $3, description = $4, category = $5, cover_url = $6, banner_url = $7,
+           featured = $8, is_free = $9, is_published = $10, updated_at = now() where id = $1`,
+        [id, ...values],
+      );
       revalidateContent(id);
       return { ok: true, id };
     }
-    const ref = await db().collection('courses').add({ ...row, position: await nextPosition('courses'), created_at: nowIso() });
+    const newCourse = newId();
+    await sql.exec(
+      `insert into courses (id, title, subtitle, description, category, cover_url, banner_url, featured, is_free, is_published, position)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [newCourse, ...values, await nextPosition('courses')],
+    );
     revalidateContent();
-    return { ok: true, id: ref.id };
+    return { ok: true, id: newCourse };
   } catch (e) {
     return fail(e);
   }
@@ -56,18 +73,10 @@ export async function deleteCourse(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const d = db();
-    const [mods, lessons] = await Promise.all([
-      d.collection('modules').where('course_id', '==', id).get(),
-      d.collection('lessons').where('course_id', '==', id).get(),
-    ]);
-    const files = lessons.docs.flatMap((l) => ((l.get('materials') ?? []) as LessonMaterial[]).map((m) => m.file_path));
-    await Promise.all(lessons.docs.map((l) => d.recursiveDelete(l.ref)));
-    const batch = d.batch();
-    mods.docs.forEach((m) => batch.delete(m.ref));
-    batch.delete(d.doc(`courses/${id}`));
-    await batch.commit();
-    await removeObjects('materials', files);
+    // Módulos, aulas e comentários são apagados junto (on delete cascade)
+    const lessons = await sql.query<{ materials: LessonMaterial[] }>(`select materials from lessons where course_id = $1`, [id]);
+    await sql.exec(`delete from courses where id = $1`, [id]);
+    await removeObjects('materials', filesOf(lessons));
     revalidateContent();
     return { ok: true };
   } catch (e) {
@@ -81,17 +90,23 @@ export async function moveItem(table: 'courses' | 'modules' | 'lessons', id: str
     if (!['courses', 'modules', 'lessons'].includes(table)) return { error: 'Inválido' };
     if (scope && !['course_id', 'module_id'].includes(scope.column)) return { error: 'Inválido' };
     await requireAdminAction();
-    let q: FirebaseFirestore.Query = db().collection(table);
-    if (scope) q = q.where(scope.column, '==', scope.value);
-    const snap = await q.select('position', 'created_at').get();
-    const list = snap.docs.map((d) => ({ id: d.id, position: Number(d.get('position') ?? 0), created_at: String(d.get('created_at') ?? '') })).sort(byPosition);
-    const i = list.findIndex((x) => x.id === id);
-    const j = i + dir;
-    if (i < 0 || j < 0 || j >= list.length) return { ok: true };
-    [list[i], list[j]] = [list[j], list[i]];
-    const batch = db().batch();
-    list.forEach((x, idx) => x.position !== idx && batch.update(db().doc(`${table}/${x.id}`), { position: idx }));
-    await batch.commit();
+    if (scope && !isDocId(scope.value)) return { error: 'Inválido' };
+    if (!isDocId(id)) return { error: 'Inválido' };
+    // Troca a posição com o vizinho e renumera a lista (0, 1, 2…) numa transação
+    await tx(async (t) => {
+      const list = await t.query<{ id: string }>(
+        `select id from ${table} ${scope ? `where ${scope.column} = $1` : ''} order by position, created_at for update`,
+        scope ? [scope.value] : [],
+      );
+      const i = list.findIndex((x) => x.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= list.length) return;
+      [list[i], list[j]] = [list[j], list[i]];
+      await t.exec(
+        `update ${table} t set position = v.pos - 1 from unnest($1::text[]) with ordinality as v(id, pos) where t.id = v.id and t.position <> v.pos - 1`,
+        [list.map((x) => x.id)],
+      );
+    });
     revalidateContent(table === 'courses' ? undefined : scope?.column === 'course_id' ? scope.value : undefined);
     if (table === 'lessons') revalidatePath('/admin/cursos/[id]', 'page');
     return { ok: true };
@@ -107,15 +122,19 @@ export async function saveModule(fd: FormData): Promise<ActionResult> {
     const id = str(fd, 'id', 64);
     const course_id = str(fd, 'course_id', 64);
     if (!isDocId(course_id)) return { error: 'Curso inválido.' };
-    const row = {
-      title: str(fd, 'title', 160),
-      description: str(fd, 'description', 1500),
-      is_published: bool(fd, 'is_published'),
-      updated_at: nowIso(),
-    };
-    if (!row.title) return { error: 'Informe o nome do módulo.' };
-    if (id) await db().doc(`modules/${id}`).update(row);
-    else await db().collection('modules').add({ ...row, course_id, cover_url: '', position: await nextPosition('modules', 'course_id', course_id), created_at: nowIso() });
+    const title = str(fd, 'title', 160);
+    if (!title) return { error: 'Informe o nome do módulo.' };
+    const description = str(fd, 'description', 1500);
+    const published = bool(fd, 'is_published');
+    if (id) {
+      if (!isDocId(id)) return { error: 'Inválido.' };
+      await sql.exec(`update modules set title = $2, description = $3, is_published = $4, updated_at = now() where id = $1`, [id, title, description, published]);
+    } else {
+      await sql.exec(
+        `insert into modules (id, course_id, title, description, is_published, position) values ($1, $2, $3, $4, $5, $6)`,
+        [newId(), course_id, title, description, published, await nextPosition('modules', course_id)],
+      );
+    }
     revalidateContent(course_id);
     return { ok: true };
   } catch (e) {
@@ -127,11 +146,9 @@ export async function deleteModule(id: string, courseId: string): Promise<Action
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const lessons = await db().collection('lessons').where('module_id', '==', id).get();
-    const files = lessons.docs.flatMap((l) => ((l.get('materials') ?? []) as LessonMaterial[]).map((m) => m.file_path));
-    await Promise.all(lessons.docs.map((l) => db().recursiveDelete(l.ref)));
-    await db().doc(`modules/${id}`).delete();
-    await removeObjects('materials', files);
+    const lessons = await sql.query<{ materials: LessonMaterial[] }>(`select materials from lessons where module_id = $1`, [id]);
+    await sql.exec(`delete from modules where id = $1`, [id]);
+    await removeObjects('materials', filesOf(lessons));
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {
@@ -164,38 +181,46 @@ export async function saveLesson(fd: FormData): Promise<ActionResult> {
       .filter((m) => typeof m.file_path === 'string' && /^[\w/.-]{1,300}$/.test(m.file_path))
       .slice(0, 20)
       .map((m) => ({
-        id: m.id && isDocId(m.id) ? m.id : db().collection('_').doc().id,
+        id: m.id && isDocId(m.id) ? m.id : newId(),
         title: String(m.title ?? '').slice(0, 160) || 'Material',
         file_path: m.file_path,
         size_label: String(m.size_label ?? '').slice(0, 20),
       }));
-    const row = {
-      title: str(fd, 'title', 160),
-      description: str(fd, 'description', 4000),
-      youtube_id: extractYoutubeId(str(fd, 'youtube', 300)),
-      duration: str(fd, 'duration', 16),
-      thumbnail_url: str(fd, 'thumbnail_url', 2000),
-      is_free: bool(fd, 'is_free'),
-      is_published: bool(fd, 'is_published'),
+    const title = str(fd, 'title', 160);
+    if (!title) return { error: 'Informe o título da aula.' };
+    const paths = materials.map((m) => m.file_path);
+    const values = [
+      title,
+      str(fd, 'description', 4000),
+      extractYoutubeId(str(fd, 'youtube', 300)),
+      str(fd, 'duration', 16),
+      str(fd, 'thumbnail_url', 2000),
+      bool(fd, 'is_free'),
+      bool(fd, 'is_published'),
       module_id,
       course_id,
-      materials,
-      material_paths: materials.map((m) => m.file_path),
-      updated_at: nowIso(),
-    };
-    if (!row.title) return { error: 'Informe o título da aula.' };
+      JSON.stringify(materials),
+      paths,
+    ];
 
     let lessonId = id;
     let removed: string[] = [];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      const ref = db().doc(`lessons/${id}`);
-      const before = ((await ref.get()).get('materials') ?? []) as LessonMaterial[];
-      removed = before.map((m) => m.file_path).filter((p) => !row.material_paths.includes(p));
-      await ref.update(row);
+      const before = await sql.one<{ materials: LessonMaterial[] }>(`select materials from lessons where id = $1`, [id]);
+      removed = filesOf(before ? [before] : []).filter((p) => !paths.includes(p));
+      await sql.exec(
+        `update lessons set title = $2, description = $3, youtube_id = $4, duration = $5, thumbnail_url = $6, is_free = $7, is_published = $8,
+           module_id = $9, course_id = $10, materials = $11, material_paths = $12, updated_at = now() where id = $1`,
+        [id, ...values],
+      );
     } else {
-      const ref = await db().collection('lessons').add({ ...row, position: await nextPosition('lessons', 'module_id', module_id), created_at: nowIso() });
-      lessonId = ref.id;
+      lessonId = newId();
+      await sql.exec(
+        `insert into lessons (id, title, description, youtube_id, duration, thumbnail_url, is_free, is_published, module_id, course_id, materials, material_paths, position)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+        [lessonId, ...values, await nextPosition('lessons', module_id)],
+      );
     }
     await removeObjects('materials', removed);
     revalidateContent(course_id);
@@ -210,10 +235,8 @@ export async function deleteLesson(id: string, courseId: string): Promise<Action
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const ref = db().doc(`lessons/${id}`);
-    const mats = ((await ref.get()).get('materials') ?? []) as LessonMaterial[];
-    await db().recursiveDelete(ref);
-    await removeObjects('materials', mats.map((m) => m.file_path));
+    const row = await sql.one<{ materials: LessonMaterial[] }>(`delete from lessons where id = $1 returning materials`, [id]);
+    await removeObjects('materials', filesOf(row ? [row] : []));
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {
@@ -225,7 +248,7 @@ export async function toggleLessonFlag(id: string, courseId: string, field: 'is_
   try {
     await requireAdminAction();
     if (!isDocId(id) || !['is_published', 'is_free'].includes(field)) return { error: 'Inválido.' };
-    await db().doc(`lessons/${id}`).update({ [field]: value });
+    await sql.exec(`update lessons set ${field} = $2, updated_at = now() where id = $1`, [id, value]);
     revalidateContent(courseId);
     return { ok: true };
   } catch (e) {

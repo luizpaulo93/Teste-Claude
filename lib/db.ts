@@ -1,40 +1,140 @@
 import 'server-only';
+import { randomBytes } from 'node:crypto';
 import { unstable_cache } from 'next/cache';
-import type { DocumentSnapshot, QuerySnapshot } from 'firebase-admin/firestore';
-import { adminDb } from './firebase/admin';
+import { Pool, types, type PoolClient } from 'pg';
+import { databaseConfigProblem, databaseUrl } from './db-config';
+import { SCHEMA_SQL, SCHEMA_VERSION } from './schema-sql';
 import type { ClassGroup, Course, Lesson, Module, PlatformSettings } from './types';
 
-export const db = () => adminDb();
+// Datas sempre como texto ISO (igual ao que as telas esperam)
+const toIso = (v: string) => new Date(v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')).toISOString();
+types.setTypeParser(1184, toIso); // timestamptz
+types.setTypeParser(1114, (v) => toIso(`${v}+00`)); // timestamp
+types.setTypeParser(1082, (v) => v); // date → "AAAA-MM-DD"
+types.setTypeParser(20, (v) => Number(v)); // count(*)
+types.setTypeParser(1700, (v) => Number(v)); // numeric
+
+const g = globalThis as unknown as { __pgPool?: Pool; __pgReady?: Promise<void> | null };
+
+function cleanUrl(url: string) {
+  // O driver "pg" não usa o channel_binding que o Neon coloca no link; "require" vira a verificação completa do certificado
+  return url
+    .replace(/([?&])channel_binding=[^&]*&?/, '$1')
+    .replace(/[?&]$/, '')
+    .replace(/sslmode=require\b/, 'sslmode=verify-full');
+}
+
+function pool() {
+  if (g.__pgPool) return g.__pgPool;
+  const problem = databaseConfigProblem();
+  if (problem) throw new Error(problem);
+  const p = new Pool({
+    connectionString: cleanUrl(databaseUrl()),
+    max: Number(process.env.DATABASE_POOL_MAX) || 5,
+    idleTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 15_000,
+  });
+  p.on('error', (e) => console.error('[db]', e.message));
+  // Na Vercel (Fluid compute) fecha conexões ociosas antes da função ser suspensa
+  if (process.env.VERCEL) {
+    import('@vercel/functions')
+      .then(({ attachDatabasePool }) => attachDatabasePool(p))
+      .catch(() => null);
+  }
+  g.__pgPool = p;
+  return p;
+}
+
+/** Cria/atualiza as tabelas uma única vez por servidor (rápido quando já está tudo pronto). */
+function ensureSchema() {
+  if (g.__pgReady) return g.__pgReady;
+  g.__pgReady = (async () => {
+    const p = pool();
+    try {
+      const r = await p.query<{ value: string }>(`select value from _meta where key = 'schema'`);
+      if (Number(r.rows[0]?.value) >= SCHEMA_VERSION) return;
+    } catch {
+      /* tabela ainda não existe */
+    }
+    const c = await p.connect();
+    try {
+      await c.query('begin');
+      await c.query('select pg_advisory_xact_lock(727274)');
+      await c.query(`create table if not exists _meta (key text primary key, value text not null)`);
+      await c.query(SCHEMA_SQL);
+      await c.query(
+        `insert into _meta (key, value) values ('schema', $1) on conflict (key) do update set value = excluded.value`,
+        [String(SCHEMA_VERSION)],
+      );
+      await c.query('commit');
+    } catch (e) {
+      await c.query('rollback').catch(() => null);
+      throw e;
+    } finally {
+      c.release();
+    }
+  })().catch((e) => {
+    g.__pgReady = null;
+    throw e;
+  });
+  return g.__pgReady;
+}
+
+export interface Queryable {
+  query<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T[]>;
+  one<T = Record<string, unknown>>(text: string, params?: unknown[]): Promise<T | null>;
+  exec(text: string, params?: unknown[]): Promise<number>;
+}
+
+function wrap(run: (text: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number | null }>): Queryable {
+  return {
+    query: async <T,>(text: string, params?: unknown[]) => (await run(text, params)).rows as T[],
+    one: async <T,>(text: string, params?: unknown[]) => ((await run(text, params)).rows[0] as T | undefined) ?? null,
+    exec: async (text: string, params?: unknown[]) => (await run(text, params)).rowCount ?? 0,
+  };
+}
+
+/** Consultas simples (cada uma pega uma conexão do pool e devolve na hora). */
+export const sql: Queryable = wrap(async (text, params) => {
+  await ensureSchema();
+  return pool().query(text, params as unknown[]);
+});
+
+/** Transação: tudo ou nada. */
+export async function tx<R>(fn: (t: Queryable) => Promise<R>): Promise<R> {
+  await ensureSchema();
+  const c: PoolClient = await pool().connect();
+  try {
+    await c.query('begin');
+    const result = await fn(wrap((text, params) => c.query(text, params as unknown[])));
+    await c.query('commit');
+    return result;
+  } catch (e) {
+    await c.query('rollback').catch(() => null);
+    throw e;
+  } finally {
+    c.release();
+  }
+}
+
 export const nowIso = () => new Date().toISOString();
-export const newId = () => adminDb().collection('_').doc().id;
 
-/** Documento único com progresso e favoritos do aluno. */
-export const stateDocPath = (uid: string) => `users/${uid}/state/main`;
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+/** ID curto e aleatório (20 caracteres, só letras e números). */
+export function newId() {
+  const bytes = randomBytes(20);
+  let id = '';
+  for (const b of bytes) id += ALPHABET[b % 62];
+  return id;
+}
 
-/** ID de documento a partir do e-mail (minúsculo, sem "/"). */
+/** ID do aluno/mentoria a partir do e-mail (minúsculo, sem "/"). */
 export function emailKey(email: string) {
   return email.trim().toLowerCase().replace(/\//g, '_');
 }
 
-export function fromDoc<T>(snap: DocumentSnapshot): T | null {
-  return snap.exists ? ({ id: snap.id, ...snap.data() } as T) : null;
-}
-
-export function fromQuery<T>(snap: QuerySnapshot): T[] {
-  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as T);
-}
-
 export const byPosition = <T extends { position?: number; created_at?: string }>(a: T, b: T) =>
   (a.position ?? 0) - (b.position ?? 0) || String(a.created_at ?? '').localeCompare(String(b.created_at ?? ''));
-
-/** Divide listas grandes para consultas "in" (o Firestore aceita até 30 valores). */
-export async function getMany<T>(collection: string, ids: string[]): Promise<T[]> {
-  const unique = [...new Set(ids)].filter(Boolean);
-  if (!unique.length) return [];
-  const refs = unique.map((id) => adminDb().collection(collection).doc(id));
-  const snaps = await adminDb().getAll(...refs);
-  return snaps.map((s) => fromDoc<T>(s)).filter(Boolean) as T[];
-}
 
 export const DEFAULT_SETTINGS: PlatformSettings = {
   brand_name: 'CURSO VÉRTICE',
@@ -45,57 +145,47 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   restrict_to_student_list: true,
 };
 
-export const LESSON_SUMMARY_FIELDS = [
-  'module_id',
-  'course_id',
-  'title',
-  'duration',
-  'thumbnail_url',
-  'youtube_id',
-  'position',
-  'is_free',
-  'is_published',
-  'created_at',
-] as const;
-
 export type LessonSummary = Pick<
   Lesson,
   'id' | 'module_id' | 'course_id' | 'title' | 'duration' | 'thumbnail_url' | 'youtube_id' | 'position' | 'is_free' | 'is_published' | 'created_at'
 >;
 
+export const LESSON_SUMMARY_COLUMNS =
+  'id, module_id, course_id, title, duration, thumbnail_url, youtube_id, position, is_free, is_published, created_at';
+
 /**
- * Configurações e catálogo ficam em cache no servidor (não custam leituras do Firestore a cada
- * acesso). O cache é renovado sempre que o admin altera algo (tags "settings" e "catalog").
+ * Configurações e catálogo ficam em cache no servidor: mil alunos abrindo a página inicial não
+ * viram mil consultas. O cache é renovado sempre que o admin altera algo (tags "settings" e "catalog").
  */
-export const getSettings = unstable_cache(
+const cachedSettings = unstable_cache(
   async (): Promise<PlatformSettings> => {
-    try {
-      const snap = await adminDb().doc('settings/platform').get();
-      return { ...DEFAULT_SETTINGS, ...(snap.data() ?? {}) } as PlatformSettings;
-    } catch {
-      return DEFAULT_SETTINGS;
-    }
+    const row = await sql.one<{ data: Partial<PlatformSettings> }>(`select data from settings where id = 'platform'`);
+    return { ...DEFAULT_SETTINGS, ...(row?.data ?? {}) };
   },
-  ['settings-v1'],
+  ['settings-pg-v1'],
   { tags: ['settings'], revalidate: 3600 },
 );
 
+/** Se o banco falhar, usa o padrão naquele acesso (sem guardar a falha no cache). */
+export async function getSettings(): Promise<PlatformSettings> {
+  try {
+    return await cachedSettings();
+  } catch (e) {
+    console.error('[settings]', e instanceof Error ? e.message : e);
+    return DEFAULT_SETTINGS;
+  }
+}
+
 export const getCatalogData = unstable_cache(
   async () => {
-    const d = adminDb();
-    const [c, m, l, cl] = await Promise.all([
-      d.collection('courses').get(),
-      d.collection('modules').get(),
-      d.collection('lessons').select(...LESSON_SUMMARY_FIELDS).get(),
-      d.collection('classes').get(),
+    const [courses, modules, lessons, classes] = await Promise.all([
+      sql.query<Course>(`select * from courses order by position, created_at`),
+      sql.query<Module>(`select * from modules order by position, created_at`),
+      sql.query<LessonSummary>(`select ${LESSON_SUMMARY_COLUMNS} from lessons order by position, created_at`),
+      sql.query<ClassGroup>(`select id, name, description, access_all, course_ids from classes order by name`),
     ]);
-    return {
-      courses: fromQuery<Course>(c).sort(byPosition),
-      modules: fromQuery<Module>(m).sort(byPosition),
-      lessons: fromQuery<LessonSummary>(l).sort(byPosition),
-      classes: fromQuery<ClassGroup>(cl).map((x) => ({ ...x, course_ids: x.course_ids ?? [] })),
-    };
+    return { courses, modules, lessons, classes };
   },
-  ['catalog-v1'],
+  ['catalog-pg-v1'],
   { tags: ['catalog'], revalidate: 3600 },
 );

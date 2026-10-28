@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
-import { db, fromDoc, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { canSeeLive } from '@/lib/live';
 import type { LiveMessage, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
@@ -17,7 +17,7 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
-  const live = fromDoc<LiveSession>(await db().doc(`live_sessions/${id}`).get());
+  const live = await sql.one<LiveSession>(`select * from live_sessions where id = $1`, [id]);
   if (!live || !(await canSeeLive(viewer, live))) {
     return (
       <Card className="mx-auto mt-10 flex max-w-md flex-col items-center p-10 text-center">
@@ -32,8 +32,9 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
       </Card>
     );
   }
-  const msgSnap = await db().collection(`live_sessions/${id}/messages`).orderBy('created_at', 'desc').limit(80).get();
-  const messages = fromQuery<LiveMessage>(msgSnap).reverse();
+  const messages = (
+    await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at desc limit 80`, [id])
+  ).reverse();
 
   return (
     <>

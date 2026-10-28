@@ -9,8 +9,6 @@ import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { getFileUrl } from '@/lib/storage/client';
-import { deleteField, doc, setDoc } from 'firebase/firestore';
-import { clientAuth, clientDb } from '@/lib/firebase/client';
 import { saveProgressServer, setFavoriteServer } from './actions';
 import type { Lesson, LessonMaterial } from '@/lib/types';
 import { cn, youtubeThumb } from '@/lib/utils';
@@ -40,28 +38,12 @@ export function LessonView(p: Props) {
   const [openingId, setOpeningId] = useState<string | null>(null);
   const savingRef = useRef(false);
 
-  // Grava direto no Firestore pelo navegador (sem passar pela Vercel) — escala com muitos alunos.
-  // Se o navegador não estiver logado no Firebase, grava pelo servidor.
   const saveProgress = useCallback(
     async (patch: { completed?: boolean; position_sec?: number; duration_sec?: number }) => {
-      try {
-        const auth = clientAuth();
-        await auth.authStateReady();
-        if (auth.currentUser?.uid === p.userId) {
-          await setDoc(
-            doc(clientDb(), 'users', p.userId, 'state', 'main'),
-            { progress: { [p.lesson.id]: { course_id: p.lesson.course_id, updated_at: new Date().toISOString(), ...patch } } },
-            { merge: true },
-          );
-          return null;
-        }
-      } catch {
-        /* tenta pelo servidor */
-      }
-      const r = await saveProgressServer(p.lesson.id, p.lesson.course_id, patch);
+      const r = await saveProgressServer(p.lesson.id, p.lesson.course_id, patch).catch(() => ({ error: 'falha' }));
       return r.error ?? null;
     },
-    [p.userId, p.lesson.id, p.lesson.course_id],
+    [p.lesson.id, p.lesson.course_id],
   );
 
   const onProgress = useCallback(
@@ -91,19 +73,7 @@ export function LessonView(p: Props) {
   const toggleFav = async () => {
     const next = !favorite;
     setFavorite(next);
-    let error = false;
-    try {
-      const auth = clientAuth();
-      await auth.authStateReady();
-      if (auth.currentUser?.uid !== p.userId) throw new Error('sem login no navegador');
-      await setDoc(
-        doc(clientDb(), 'users', p.userId, 'state', 'main'),
-        { favorites: { [p.lesson.id]: next ? new Date().toISOString() : deleteField() } },
-        { merge: true },
-      );
-    } catch {
-      error = Boolean((await setFavoriteServer(p.lesson.id, next)).error);
-    }
+    const error = Boolean((await setFavoriteServer(p.lesson.id, next).catch(() => ({ error: 'falha' }))).error);
     if (error) {
       setFavorite(!next);
       toast.error('Não foi possível atualizar favoritos.');

@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import { db, fromQuery, getCatalogData, getSettings, stateDocPath, type LessonSummary } from './db';
+import { getCatalogData, getSettings, sql, type LessonSummary } from './db';
 import { canSeeLesson, type Viewer } from './session';
 import type { CalendarEvent, Course, LessonProgress } from './types';
 
@@ -22,29 +22,19 @@ export async function visibleLessons(viewer: Viewer, filter?: (l: LessonSummary)
   return lessons.filter((l) => (!filter || filter(l)) && canSeeLesson(viewer, l, byId.get(l.course_id), settings.restrict_to_student_list));
 }
 
-/**
- * Progresso e favoritos do aluno ficam num ÚNICO documento (users/{uid}/state/main):
- * 1 leitura por página, não importa quantas aulas ele já assistiu.
- */
+/** Progresso e favoritos do aluno (2 consultas leves, em paralelo). */
 export const getMyState = cache(async (userId: string) => {
-  const data = ((await db().doc(stateDocPath(userId)).get()).data() ?? {}) as {
-    progress?: Record<string, Partial<LessonProgress>>;
-    favorites?: Record<string, string>;
-  };
-  const progress: LessonProgress[] = Object.entries(data.progress ?? {})
-    .filter(([, v]) => v && typeof v === 'object')
-    .map(([lesson_id, v]) => ({
-      lesson_id,
-      course_id: String(v.course_id ?? ''),
-      completed: v.completed === true,
-      position_sec: Number(v.position_sec) || 0,
-      duration_sec: Number(v.duration_sec) || 0,
-      updated_at: String(v.updated_at ?? ''),
-    }))
-    .sort((a, b) => b.updated_at.localeCompare(a.updated_at));
-  const favorites = Object.entries(data.favorites ?? {})
-    .map(([lesson_id, at]) => ({ lesson_id, created_at: String(at) }))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const [progress, favorites] = await Promise.all([
+    sql.query<LessonProgress>(
+      `select lesson_id, course_id, completed, position_sec, duration_sec, updated_at
+         from lesson_progress where user_id = $1 order by updated_at desc limit 3000`,
+      [userId],
+    ),
+    sql.query<{ lesson_id: string; created_at: string }>(
+      `select lesson_id, created_at from favorites where user_id = $1 order by created_at desc limit 1000`,
+      [userId],
+    ),
+  ]);
   return { progress, favorites };
 });
 
@@ -63,11 +53,10 @@ export const getCourseTree = cache(async (courseId: string, viewer: Viewer) => {
 
 export const getUpcomingEvents = cache(async (limit = 5) => {
   const today = new Date().toISOString().slice(0, 10);
-  const snap = await db().collection('calendar_events').where('end_date', '>=', today).orderBy('end_date').limit(50).get();
-  return fromQuery<CalendarEvent>(snap)
-    .filter((e) => e.is_published)
-    .sort((a, b) => a.start_date.localeCompare(b.start_date))
-    .slice(0, limit);
+  return sql.query<CalendarEvent>(
+    `select * from calendar_events where end_date >= $1 and is_published order by start_date limit $2`,
+    [today, limit],
+  );
 });
 
 export function courseProgress(courseId: string, total: number, progress: LessonProgress[]) {

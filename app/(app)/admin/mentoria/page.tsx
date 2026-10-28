@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { PageHeader } from '@/components/ui';
-import { db, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { Mentoria, MentoriaMeeting } from '@/lib/types';
 import { weekStart } from '@/lib/utils';
 import { MentoriaList } from './mentoria-list';
@@ -8,19 +8,14 @@ import { MentoriaList } from './mentoria-list';
 export const metadata: Metadata = { title: 'Mentoria · Admin' };
 
 export default async function AdminMentoria() {
-  const d = db();
   const week = weekStart();
   const since = new Date(Date.now() - 86400_000).toISOString();
-  const [listSnap, checkSnap, meetSnap] = await Promise.all([
-    d.collection('mentorias').get(),
-    d.collection('mentoria_checkins').where('week_start', '==', week).get(),
-    d.collection('mentoria_meetings').where('mentoria_id', '==', null).get(),
+  const [list, checks, meetings] = await Promise.all([
+    sql.query<Mentoria>(`select * from mentorias order by lower(coalesce(nullif(student_name, ''), student_email))`),
+    sql.query<{ mentoria_id: string; mentor_feedback: string }>(`select mentoria_id, mentor_feedback from mentoria_checkins where week_start = $1`, [week]),
+    sql.query<MentoriaMeeting>(`select * from mentoria_meetings where mentoria_id is null and starts_at >= $1 order by starts_at`, [since]),
   ]);
-  const list = fromQuery<Mentoria>(listSnap).sort((a, b) => (a.student_name || a.student_email).localeCompare(b.student_name || b.student_email));
-  const weekly = new Map(checkSnap.docs.map((c) => [String(c.get('mentoria_id')), c.get('mentor_feedback') ? 'respondido' : 'pendente']));
-  const meetings = fromQuery<MentoriaMeeting>(meetSnap)
-    .filter((m) => m.starts_at >= since)
-    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const weekly = new Map(checks.map((c) => [c.mentoria_id, c.mentor_feedback ? 'respondido' : 'pendente']));
   return (
     <>
       <PageHeader title="Mentoria" subtitle="Acompanhe cada aluno com plano semanal, check-ins e encontros." />

@@ -2,26 +2,29 @@ import { BookOpen, ClipboardCheck, MessageCircleQuestion, PlayCircle, UserCheck,
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Avatar, Badge, Card, PageHeader, Stat } from '@/components/ui';
-import { db, emailKey, fromQuery, getCatalogData, getMany } from '@/lib/db';
+import { getCatalogData, sql } from '@/lib/db';
 import { timeAgo } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Painel admin' };
 
 export default async function AdminHome() {
-  const d = db();
-  const count = async (q: FirebaseFirestore.Query) => (await q.count().get()).data().count;
-  const [students, active, catalog, openDoubts, sims, users, recentSnap] = await Promise.all([
-    count(d.collection('students')),
-    count(d.collection('students').where('status', '==', 'active')),
+  const [counts, catalog, recentList] = await Promise.all([
+    sql.one<{ students: number; active: number; open_doubts: number; sims: number; users: number }>(
+      `select (select count(*) from students)::int as students,
+              (select count(*) from students where status = 'active')::int as active,
+              (select count(*) from doubts where not is_resolved)::int as open_doubts,
+              (select count(*) from simulados where is_published)::int as sims,
+              (select count(*) from users)::int as users`,
+    ),
     getCatalogData(),
-    count(d.collection('doubts').where('is_resolved', '==', false)),
-    count(d.collection('simulados').where('is_published', '==', true)),
-    count(d.collection('users')),
-    d.collection('users').orderBy('created_at', 'desc').limit(8).get(),
+    sql.query<{ id: string; email: string; full_name: string; avatar_url: string; role: string; created_at: string; status: string | null }>(
+      `select u.id, u.email, u.full_name, u.avatar_url, u.role, u.created_at, s.status
+         from users u left join students s on s.email = u.email
+         order by u.created_at desc limit 8`,
+    ),
   ]);
-  const recentList = fromQuery<{ id: string; email: string; full_name: string; avatar_url: string; role: string; created_at: string }>(recentSnap);
-  const listed = await getMany<{ id: string; email: string; status: string }>('students', recentList.map((u) => emailKey(u.email)));
-  const listedMap = new Map(listed.map((s) => [s.email.toLowerCase(), s.status]));
+  const { students = 0, active = 0, open_doubts: openDoubts = 0, sims = 0, users = 0 } = counts ?? {};
+  const listedMap = new Map(recentList.filter((u) => u.status).map((u) => [u.email.toLowerCase(), u.status as string]));
 
   return (
     <>

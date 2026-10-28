@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
 import { getCourseTree, getMyState } from '@/lib/data';
-import { db, fromDoc, fromQuery, getCatalogData } from '@/lib/db';
+import { getCatalogData, sql } from '@/lib/db';
 import { canSeeLesson, getSettings, requireViewer } from '@/lib/session';
 import type { Lesson, LessonComment } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -17,8 +17,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
-  const [snap, settings, catalog] = await Promise.all([db().doc(`lessons/${id}`).get(), getSettings(), getCatalogData()]);
-  const lesson = fromDoc<Lesson>(snap);
+  const [lesson, settings, catalog] = await Promise.all([sql.one<Lesson>(`select * from lessons where id = $1`, [id]), getSettings(), getCatalogData()]);
   const course = lesson ? catalog.courses.find((c) => c.id === lesson.course_id) : undefined;
 
   if (!lesson || !canSeeLesson(viewer, lesson, course, settings.restrict_to_student_list)) {
@@ -36,8 +35,8 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [commentsSnap, tree, state] = await Promise.all([
-    db().collection(`lessons/${id}/comments`).orderBy('created_at', 'desc').limit(30).get(),
+  const [comments, tree, state] = await Promise.all([
+    sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 order by created_at desc limit 30`, [id]),
     getCourseTree(lesson.course_id, viewer),
     getMyState(viewer.userId),
   ]);
@@ -74,7 +73,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
         comments={
           <LessonComments
             lessonId={id}
-            initial={fromQuery<LessonComment>(commentsSnap)}
+            initial={comments}
             me={{ id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role }}
             isAdmin={viewer.isAdmin}
           />

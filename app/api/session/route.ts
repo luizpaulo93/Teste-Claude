@@ -1,13 +1,12 @@
 import { cookies } from 'next/headers';
 import { NextResponse, type NextRequest } from 'next/server';
-import { syncClaims } from '@/lib/claims';
-import { emailKey, nowIso } from '@/lib/db';
-import { adminAuth, adminDb } from '@/lib/firebase/admin';
+import { sql } from '@/lib/db';
+import { adminAuth } from '@/lib/firebase/admin';
 import { BOOTSTRAP_ADMIN, SESSION_COOKIE } from '@/lib/session';
 
 const MAX_AGE = 60 * 60 * 24 * 14; // 14 dias
 
-/** Troca o token do login do Firebase por um cookie de sessão seguro (httpOnly) e cria/atualiza o perfil. */
+/** Troca o token do login do Firebase por um cookie de sessão seguro (httpOnly) e cria/atualiza o perfil no Neon. */
 export async function POST(req: NextRequest) {
   const { idToken } = (await req.json().catch(() => ({}))) as { idToken?: string };
   if (!idToken) return NextResponse.json({ error: 'Token ausente.' }, { status: 400 });
@@ -22,37 +21,33 @@ export async function POST(req: NextRequest) {
   const email = String(decoded.email ?? '').toLowerCase();
   if (!email) return NextResponse.json({ error: 'Sua conta não tem e-mail.' }, { status: 400 });
 
-  const db = adminDb();
-  const ref = db.doc(`users/${decoded.uid}`);
-  const [snap, adminSnap] = await Promise.all([ref.get(), db.doc(`admins/${emailKey(email)}`).get()]);
-  const listedAdmin = email === BOOTSTRAP_ADMIN || adminSnap.exists;
-  const current = snap.data() as { role?: string; avatar_url?: string; full_name?: string } | undefined;
-  const role = listedAdmin ? 'admin' : current?.role === 'admin' ? 'admin' : 'student';
-
-  if (!current) {
-    await ref.set({
-      email,
-      full_name: String(decoded.name ?? '') || email.split('@')[0],
-      avatar_url: String(decoded.picture ?? ''),
-      phone: '',
-      birth_date: null,
-      role,
-      created_at: nowIso(),
-    });
-  } else if (current.role !== role || (!current.avatar_url && decoded.picture)) {
-    await ref.update({ role, ...(!current.avatar_url && decoded.picture ? { avatar_url: String(decoded.picture) } : {}) });
+  try {
+    const listed = await sql.one<{ ok: boolean }>(`select exists(select 1 from admins where email = $1) as ok`, [email]);
+    const isListedAdmin = email === BOOTSTRAP_ADMIN || Boolean(listed?.ok);
+    // Cria o perfil no primeiro acesso; depois só ajusta o papel e a foto (se ainda não tiver)
+    await sql.exec(
+      `insert into users (id, email, full_name, avatar_url, role)
+       values ($1, $2, $3, $4, $5)
+       on conflict (id) do update set
+         email = excluded.email,
+         role = case when $6 then 'admin' else users.role end,
+         avatar_url = case when users.avatar_url = '' then excluded.avatar_url else users.avatar_url end`,
+      [decoded.uid, email, String(decoded.name ?? '') || email.split('@')[0], String(decoded.picture ?? ''), isListedAdmin ? 'admin' : 'student', isListedAdmin],
+    );
+  } catch (e) {
+    console.error('[session]', e instanceof Error ? e.message : e);
+    return NextResponse.json({ error: 'Não foi possível acessar o banco de dados. Tente de novo em instantes.' }, { status: 503 });
   }
 
-  const refresh = await syncClaims(decoded.uid, email, role === 'admin', decoded as unknown as Record<string, unknown>);
   const sessionCookie = await adminAuth().createSessionCookie(idToken, { expiresIn: MAX_AGE * 1000 });
   (await cookies()).set(SESSION_COOKIE, sessionCookie, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production' && !process.env.FIRESTORE_EMULATOR_HOST,
+    secure: process.env.NODE_ENV === 'production' && !process.env.FIREBASE_AUTH_EMULATOR_HOST,
     sameSite: 'lax',
     path: '/',
     maxAge: MAX_AGE,
   });
-  return NextResponse.json({ ok: true, refresh });
+  return NextResponse.json({ ok: true });
 }
 
 export async function DELETE() {

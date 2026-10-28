@@ -2,8 +2,8 @@ import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
-import { emailKey, fromDoc, getCatalogData, getSettings } from './db';
-import { adminAuth, adminDb } from './firebase/admin';
+import { emailKey, getCatalogData, getSettings, sql } from './db';
+import { adminAuth } from './firebase/admin';
 import type { ClassGroup, Course, Lesson, Profile, Student } from './types';
 
 export { getSettings } from './db';
@@ -41,10 +41,13 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     return null;
   }
 
-  const db = adminDb();
-  const [profileSnap, studentSnap, settings, catalog] = await Promise.all([
-    db.doc(`users/${uid}`).get(),
-    email ? db.doc(`students/${emailKey(email)}`).get() : Promise.resolve(null),
+  // Perfil e cadastro de aluno numa consulta só
+  const [row, settings, catalog] = await Promise.all([
+    sql.one<{ profile: Partial<Profile> | null; student: Student | null }>(
+      `select (select to_jsonb(u) from users u where u.id = $1) as profile,
+              (select to_jsonb(s) from students s where s.id = $2) as student`,
+      [uid, emailKey(email || '-')],
+    ),
     getSettings(),
     getCatalogData(),
   ]);
@@ -57,9 +60,9 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     phone: '',
     birth_date: null,
     role: email === BOOTSTRAP_ADMIN ? 'admin' : 'student',
-    ...((profileSnap.data() as Partial<Profile> | undefined) ?? {}),
+    ...(row?.profile ?? {}),
   };
-  const student = studentSnap ? fromDoc<Student>(studentSnap) : null;
+  const student = email ? (row?.student ?? null) : null;
   const classGroup = student?.class_id ? (catalog.classes.find((c) => c.id === student.class_id) ?? null) : null;
   const isAdmin = profile.role === 'admin';
   const isMember =

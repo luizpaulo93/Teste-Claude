@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { buttonClass, Card, PageHeader } from '@/components/ui';
-import { byPosition, db, fromDoc, fromQuery } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { Course, Lesson, Module } from '@/lib/types';
 import { CourseForm } from '../course-form';
 import { ModulesManager } from './modules-manager';
@@ -14,16 +14,12 @@ export const metadata: Metadata = { title: 'Editar curso · Admin' };
 export default async function AdminCourseEdit({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isDocId(id)) notFound();
-  const d = db();
-  const [courseSnap, modSnap, lessonSnap] = await Promise.all([
-    d.doc(`courses/${id}`).get(),
-    d.collection('modules').where('course_id', '==', id).get(),
-    d.collection('lessons').where('course_id', '==', id).get(),
+  const [course, modules, lessons] = await Promise.all([
+    sql.one<Course>(`select * from courses where id = $1`, [id]),
+    sql.query<Module>(`select * from modules where course_id = $1 order by position, created_at`, [id]),
+    sql.query<Lesson>(`select * from lessons where course_id = $1 order by position, created_at`, [id]),
   ]);
-  const course = fromDoc<Course>(courseSnap);
   if (!course) notFound();
-  const modules = fromQuery<Module>(modSnap).sort(byPosition);
-  const lessons = fromQuery<Lesson>(lessonSnap).sort(byPosition);
 
   return (
     <>

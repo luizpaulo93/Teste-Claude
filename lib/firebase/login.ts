@@ -4,17 +4,10 @@ import type { User } from 'firebase/auth';
 
 /** Envia o token do Firebase ao servidor para criar o cookie de sessão. */
 export async function createServerSession(user: User) {
-  let token = await user.getIdToken();
-  let res = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken: token }) });
-  let data = await res.json().catch(() => ({}));
+  const token = await user.getIdToken();
+  const res = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken: token }) });
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || 'Não foi possível entrar.');
-  if (data.refresh) {
-    // As permissões mudaram: pega um token novo para o navegador já usar as novas regras
-    token = await user.getIdToken(true);
-    res = await fetch('/api/session', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ idToken: token }) });
-    data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Não foi possível entrar.');
-  }
 }
 
 export function safeNext(next?: string | null) {

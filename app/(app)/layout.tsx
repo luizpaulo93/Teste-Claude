@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/app-shell';
-import { db, emailKey } from '@/lib/db';
+import { emailKey, sql } from '@/lib/db';
 import { visibleLives } from '@/lib/live';
 import { getSettings, getViewer } from '@/lib/session';
 
@@ -12,10 +12,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   let liveNow = false;
   if (viewer.isMember) {
     const [m, lives] = await Promise.all([
-      hasMentoria ? Promise.resolve(null) : db().doc(`mentorias/${emailKey(viewer.email)}`).get(),
+      hasMentoria ? Promise.resolve(null) : sql.one<{ status: string }>(`select status from mentorias where id = $1`, [emailKey(viewer.email)]),
       visibleLives(viewer, ['live']),
     ]);
-    if (m) hasMentoria = m.exists && m.data()?.status === 'active';
+    if (!hasMentoria) hasMentoria = m?.status === 'active';
     liveNow = lives.length > 0;
   }
 

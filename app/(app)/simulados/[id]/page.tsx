@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { requireViewer } from '@/lib/session';
 import { createDownloadUrl } from '@/lib/storage/server';
-import { db, fromDoc } from '@/lib/db';
+import { sql } from '@/lib/db';
 import type { Simulado, SimuladoResult, SimuladoStats, SimuladoSubmission } from '@/lib/types';
 import { ExamRunner } from './exam-runner';
 import { ResultView } from './result-view';
@@ -18,16 +18,12 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
-  const d = db();
-  const [simSnap, subSnap, resSnap] = await Promise.all([
-    d.doc(`simulados/${id}`).get(),
-    d.doc(`simulado_submissions/${id}_${viewer.userId}`).get(),
-    d.doc(`simulado_results/${id}_${viewer.userId}`).get(),
+  const [simulado, submission, result] = await Promise.all([
+    sql.one<Simulado>(`select * from simulados where id = $1`, [id]),
+    sql.one<SimuladoSubmission>(`select * from simulado_submissions where simulado_id = $1 and user_id = $2`, [id, viewer.userId]),
+    sql.one<SimuladoResult>(`select * from simulado_results where simulado_id = $1 and user_id = $2`, [id, viewer.userId]),
   ]);
-  const simulado = fromDoc<Simulado>(simSnap);
   if (!simulado || (!simulado.is_published && !viewer.isAdmin)) notFound();
-  const submission = fromDoc<SimuladoSubmission>(subSnap);
-  const result = fromDoc<SimuladoResult>(resSnap);
 
   let pdfUrl = '';
   if (simulado.pdf_path && (!submission || submission.status === 'in_progress' || simulado.results_released)) {

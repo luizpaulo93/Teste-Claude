@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { adminConfigProblem } from '@/lib/firebase/admin-config';
 import { publicConfigProblem } from '@/lib/firebase/config';
+import { databaseConfigProblem } from '@/lib/db-config';
 
 const PUBLIC_PATHS = ['/login', '/auth', '/configurar', '/site', '/api/'];
 const SESSION_COOKIE = '__session';
@@ -12,7 +13,7 @@ const SESSION_COOKIE = '__session';
 export function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   try {
-    if (publicConfigProblem() || adminConfigProblem()) {
+    if (publicConfigProblem() || adminConfigProblem() || databaseConfigProblem()) {
       if (path.startsWith('/configurar')) return NextResponse.next();
       return NextResponse.redirect(new URL('/configurar', request.url));
     }

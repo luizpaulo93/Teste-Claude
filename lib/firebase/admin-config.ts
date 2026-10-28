@@ -35,7 +35,7 @@ export function readServiceAccount(): { sa: ServiceAccount | null; problem: stri
 
 
 export function adminConfigProblem(): string | null {
-  if (process.env.FIRESTORE_EMULATOR_HOST) return null;
+  if (process.env.FIREBASE_AUTH_EMULATOR_HOST) return null;
   return readServiceAccount().problem;
 }
 

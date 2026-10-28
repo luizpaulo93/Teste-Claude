@@ -1,9 +1,8 @@
 'use server';
 
-import { FieldValue } from 'firebase-admin/firestore';
 import { revalidatePath } from 'next/cache';
 import { authorOf } from '@/lib/author';
-import { db, fromQuery, nowIso } from '@/lib/db';
+import { newId, sql, tx } from '@/lib/db';
 import { getViewer } from '@/lib/session';
 import type { DoubtReply } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -20,16 +19,11 @@ export async function createDoubt(text: string, imageUrl = '') {
   const viewer = await member();
   const body = text.trim().slice(0, 4000);
   if (!viewer || !body) return { error: 'Não foi possível publicar.' };
-  await db().collection('doubts').add({
-    author_id: viewer.userId,
-    ...authorOf(viewer),
-    text: body,
-    image_url: safeImage(imageUrl),
-    is_resolved: false,
-    likes_count: 0,
-    replies_count: 0,
-    created_at: nowIso(),
-  });
+  const a = authorOf(viewer);
+  await sql.exec(
+    `insert into doubts (id, author_id, author_name, author_avatar, author_role, text, image_url) values ($1, $2, $3, $4, $5, $6, $7)`,
+    [newId(), viewer.userId, a.author_name, a.author_avatar, a.author_role, body, safeImage(imageUrl)],
+  );
   revalidatePath('/duvidas');
   return { ok: true };
 }
@@ -38,58 +32,60 @@ export async function addReply(doubtId: string, text: string, imageUrl = '') {
   const viewer = await member();
   const body = text.trim().slice(0, 4000);
   if (!viewer || !body || !isDocId(doubtId)) return { error: 'Não foi possível responder.' };
-  const doubtRef = db().doc(`doubts/${doubtId}`);
-  const replyRef = doubtRef.collection('replies').doc();
-  await db().runTransaction(async (tx) => {
-    const snap = await tx.get(doubtRef);
-    if (!snap.exists) throw new Error('não existe');
-    tx.set(replyRef, { doubt_id: doubtId, author_id: viewer.userId, ...authorOf(viewer), text: body, image_url: safeImage(imageUrl), created_at: nowIso() });
-    tx.update(doubtRef, { replies_count: FieldValue.increment(1) });
+  const a = authorOf(viewer);
+  const ok = await tx(async (t) => {
+    const n = await t.exec(`update doubts set replies_count = replies_count + 1 where id = $1`, [doubtId]);
+    if (!n) return false;
+    await t.exec(
+      `insert into doubt_replies (id, doubt_id, author_id, author_name, author_avatar, author_role, text, image_url) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [newId(), doubtId, viewer.userId, a.author_name, a.author_avatar, a.author_role, body, safeImage(imageUrl)],
+    );
+    return true;
   });
-  return { ok: true };
+  return ok ? { ok: true } : { error: 'Esta dúvida foi apagada.' };
 }
 
 export async function listReplies(doubtId: string): Promise<DoubtReply[]> {
   const viewer = await member();
   if (!viewer || !isDocId(doubtId)) return [];
-  const snap = await db().collection(`doubts/${doubtId}/replies`).orderBy('created_at').limit(200).get();
-  return fromQuery<DoubtReply>(snap);
+  return sql.query<DoubtReply>(`select * from doubt_replies where doubt_id = $1 order by created_at limit 200`, [doubtId]);
 }
 
 export async function toggleLike(doubtId: string, value: boolean) {
   const viewer = await member();
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
-  const doubtRef = db().doc(`doubts/${doubtId}`);
-  const likeRef = doubtRef.collection('likes').doc(viewer.userId);
-  await db().runTransaction(async (tx) => {
-    const [like, doubt] = await Promise.all([tx.get(likeRef), tx.get(doubtRef)]);
-    if (!doubt.exists || like.exists === value) return;
-    if (value) tx.set(likeRef, { created_at: nowIso() });
-    else tx.delete(likeRef);
-    tx.update(doubtRef, { likes_count: FieldValue.increment(value ? 1 : -1) });
+  await tx(async (t) => {
+    const changed = value
+      ? await t.exec(`insert into doubt_likes (doubt_id, user_id) select $1, $2 where exists (select 1 from doubts where id = $1) on conflict do nothing`, [doubtId, viewer.userId])
+      : await t.exec(`delete from doubt_likes where doubt_id = $1 and user_id = $2`, [doubtId, viewer.userId]);
+    if (changed) await t.exec(`update doubts set likes_count = greatest(0, likes_count + $2) where id = $1`, [doubtId, value ? 1 : -1]);
   });
   return { ok: true };
+}
+
+async function ownDoubt(doubtId: string, viewer: { userId: string; isAdmin: boolean }) {
+  const row = await sql.one<{ author_id: string }>(`select author_id from doubts where id = $1`, [doubtId]);
+  if (!row) return 'missing' as const;
+  return row.author_id === viewer.userId || viewer.isAdmin ? ('ok' as const) : ('denied' as const);
 }
 
 export async function setResolved(doubtId: string, value: boolean) {
   const viewer = await member();
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
-  const ref = db().doc(`doubts/${doubtId}`);
-  const snap = await ref.get();
-  if (!snap.exists) return { error: 'Dúvida não encontrada.' };
-  if (snap.data()?.author_id !== viewer.userId && !viewer.isAdmin) return { error: 'Sem permissão.' };
-  await ref.update({ is_resolved: value });
+  const own = await ownDoubt(doubtId, viewer);
+  if (own === 'missing') return { error: 'Dúvida não encontrada.' };
+  if (own === 'denied') return { error: 'Sem permissão.' };
+  await sql.exec(`update doubts set is_resolved = $2 where id = $1`, [doubtId, value]);
   return { ok: true };
 }
 
 export async function deleteDoubt(doubtId: string) {
   const viewer = await member();
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
-  const ref = db().doc(`doubts/${doubtId}`);
-  const snap = await ref.get();
-  if (!snap.exists) return { ok: true };
-  if (snap.data()?.author_id !== viewer.userId && !viewer.isAdmin) return { error: 'Sem permissão.' };
-  await db().recursiveDelete(ref);
+  const own = await ownDoubt(doubtId, viewer);
+  if (own === 'missing') return { ok: true };
+  if (own === 'denied') return { error: 'Sem permissão.' };
+  await sql.exec(`delete from doubts where id = $1`, [doubtId]); // respostas e curtidas vão junto
   revalidatePath('/duvidas');
   return { ok: true };
 }
@@ -97,14 +93,12 @@ export async function deleteDoubt(doubtId: string) {
 export async function deleteReply(doubtId: string, replyId: string) {
   const viewer = await member();
   if (!viewer || !isDocId(doubtId) || !isDocId(replyId)) return { error: 'Sem acesso.' };
-  const doubtRef = db().doc(`doubts/${doubtId}`);
-  const ref = doubtRef.collection('replies').doc(replyId);
-  return db().runTransaction(async (tx) => {
-    const snap = await tx.get(ref);
-    if (!snap.exists) return { ok: true };
-    if (snap.data()?.author_id !== viewer.userId && !viewer.isAdmin) return { error: 'Sem permissão.' };
-    tx.delete(ref);
-    tx.update(doubtRef, { replies_count: FieldValue.increment(-1) });
+  return tx(async (t) => {
+    const row = await t.one<{ author_id: string }>(`select author_id from doubt_replies where id = $1 and doubt_id = $2 for update`, [replyId, doubtId]);
+    if (!row) return { ok: true };
+    if (row.author_id !== viewer.userId && !viewer.isAdmin) return { error: 'Sem permissão.' };
+    await t.exec(`delete from doubt_replies where id = $1`, [replyId]);
+    await t.exec(`update doubts set replies_count = greatest(0, replies_count - 1) where id = $1`, [doubtId]);
     return { ok: true };
   });
 }

@@ -4,7 +4,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Badge, Card, PageHeader, Stat } from '@/components/ui';
-import { db, fromDoc, fromQuery, getMany } from '@/lib/db';
+import { sql } from '@/lib/db';
 import { ENEM_AREAS, type Simulado, type SimuladoResult, type SimuladoStats, type SimuladoSubmission } from '@/lib/types';
 import { cn, formatClock } from '@/lib/utils';
 import { SimuladoAdminActions, ResetButton } from './simulado-admin-actions';
@@ -14,19 +14,21 @@ export const metadata: Metadata = { title: 'Simulado · Admin' };
 export default async function AdminSimulado({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!isDocId(id)) notFound();
-  const d = db();
-  const [simSnap, keySnap, subsSnap, resSnap] = await Promise.all([
-    d.doc(`simulados/${id}`).get(),
-    d.doc(`simulado_keys/${id}`).get(),
-    d.collection('simulado_submissions').where('simulado_id', '==', id).get(),
-    d.collection('simulado_results').where('simulado_id', '==', id).select('user_id', 'correct', 'tri_score', 'coherence', 'accuracy').get(),
+  const [simulado, key, submissions, results, profs] = await Promise.all([
+    sql.one<Simulado>(`select * from simulados where id = $1`, [id]),
+    sql.one<{ answer_key: string }>(`select answer_key from simulado_keys where simulado_id = $1`, [id]),
+    sql.query<SimuladoSubmission>(`select * from simulado_submissions where simulado_id = $1`, [id]),
+    sql.query<Pick<SimuladoResult, 'user_id' | 'correct' | 'tri_score' | 'coherence' | 'accuracy'>>(
+      `select user_id, correct, tri_score, coherence, accuracy from simulado_results where simulado_id = $1`,
+      [id],
+    ),
+    sql.query<{ id: string; full_name: string; email: string }>(
+      `select u.id, u.full_name, u.email from users u join simulado_submissions s on s.user_id = u.id where s.simulado_id = $1`,
+      [id],
+    ),
   ]);
-  const simulado = fromDoc<Simulado>(simSnap);
   if (!simulado) notFound();
-  const key = { answer_key: String(keySnap.get('answer_key') ?? '') };
-  const submissions = fromQuery<SimuladoSubmission>(subsSnap);
-  const resBy = new Map(fromQuery<Pick<SimuladoResult, 'user_id' | 'correct' | 'tri_score' | 'coherence' | 'accuracy'>>(resSnap).map((r) => [r.user_id, r]));
-  const profs = await getMany<{ id: string; full_name: string; email: string }>('users', submissions.map((s) => s.user_id));
+  const resBy = new Map(results.map((r) => [r.user_id, r]));
   const profBy = new Map(profs.map((p) => [p.id, p]));
   const stats = simulado.stats as SimuladoStats;
   const answerKey = key?.answer_key ?? '';
