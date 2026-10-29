@@ -16,9 +16,11 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
   const args: unknown[] = [];
   if (term) {
     args.push(`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    where.push(`(lower(s.name) like $${args.length} or s.email like $${args.length} or s.phone like $${args.length})`);
+    where.push(`(lower(s.name) like $${args.length} or s.email like $${args.length} or s.phone like $${args.length} or lower(coalesce(c.name, '')) like $${args.length})`);
   }
+  // Por padrão: só quem está em alguma turma
   if (turma === 'none') where.push('s.class_id is null');
+  else if (!turma) where.push('s.class_id is not null');
   else if (turma) {
     args.push(turma);
     where.push(`s.class_id = $${args.length}`);
@@ -32,9 +34,10 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
     sql.query<Student & { total: number; full_name: string | null; avatar_url: string | null }>(
       `select s.*, count(*) over () as total, u.full_name, u.avatar_url
          from students s
+         left join classes c on c.id = s.class_id
          left join lateral (select full_name, avatar_url from users where email = s.email limit 1) u on true
          ${filter}
-         order by s.created_at desc
+         order by c.name nulls last, lower(coalesce(nullif(s.name, ''), s.email))
          limit ${PAGE} offset ${(page - 1) * PAGE}`,
       args,
     ),
@@ -47,7 +50,7 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHeader title="Alunos" subtitle="Somente e-mails desta lista (ativos e com turma) acessam o conteúdo pago." />
+      <PageHeader title="Alunos" subtitle="Alunos das turmas. Busque por nome ou turma." />
       <StudentsManager
         students={students}
         classes={classes}

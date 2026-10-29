@@ -3,6 +3,7 @@
 import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, refreshCatalog, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { emailKey, newId, sql, tx } from '@/lib/db';
+import { BOOTSTRAP_ADMIN } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
 
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]{2,}$/;
@@ -119,6 +120,53 @@ export async function bulkStudents(ids: string[], op: { class_id?: string | null
     }
     refresh();
     return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Usuários (contas criadas) que ainda não estão em nenhuma turma. */
+export async function listUnassignedUsers(q: string): Promise<{ users?: { email: string; name: string; avatar_url: string }[]; error?: string }> {
+  try {
+    await requireAdminAction();
+    const term = String(q ?? '').trim().toLowerCase().slice(0, 100);
+    const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const users = await sql.query<{ email: string; name: string; avatar_url: string }>(
+      `select distinct on (lower(u.email)) lower(u.email) as email, coalesce(nullif(s.name, ''), u.full_name, '') as name, u.avatar_url
+         from users u
+         left join students s on s.email = lower(u.email)
+        where u.email <> ''
+          and s.class_id is null
+          and lower(u.email) <> $3
+          and not exists (select 1 from admins a where a.email = lower(u.email))
+          and ($1 = '' or lower(u.email) like $2 or lower(u.full_name) like $2)
+        order by lower(u.email)
+        limit 500`,
+      [term, like, BOOTSTRAP_ADMIN],
+    );
+    return { users: users.sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, 'pt-BR')) };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Coloca os usuários escolhidos numa turma (cria o aluno se ainda não existe). */
+export async function addUsersToClass(emails: string[], classId: string): Promise<ActionResult & { count?: number }> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(classId)) return { error: 'Escolha a turma.' };
+    const list = [...new Set(emails.map((e) => String(e).trim().toLowerCase()).filter((e) => EMAIL_RE.test(e)))].slice(0, 2000);
+    if (!list.length) return { error: 'Selecione pelo menos um e-mail.' };
+    await sql.exec(
+      `insert into students (id, email, name, class_id, status)
+       select replace(e, '/', '_'), e, coalesce((select full_name from users where lower(email) = e limit 1), ''), $2, 'active'
+         from unnest($1::text[]) as e
+       on conflict (id) do update set class_id = excluded.class_id, status = 'active',
+         name = case when students.name = '' then excluded.name else students.name end, updated_at = now()`,
+      [list, classId],
+    );
+    refresh();
+    return { ok: true, count: list.length };
   } catch (e) {
     return fail(e);
   }
