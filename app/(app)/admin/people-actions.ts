@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, refreshCatalog, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { emailKey, newId, sql, tx } from '@/lib/db';
 import { isDocId } from '@/lib/utils';
@@ -8,6 +8,7 @@ import { isDocId } from '@/lib/utils';
 const EMAIL_RE = /^[^\s@/]+@[^\s@/]+\.[^\s@/]{2,}$/;
 
 function refresh() {
+  updateTag('viewers');
   revalidatePath('/admin/alunos');
   revalidatePath('/admin/turmas');
   revalidatePath('/', 'layout');

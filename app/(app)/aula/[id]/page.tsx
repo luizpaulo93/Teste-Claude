@@ -17,7 +17,14 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
-  const [lesson, settings, catalog] = await Promise.all([sql.one<Lesson>(`select * from lessons where id = $1`, [id]), getSettings(), getCatalogData()]);
+  // Tudo em paralelo (uma ida ao banco): aula, comentários e progresso do aluno
+  const [lesson, settings, catalog, comments, state] = await Promise.all([
+    sql.one<Lesson>(`select * from lessons where id = $1`, [id]),
+    getSettings(),
+    getCatalogData(),
+    sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 order by created_at desc limit 30`, [id]),
+    getMyState(viewer.userId),
+  ]);
   const course = lesson ? catalog.courses.find((c) => c.id === lesson.course_id) : undefined;
 
   if (!lesson || !canSeeLesson(viewer, lesson, course, settings.restrict_to_student_list)) {
@@ -35,11 +42,7 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const [comments, tree, state] = await Promise.all([
-    sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 order by created_at desc limit 30`, [id]),
-    getCourseTree(lesson.course_id, viewer),
-    getMyState(viewer.userId),
-  ]);
+  const tree = await getCourseTree(lesson.course_id, viewer); // vem do cache do catálogo
   const progress = state.progress;
   const prog = progress.find((x) => x.lesson_id === id);
   const ordered = tree.modules.flatMap((m) => tree.lessons.filter((l) => l.module_id === m.id));

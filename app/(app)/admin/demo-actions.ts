@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { fail, refreshCatalog, requireAdminAction, type ActionResult } from '@/lib/admin/guard';
 import { authorOf } from '@/lib/author';
 import { sql, tx, type Queryable } from '@/lib/db';
@@ -76,6 +76,8 @@ export async function loadDemo(): Promise<ActionResult> {
       await t.exec(`insert into simulado_keys (simulado_id, answer_key) values ('demo_sim', 'ABCDEABCDE')`);
     });
     refreshCatalog();
+    updateTag('lives');
+    updateTag('viewers');
     revalidatePath('/', 'layout');
     return { ok: true };
   } catch (e) {
@@ -92,6 +94,8 @@ export async function removeDemo(): Promise<ActionResult> {
       for (const table of DEMO_TABLES) await t.exec(`delete from ${table} where demo`);
     });
     refreshCatalog();
+    updateTag('lives');
+    updateTag('viewers');
     revalidatePath('/', 'layout');
     return { ok: true };
   } catch (e) {

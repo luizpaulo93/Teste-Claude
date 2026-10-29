@@ -1,4 +1,5 @@
 import { cookies } from 'next/headers';
+import { revalidateTag } from 'next/cache';
 import { NextResponse, type NextRequest } from 'next/server';
 import { sql } from '@/lib/db';
 import { adminAuth } from '@/lib/firebase/admin';
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
          avatar_url = case when users.avatar_url = '' then excluded.avatar_url else users.avatar_url end`,
       [decoded.uid, email, String(decoded.name ?? '') || email.split('@')[0], String(decoded.picture ?? ''), isListedAdmin ? 'admin' : 'student', isListedAdmin],
     );
+    revalidateTag(`viewer-${decoded.uid}`, { expire: 0 }); // perfil novo/atualizado aparece na hora
   } catch (e) {
     console.error('[session]', e instanceof Error ? e.message : e);
     return NextResponse.json({ error: 'Não foi possível acessar o banco de dados. Tente de novo em instantes.' }, { status: 503 });

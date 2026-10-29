@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { EVENT_CATEGORIES, EVENT_COLORS } from '@/lib/calendar';
 import { emailKey, newId, sql, tx } from '@/lib/db';
@@ -91,6 +91,7 @@ export async function saveSettings(fd: FormData): Promise<ActionResult> {
 
 async function setRoleByEmail(email: string, role: 'admin' | 'student') {
   await sql.exec(`update users set role = $2 where email = $1`, [email, role]);
+  updateTag('viewers');
 }
 
 export async function addAdmin(fd: FormData): Promise<ActionResult> {
@@ -156,6 +157,7 @@ export async function saveMentoria(fd: FormData): Promise<ActionResult> {
       );
       if (!n) return { error: 'Este aluno já tem mentoria.' };
     }
+    updateTag('viewers');
     revalidatePath('/admin/mentoria');
     revalidatePath(`/admin/mentoria/${key}`);
     return { ok: true, id: key };
@@ -169,6 +171,7 @@ export async function deleteMentoria(id: string): Promise<ActionResult> {
     await requireAdminAction();
     if (!id || id.includes('/')) return { error: 'Inválido.' };
     await sql.exec(`delete from mentorias where id = $1`, [id]); // tarefas, check-ins e encontros vão junto
+    updateTag('viewers');
     revalidatePath('/admin/mentoria');
     return { ok: true };
   } catch (e) {

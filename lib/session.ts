@@ -1,6 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 import { emailKey, getCatalogData, getSettings, sql } from './db';
 import { adminAuth } from './firebase/admin';
@@ -21,6 +22,28 @@ export interface Viewer {
   classCourseIds: string[];
   /** Aluno liberado (ativo e com turma) ou admin, ou plataforma aberta. */
   isMember: boolean;
+  /** Tem mentoria individual ativa. */
+  hasMentoria: boolean;
+}
+
+type UserRow = { profile: Partial<Profile> | null; student: Student | null; mentoria: boolean } | null;
+
+/**
+ * Dados do usuário guardados por 5 min. São renovados na hora quando o admin muda alunos,
+ * turmas, mentorias ou administradores (tag "viewers") ou quando o próprio usuário edita o perfil.
+ */
+function userRow(uid: string, key: string): Promise<UserRow> {
+  return unstable_cache(
+    () =>
+      sql.one<NonNullable<UserRow>>(
+        `select (select to_jsonb(u) from users u where u.id = $1) as profile,
+                (select to_jsonb(s) from students s where s.id = $2) as student,
+                exists(select 1 from mentorias m where m.id = $2 and m.status = 'active') as mentoria`,
+        [uid, key],
+      ),
+    ['viewer-v1', uid, key],
+    { tags: ['viewers', `viewer-${uid}`], revalidate: 300 },
+  )();
 }
 
 /** Usuário logado (cookie de sessão do Firebase) — carregado 1x por requisição. */
@@ -41,16 +64,8 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     return null;
   }
 
-  // Perfil e cadastro de aluno numa consulta só
-  const [row, settings, catalog] = await Promise.all([
-    sql.one<{ profile: Partial<Profile> | null; student: Student | null }>(
-      `select (select to_jsonb(u) from users u where u.id = $1) as profile,
-              (select to_jsonb(s) from students s where s.id = $2) as student`,
-      [uid, emailKey(email || '-')],
-    ),
-    getSettings(),
-    getCatalogData(),
-  ]);
+  // Perfil, cadastro de aluno e mentoria: em cache (trocar de página não vai ao banco)
+  const [row, settings, catalog] = await Promise.all([userRow(uid, emailKey(email || '-')), getSettings(), getCatalogData()]);
 
   const profile: Profile = {
     id: uid,
@@ -77,6 +92,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     classGroup,
     classCourseIds: classGroup?.course_ids ?? [],
     isMember,
+    hasMentoria: isAdmin || Boolean(row?.mentoria),
   };
 });
 

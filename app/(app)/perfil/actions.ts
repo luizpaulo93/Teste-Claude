@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { sql } from '@/lib/db';
 import { requireViewer } from '@/lib/session';
 
@@ -19,6 +19,7 @@ export async function updateProfile(_: unknown, form: FormData) {
   } catch {
     return { error: 'Não foi possível salvar.' };
   }
+  updateTag(`viewer-${viewer.userId}`);
   revalidatePath('/', 'layout');
   return { ok: true };
 }

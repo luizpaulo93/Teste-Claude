@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
     optimizePackageImports: ['lucide-react'],
+    // Voltar para uma página já aberta nos últimos 30 s é instantâneo (sem ir ao servidor)
+    staleTimes: { dynamic: 30 },
   },
   async headers() {
     return [

@@ -14,11 +14,21 @@ export async function canSeeLive(viewer: Viewer, live: LiveSession) {
   return Boolean(course && canAccessCourse(viewer, course, settings.restrict_to_student_list));
 }
 
+/** Lives agendadas e no ar, em cache (renovado quando o admin agenda, inicia ou encerra uma live). */
+const activeLives = unstable_cache(
+  () => sql.query<LiveSession>(`select * from live_sessions where status <> 'ended' order by starts_at desc limit 300`),
+  ['lives-active-v1'],
+  { tags: ['lives'], revalidate: 60 },
+);
+
 export async function visibleLives(viewer: Viewer, statuses?: LiveSession['status'][]) {
   if (!viewer.isMember) return [];
-  const list = statuses?.length
-    ? await sql.query<LiveSession>(`select * from live_sessions where status = any($1) order by starts_at desc limit 300`, [statuses])
-    : await sql.query<LiveSession>(`select * from live_sessions order by starts_at desc limit 300`);
+  const onlyActive = statuses?.length && !statuses.includes('ended');
+  const list = onlyActive
+    ? (await activeLives()).filter((l) => statuses!.includes(l.status))
+    : statuses?.length
+      ? await sql.query<LiveSession>(`select * from live_sessions where status = any($1) order by starts_at desc limit 300`, [statuses])
+      : await sql.query<LiveSession>(`select * from live_sessions order by starts_at desc limit 300`);
   const ok = await Promise.all(list.map((l) => canSeeLive(viewer, l)));
   return list.filter((_, i) => ok[i]);
 }

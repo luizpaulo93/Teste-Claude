@@ -3,7 +3,7 @@
 import { CheckCircle2, ChevronLeft, ChevronRight, Circle, FileText, Heart, Download, PlayCircle, ExternalLink } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
@@ -37,6 +37,24 @@ export function LessonView(p: Props) {
   const [pdf, setPdf] = useState<{ title: string; url: string } | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const savingRef = useRef(false);
+  // Modo cinema: vídeo na largura toda (lembrado neste navegador)
+  const [theater, setTheater] = useState(false);
+  useEffect(() => {
+    try {
+      setTheater(localStorage.getItem('vertice_theater') === '1');
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  const toggleTheater = () =>
+    setTheater((v) => {
+      try {
+        localStorage.setItem('vertice_theater', v ? '0' : '1');
+      } catch {
+        /* sem armazenamento */
+      }
+      return !v;
+    });
 
   const saveProgress = useCallback(
     async (patch: { completed?: boolean; position_sec?: number; duration_sec?: number }) => {
@@ -101,13 +119,18 @@ export function LessonView(p: Props) {
   const doneCount = p.lessons.filter((l) => doneSet.has(l.id)).length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]">
+    <div className={cn('grid gap-6', !theater && 'lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]')}>
       <div className="min-w-0 space-y-5">
-        <div className="-mx-4 sm:mx-0">
+        <div className={cn('-mx-4 sm:mx-0', theater && 'lg:mx-auto lg:max-w-[min(100%,calc((100dvh-140px)*16/9))]')}>
           {hasVideo ? (
             <VideoPlayer
               key={p.lesson.id}
               videoId={p.lesson.youtube_id}
+              title={p.lesson.title}
+              completed={completed}
+              onToggleComplete={() => setDone(!completed)}
+              theater={theater}
+              onToggleTheater={toggleTheater}
               poster={p.lesson.thumbnail_url || youtubeThumb(p.lesson.youtube_id)}
               watermark={p.watermark}
               startAt={p.startAt}
@@ -200,7 +223,7 @@ export function LessonView(p: Props) {
       </div>
 
       {/* Lista de aulas */}
-      <aside className="lg:sticky lg:top-6 lg:self-start">
+      <aside className={cn(!theater && 'lg:sticky lg:top-6 lg:self-start')}>
         <Card className="overflow-hidden">
           <div className="border-b border-line p-4">
             <p className="text-sm font-bold text-ink">Conteúdo do curso</p>

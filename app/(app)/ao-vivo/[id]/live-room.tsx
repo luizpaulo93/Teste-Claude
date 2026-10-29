@@ -53,7 +53,7 @@ export function LiveRoom({
           {live.status === 'scheduled' ? (
             <Countdown startsAt={live.starts_at} serverNow={serverNow} label={scheduledLabel} icon={icons.scheduled} cover={live.cover_url} />
           ) : live.youtube_id ? (
-            <VideoPlayer key={live.status} videoId={live.youtube_id} live={live.status === 'live'} poster={live.cover_url || youtubeThumb(live.youtube_id)} watermark={watermark} />
+            <VideoPlayer key={live.status} videoId={live.youtube_id} title={live.title} live={live.status === 'live'} poster={live.cover_url || youtubeThumb(live.youtube_id)} watermark={watermark} />
           ) : (
             <div className="grid aspect-video place-items-center bg-surface-2 text-center sm:rounded-2xl">
               <p className="px-6 text-sm text-muted">Transmissão encerrada. A gravação não está disponível.</p>

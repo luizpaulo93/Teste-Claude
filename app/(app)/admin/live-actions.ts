@@ -6,6 +6,7 @@ import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
 
 function refresh(id?: string) {
+  updateTag('lives');
   if (id) updateTag(`live-${id}`);
   revalidatePath('/admin/ao-vivo');
   revalidatePath('/', 'layout');
