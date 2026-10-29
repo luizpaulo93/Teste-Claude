@@ -33,7 +33,7 @@ export function MentoriaDetail({
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px]">
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <Card className="p-4 sm:p-5">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -131,7 +131,7 @@ export function MentoriaDetail({
         </Card>
       </div>
 
-      <div className="space-y-6">
+      <div className="min-w-0 space-y-6">
         <Card className="p-5">
           <p className="text-sm font-bold text-ink">Dados da mentoria</p>
           <dl className="mt-3 space-y-2 text-sm">

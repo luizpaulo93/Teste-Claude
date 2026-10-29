@@ -84,7 +84,7 @@ export function ModulesManager({
             </div>
             <ul className="divide-y divide-line">
               {ml.map((l, li) => (
-                <li key={l.id} className="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+                <li key={l.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:px-4">
                   <span className="w-5 shrink-0 text-center text-[11px] font-bold text-brand tabular-nums">{li + 1}.</span>
                   <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-surface-2">
                     {l.thumbnail_url || l.youtube_id ? (
@@ -96,7 +96,7 @@ export function ModulesManager({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setLessonModal({ lesson: l, moduleId: m.id })} className="line-clamp-1 text-left text-sm font-semibold text-ink hover:text-brand">
+                    <button type="button" onClick={() => setLessonModal({ lesson: l, moduleId: m.id })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
                       {l.title}
                     </button>
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -115,7 +115,7 @@ export function ModulesManager({
                       {l.duration && <span className="text-[11px] text-muted">{l.duration}</span>}
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center">
+                  <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-line/60 max-sm:pt-1.5">
                     <ActionButton action={() => moveLessonInModule(m.id, l.id, -1)} variant="ghost" size="sm" className="px-1.5" title="Subir" disabled={li === 0}>
                       <ArrowUp className="size-3.5" />
                     </ActionButton>
@@ -126,7 +126,7 @@ export function ModulesManager({
                       action={() => toggleLessonFlag(l.id, 'is_published', !l.is_published)}
                       variant="ghost"
                       size="sm"
-                      className="hidden px-1.5 sm:inline-flex"
+                      className="px-1.5"
                       title={l.is_published ? 'Ocultar' : 'Publicar'}
                     >
                       {l.is_published ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}

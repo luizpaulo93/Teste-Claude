@@ -1,5 +1,8 @@
+import { twMerge } from 'tailwind-merge';
+
+/** Junta classes do Tailwind resolvendo conflitos (ex.: "inline-flex" + "hidden sm:inline-flex" esconde no celular). */
 export function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(' ');
+  return twMerge(classes.filter(Boolean).join(' '));
 }
 
 export function extractYoutubeId(input: string): string {

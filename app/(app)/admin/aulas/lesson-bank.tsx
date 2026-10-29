@@ -1,25 +1,22 @@
 'use client';
 
-import { ArrowDown, ArrowDownAZ, ArrowUp, Eye, EyeOff, FileText, Folder, FolderInput, FolderPlus, Inbox, Pencil, Plus, Trash2, UploadCloud, Video } from 'lucide-react';
+import { ArrowDown, ArrowUp, Eye, EyeOff, FileText, Folder, FolderInput, FolderPlus, Inbox, Pencil, Plus, Trash2, Video } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
-import { byTitle, LessonForm } from '@/components/admin/lesson-form';
-import { ImageUpload, PdfDrop } from '@/components/admin/uploads';
+import { LessonForm } from '@/components/admin/lesson-form';
 import { toast } from '@/components/toast';
 import { Badge, Button, Card, EmptyState, Img, Input } from '@/components/ui';
 import { ActionButton, Modal, Spinner } from '@/components/ui-client';
 import type { Lesson, LessonFolder } from '@/lib/types';
 import { cn, youtubeThumb } from '@/lib/utils';
 import {
-  createPdfLessons,
   deleteFolder,
   deleteLesson,
   moveFolder,
   moveLessonInFolder,
   moveLessonsToFolder,
   saveFolder,
-  sortFolderAlphabetically,
   toggleLessonFlag,
 } from '../content-actions';
 
@@ -32,7 +29,6 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
   const router = useRouter();
   const [folderModal, setFolderModal] = useState<{ folder?: LessonFolder } | null>(null);
   const [lessonModal, setLessonModal] = useState<{ lesson?: BankLesson } | null>(null);
-  const [batchOpen, setBatchOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
@@ -128,14 +124,6 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
           <Button onClick={() => setLessonModal({})}>
             <Plus className="size-4" /> Criar aula
           </Button>
-          <Button variant="secondary" onClick={() => setBatchOpen(true)}>
-            <UploadCloud className="size-4" /> PDFs em lote
-          </Button>
-          {list.length > 1 && (
-            <ActionButton action={() => sortFolderAlphabetically(current)} success="Pasta em ordem alfabética" variant="outline" confirm="Colocar as aulas desta pasta em ordem alfabética?">
-              <ArrowDownAZ className="size-4" /> Ordem alfabética
-            </ActionButton>
-          )}
           {selected.size > 0 && (
             <Button variant="outline" onClick={() => setMoveOpen(true)}>
               <FolderInput className="size-4" /> Transferir ({selected.size})
@@ -148,7 +136,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
             {list.map((l, i) => {
               const pdfs = l.materials?.length ?? 0;
               return (
-                <div key={l.id} className={cn('flex items-center gap-3 px-3 py-2.5 sm:px-4', selected.has(l.id) && 'bg-brand-soft/60')}>
+                <div key={l.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:px-4', selected.has(l.id) && 'bg-brand-soft/60')}>
                   <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleSel(l.id)} aria-label="Selecionar" className="size-4 shrink-0 accent-[#3b82f6]" />
                   <span className="w-5 shrink-0 text-center text-[11px] font-bold text-muted tabular-nums">{i + 1}</span>
                   <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-surface-2 sm:w-24">
@@ -161,7 +149,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setLessonModal({ lesson: l })} className="line-clamp-1 text-left text-sm font-semibold text-ink hover:text-brand">
+                    <button type="button" onClick={() => setLessonModal({ lesson: l })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
                       {l.title}
                     </button>
                     <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -180,7 +168,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                       <span className="text-[11px] text-muted">{l.uses ? `em ${l.uses} módulo${l.uses > 1 ? 's' : ''}` : 'ainda não está em nenhum curso'}</span>
                     </div>
                   </div>
-                  <div className="flex shrink-0 items-center">
+                  <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-line/60 max-sm:pt-1.5">
                     <ActionButton action={() => moveLessonInFolder(l.id, -1)} variant="ghost" size="sm" className="px-1.5" title="Subir" disabled={i === 0}>
                       <ArrowUp className="size-3.5" />
                     </ActionButton>
@@ -191,7 +179,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                       action={() => toggleLessonFlag(l.id, 'is_published', !l.is_published)}
                       variant="ghost"
                       size="sm"
-                      className="hidden px-1.5 sm:inline-flex"
+                      className="px-1.5"
                       title={l.is_published ? 'Ocultar' : 'Publicar'}
                     >
                       {l.is_published ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
@@ -216,7 +204,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
           <EmptyState
             icon={<Folder className="size-6" />}
             title="Pasta vazia"
-            description="Crie uma aula (vídeo do YouTube e/ou PDFs) ou envie vários PDFs de uma vez: cada PDF vira uma aula, em ordem alfabética."
+            description="Crie uma aula com vídeo do YouTube e/ou PDFs."
           />
         )}
       </div>
@@ -253,11 +241,6 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
         {lessonModal && <LessonForm lesson={lessonModal.lesson} folders={folders} folderId={current} onDone={() => setLessonModal(null)} />}
       </Modal>
 
-      {/* PDFs em lote */}
-      <Modal open={batchOpen} onClose={() => setBatchOpen(false)} title={`PDFs em lote em “${currentName}”`} size="lg">
-        {batchOpen && <BatchPdf folderId={current} onDone={() => setBatchOpen(false)} />}
-      </Modal>
-
       {/* Transferir */}
       <Modal open={moveOpen} onClose={() => setMoveOpen(false)} title={`Transferir ${selected.size} aula(s) para…`} size="sm">
         <div className="space-y-2">
@@ -285,69 +268,5 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
         </div>
       </Modal>
     </div>
-  );
-}
-
-/** Vários PDFs → uma aula para cada, em ordem alfabética (depois reorganiza com as setas). */
-function BatchPdf({ folderId, onDone }: { folderId: string | null; onDone: () => void }) {
-  const [files, setFiles] = useState<{ title: string; file_path: string; size_label: string }[]>([]);
-  const [uploading, setUploading] = useState(false);
-  const [pending, start] = useTransition();
-  const sorted = [...files].sort(byTitle);
-
-  return (
-    <form
-      className="space-y-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        const cover = String(new FormData(e.currentTarget).get('cover') ?? '');
-        start(async () => {
-          const r = await createPdfLessons(folderId, sorted, cover);
-          if (r.error) return void toast.error(r.error);
-          toast(`${r.count} aula(s) criada(s) em ordem alfabética`);
-          onDone();
-        });
-      }}
-    >
-      <p className="text-sm text-muted">
-        Cada PDF vira uma aula (o nome do arquivo vira o título). Elas entram em <strong className="text-ink-2">ordem alfabética</strong>; depois é só usar as
-        setas para deixar na ordem que você quiser.
-      </p>
-      <div>
-        <PdfDrop
-          onBatchStart={() => setUploading(true)}
-          multiple
-          folder="lessons"
-          label="Escolher PDFs (pode selecionar vários)"
-          onUploaded={(r) => setFiles((l) => [...l, { title: r.title, file_path: r.path, size_label: r.size }])}
-          onBatchDone={() => setUploading(false)}
-        />
-      </div>
-      {sorted.length > 0 && (
-        <ul className="scrollbar-thin max-h-60 space-y-1.5 overflow-y-auto">
-          {sorted.map((f, i) => (
-            <li key={f.file_path} className="flex items-center gap-2 rounded-lg border border-line bg-surface-2/60 px-2.5 py-1.5 text-sm">
-              <span className="w-6 text-[11px] font-bold text-muted tabular-nums">{i + 1}</span>
-              <FileText className="size-4 shrink-0 text-danger" />
-              <span className="min-w-0 flex-1 truncate text-ink">{f.title}</span>
-              <span className="text-[11px] text-muted">{f.size_label}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Foto de capa para todas (opcional)</span>
-        <p className="text-[11px] text-muted">Indica o tipo de material, por exemplo “Lista de exercícios”. Dá para trocar a foto de cada aula depois.</p>
-        <ImageUpload name="cover" folder="lessons" aspect="aspect-video max-w-[240px]" maxSize={1280} />
-      </div>
-      <div className="flex justify-end gap-2">
-        <Button variant="ghost" onClick={onDone}>
-          Cancelar
-        </Button>
-        <Button type="submit" disabled={!files.length || pending || uploading}>
-          {pending && <Spinner />} Criar {files.length || ''} aula{files.length === 1 ? '' : 's'}
-        </Button>
-      </div>
-    </form>
   );
 }

@@ -279,34 +279,6 @@ export async function toggleLessonFlag(id: string, field: 'is_published' | 'is_f
   }
 }
 
-/**
- * PDFs em lote: cada PDF vira uma aula (só material) dentro da pasta, em ordem alfabética.
- * Depois o professor reorganiza do jeito que quiser. Uma foto opcional vira a capa de todas.
- */
-export async function createPdfLessons(folderId: string | null, items: MaterialInput[], coverUrl = ''): Promise<ActionResult & { count?: number }> {
-  try {
-    await requireAdminAction();
-    const folder = folderId && isDocId(folderId) ? folderId : null;
-    const cover = /^https?:\/\//.test(coverUrl) ? coverUrl.slice(0, 2000) : '';
-    const list = cleanMaterials(items).sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { numeric: true, sensitivity: 'base' }));
-    if (!list.length) return { error: 'Nenhum PDF enviado.' };
-    await tx(async (t) => {
-      const start = (await t.one<{ p: number }>(POSITION_SQL.folder, [folder]))?.p ?? 0;
-      for (const [i, m] of list.entries()) {
-        await t.exec(
-          `insert into lessons (id, title, thumbnail_url, is_free, is_published, folder_id, materials, material_paths, position)
-           values ($1, $2, $3, false, true, $4, $5, $6, $7)`,
-          [newId(), m.title, cover, folder, JSON.stringify([m]), [m.file_path], start + i],
-        );
-      }
-    });
-    refreshLessons();
-    return { ok: true, count: list.length };
-  } catch (e) {
-    return fail(e, 'Não foi possível criar as aulas.');
-  }
-}
-
 /** Sobe/desce uma aula dentro da pasta. */
 export async function moveLessonInFolder(id: string, dir: -1 | 1): Promise<ActionResult> {
   try {
@@ -328,21 +300,6 @@ export async function moveLessonInFolder(id: string, dir: -1 | 1): Promise<Actio
         [list.map((x) => x.id)],
       );
     });
-    revalidatePath('/admin/aulas');
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
-
-/** Ordena as aulas da pasta em ordem alfabética (A→Z). */
-export async function sortFolderAlphabetically(folderId: string | null): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    const folder = folderId && isDocId(folderId) ? folderId : null;
-    const list = await sql.query<{ id: string; title: string }>(`select id, title from lessons where folder_id is not distinct from $1`, [folder]);
-    list.sort((a, b) => a.title.localeCompare(b.title, 'pt-BR', { numeric: true, sensitivity: 'base' }));
-    await sql.exec(`update lessons l set position = v.pos - 1 from unnest($1::text[]) with ordinality as v(id, pos) where l.id = v.id`, [list.map((x) => x.id)]);
     revalidatePath('/admin/aulas');
     return { ok: true };
   } catch (e) {
