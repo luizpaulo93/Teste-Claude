@@ -49,7 +49,7 @@ function loadYouTubeApi(): Promise<any> {
 }
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 1.75, 2];
-const HIDE_AFTER_MS = 3000;
+const HIDE_AFTER_MS = 2000; // controles somem 2 s depois do último toque
 const EDGE = 0.28; // 28% de cada lado: toque duplo volta/avança 10 s
 const SAVE_EVERY_SEC = 30;
 
@@ -190,12 +190,16 @@ export function VideoPlayer({
     };
   }, [report]);
 
+  /** Mostra os controles e esconde depois de 2 s sem nenhuma ação. */
   const scheduleHide = useCallback(() => {
     setControls(true);
     if (hideRef.current) window.clearTimeout(hideRef.current);
-    hideRef.current = window.setTimeout(() => {
-      if (playerRef.current?.getPlayerState?.() === 1) setControls(false);
-    }, HIDE_AFTER_MS);
+    hideRef.current = window.setTimeout(() => setControls(false), HIDE_AFTER_MS);
+  }, []);
+
+  const hideNow = useCallback(() => {
+    if (hideRef.current) window.clearTimeout(hideRef.current);
+    setControls(false);
   }, []);
 
   const finish = useCallback(() => {
@@ -269,10 +273,7 @@ export function VideoPlayer({
               setEnded(false);
               setDuration(e.target.getDuration() || 0);
             }
-            if (st === 2) {
-              setControls(true);
-              report(true);
-            }
+            if (st === 2) report(true);
             if (st === 0) finish();
           },
         },
@@ -354,7 +355,7 @@ export function VideoPlayer({
     const total = tapRef.current.side === side && feedback ? tapRef.current.total + 10 : 10;
     tapRef.current.total = total;
     setFeedback({ side, sec: total, key: Date.now() });
-    setControls(false);
+    hideNow(); // avançar/voltar não mostra os controles
     if (feedbackTimer.current) window.clearTimeout(feedbackTimer.current);
     feedbackTimer.current = window.setTimeout(() => {
       setFeedback(null);
@@ -364,9 +365,9 @@ export function VideoPlayer({
 
   /**
    * Clique/toque no vídeo:
-   * - nas laterais, toque duplo volta/avança 10 s;
-   * - no meio, com mouse pausa/continua e com o dedo mostra/esconde os controles;
-   * - clique duplo no meio: tela cheia.
+   * - um toque mostra os controles (somem sozinhos em 2 s) ou esconde se já estiverem na tela;
+   * - toque duplo na esquerda volta 10 s, na direita avança 10 s (sem mostrar os controles);
+   * - clique duplo no meio: tela cheia. Play/pause fica na barra de baixo.
    */
   const onSurface = (e: React.PointerEvent<HTMLDivElement>) => {
     if (ended) return;
@@ -389,14 +390,12 @@ export function VideoPlayer({
     }
     // Espera um instante para saber se é toque duplo
     const single = () => {
-      if (!playerRef.current || playerRef.current.getPlayerState?.() !== 1) return play();
-      if (touch) {
-        if (controls) setControls(false);
-        else scheduleHide();
-      } else toggle();
+      if (!ready) return;
+      if (controls) hideNow();
+      else scheduleHide();
     };
-    if (side || !touch) t.timer = window.setTimeout(single, side ? 260 : 220);
-    else single();
+    // Espera um instante para saber se vem um segundo toque
+    t.timer = window.setTimeout(single, side || !touch ? 260 : 200);
   };
 
   const toggleMute = () => {
@@ -519,12 +518,12 @@ export function VideoPlayer({
   const shownTime = seeking ?? time;
   const pct = duration ? Math.min(100, (shownTime / duration) * 100) : 0;
   const isFull = fs || pseudoFs;
-  const barVisible = ready && !ytError && (controls || !playing || ended) && !speedOpen;
+  const barVisible = ready && !ytError && (controls || ended) && !speedOpen;
 
   return (
     <div
       ref={wrapRef}
-      onMouseMove={started && !ended ? scheduleHide : undefined}
+      onPointerMove={started && !ended ? (e) => e.pointerType === 'mouse' && scheduleHide() : undefined}
       onContextMenu={(e) => e.preventDefault()}
       className={cn(
         'group/player relative isolate overflow-hidden bg-black select-none',
@@ -631,14 +630,8 @@ export function VideoPlayer({
         </div>
       )}
 
-      {/* Pausado: botão grande (e cobre as sugestões do YouTube) */}
-      {ready && !ytError && !playing && !ended && !speedOpen && (
-        <button type="button" onClick={play} className="absolute inset-0 z-20 grid place-items-center bg-black/50 backdrop-blur-[2px]" aria-label="Continuar">
-          <span className="grid size-16 place-items-center rounded-full border border-white/20 bg-brand/90 text-white shadow-[0_8px_32px_rgba(37,99,235,0.6)] transition-transform hover:scale-110 sm:size-20">
-            <Play className="ml-1 size-7 fill-current sm:size-9" />
-          </span>
-        </button>
-      )}
+      {/* Pausado: só escurece um pouco (cobre sugestões do YouTube); play/pause fica na barra de baixo */}
+      {ready && !ytError && !playing && !ended && <div className="pointer-events-none absolute inset-0 z-[15] bg-black/40" />}
 
       {/* Velocidade: painel na frente do vídeo (fácil de tocar no celular) */}
       {speedOpen && (
@@ -704,6 +697,9 @@ export function VideoPlayer({
       {/* Barra de controles */}
       {ready && !ytError && (
         <div
+          // Mexendo na barra (volume, linha do tempo), os controles continuam na tela
+          onPointerDown={scheduleHide}
+          onPointerMove={(e) => e.pointerType === 'mouse' && scheduleHide()}
           className={cn(
             'absolute inset-x-0 bottom-0 z-40 bg-gradient-to-t from-black/95 via-black/70 to-transparent pt-8 transition-opacity duration-300',
             isFull ? 'px-[max(0.75rem,env(safe-area-inset-left))] pb-[max(0.875rem,env(safe-area-inset-bottom))]' : 'px-3 pb-2 sm:px-4 sm:pb-3',

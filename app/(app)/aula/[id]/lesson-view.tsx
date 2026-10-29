@@ -299,31 +299,39 @@ export function LessonView(p: Props) {
         </div>
       )}
 
-      {p.materials.length > 0 && (
-        <ul className="space-y-2">
-          {p.materials.map((m) => (
-            <li key={m.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-2.5">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">
-                <FileText className="size-4" />
-              </span>
-              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</p>
-              <button type="button" onClick={() => openMaterial(m)} className={buttonClass('secondary', 'sm')} disabled={openingId === m.id}>
-                {openingId === m.id ? <Spinner /> : <ExternalLink className="size-3.5" />} Abrir
-              </button>
-              <button type="button" aria-label="Baixar" onClick={() => openMaterial(m, true)} className={buttonClass('ghost', 'sm', 'px-2')}>
-                <Download className="size-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {p.lesson.description && (
+      {/* Descrição e materiais: tudo num lugar só, abre ao tocar */}
+      {(p.lesson.description || p.materials.length > 0) && (
         <details className="group rounded-xl border border-line bg-surface">
-          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-ink-2 [&::-webkit-details-marker]:hidden">
-            Descrição <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" />
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-ink-2 [&::-webkit-details-marker]:hidden">
+            <span className="flex-1">Descrição e materiais</span>
+            {p.materials.length > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-bold text-danger">
+                <FileText className="size-3" /> {p.materials.length}
+              </span>
+            )}
+            <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" />
           </summary>
-          <p className="px-4 pb-4 text-sm leading-relaxed whitespace-pre-line text-ink-2">{linkify(p.lesson.description)}</p>
+          <div className="space-y-3 px-4 pb-4">
+            {p.lesson.description && <p className="text-sm leading-relaxed whitespace-pre-line text-ink-2">{linkify(p.lesson.description)}</p>}
+            {p.materials.length > 0 && (
+              <ul className="space-y-2">
+                {p.materials.map((m) => (
+                  <li key={m.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-2.5">
+                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">
+                      <FileText className="size-4" />
+                    </span>
+                    <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</p>
+                    <button type="button" onClick={() => openMaterial(m)} className={buttonClass('secondary', 'sm')} disabled={openingId === m.id}>
+                      {openingId === m.id ? <Spinner /> : <ExternalLink className="size-3.5" />} Abrir
+                    </button>
+                    <button type="button" aria-label="Baixar" onClick={() => openMaterial(m, true)} className={buttonClass('ghost', 'sm', 'px-2')}>
+                      <Download className="size-4" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </details>
       )}
 

@@ -1,10 +1,12 @@
-import { CheckCircle2, ChevronLeft, FileText, Lock, Play, PlayCircle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, FileText, Lock, MessageCircle, Play, PlayCircle } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CoverFallback } from '@/components/course/course-card';
-import { Badge, Card, Img, LinkButton, ProgressBar } from '@/components/ui';
+import { Badge, Img, LinkButton, ProgressBar } from '@/components/ui';
+import { whatsappLink } from '@/lib/contact';
 import { getCourseTree, getMyProgress } from '@/lib/data';
+import { getCatalogData } from '@/lib/db';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
 import { cn, youtubeThumb } from '@/lib/utils';
 
@@ -19,10 +21,11 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   if (!/^[\w-]{1,64}$/.test(id)) notFound();
   const viewer = await requireViewer();
-  const [{ course, modules, lessons }, progress, settings] = await Promise.all([
+  const [{ course, modules, lessons }, progress, settings, catalog] = await Promise.all([
     getCourseTree(id, viewer),
     getMyProgress(viewer.userId),
     getSettings(),
+    getCatalogData(),
   ]);
   if (!course) notFound();
 
@@ -93,16 +96,45 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
         </div>
       </section>
 
+      {locked && (
+        <a
+          href={whatsappLink(`Olá! Quero liberar meu acesso ao curso "${course.title}". Meu e-mail: ${viewer.email}`)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center justify-center gap-2 rounded-2xl bg-[#25D366] px-5 py-3.5 text-sm font-bold text-white shadow-card transition hover:brightness-105 sm:inline-flex"
+        >
+          <MessageCircle className="size-5" /> Liberar acesso pelo WhatsApp
+        </a>
+      )}
+
       {locked && visibleLessons.length === 0 ? (
-        <Card className="flex flex-col items-center p-10 text-center">
-          <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand">
-            <Lock className="size-6" />
-          </div>
-          <p className="mt-4 text-lg font-bold text-ink">Este conteúdo é exclusivo</p>
-          <p className="mt-1 max-w-md text-sm text-muted">
-            Seu acesso a este curso ainda não está liberado. Fale com a coordenação para incluir o e-mail <strong>{viewer.email}</strong> na sua turma.
-          </p>
-        </Card>
+        <div className="space-y-3">
+          {/* O aluno vê o que tem no curso, tudo com cadeado */}
+          {catalog.modules
+            .filter((m) => m.course_id === course.id && m.is_published)
+            .map((m, mi) => {
+              const titles = [...new Map(catalog.lessons.filter((l) => l.module_id === m.id && l.is_published).map((l) => [l.id, l.title])).values()];
+              if (!titles.length) return null;
+              return (
+                <details key={m.id} open={mi === 0} className="group overflow-hidden rounded-2xl border border-line bg-surface">
+                  <summary className="flex cursor-pointer list-none items-center gap-3 p-4 select-none [&::-webkit-details-marker]:hidden">
+                    <Lock className="size-4 shrink-0 text-muted" />
+                    <span className="min-w-0 flex-1 truncate font-bold text-ink">{m.title}</span>
+                    <span className="text-xs text-muted">{titles.length}</span>
+                  </summary>
+                  <ol className="border-t border-line">
+                    {titles.map((t, i) => (
+                      <li key={i} className="flex items-center gap-3 px-4 py-2.5 text-sm text-muted">
+                        <span className="w-6 text-xs tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+                        <span className="min-w-0 flex-1 truncate">{t}</span>
+                        <Lock className="size-3.5 shrink-0" />
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              );
+            })}
+        </div>
       ) : (
         <div className="space-y-4">
           {modules.map((m, mi) => {
