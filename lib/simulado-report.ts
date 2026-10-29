@@ -112,3 +112,70 @@ export function classRanking(rows: ReportRow[], useTri: boolean, className: (id:
     .map(([id, list]) => ({ id: id || 'sem-turma', name: className(id || null), ...summarize(list, useTri) }))
     .sort((a, b) => (useTri ? (b.meanTri ?? 0) - (a.meanTri ?? 0) : 0) || (b.meanCorrect ?? 0) - (a.meanCorrect ?? 0));
 }
+
+export interface OverviewRow {
+  simulado_id: string;
+  user_id: string;
+  name: string;
+  class_id: string | null;
+  tri_score: number;
+  correct: number;
+  accuracy: number;
+}
+
+/** Visão geral de todos os simulados liberados (gráfico geral, turmas e alunos). */
+export async function loadOverview(kind: 'tri' | 'sem') {
+  const [sims, rows, catalog] = await Promise.all([
+    sql.query<{ id: string; title: string; question_count: number }>(
+      `select id, title, question_count from simulados where results_released and use_tri = $1 order by created_at`,
+      [kind === 'tri'],
+    ),
+    sql.query<OverviewRow>(
+      `select r.simulado_id, r.user_id, r.tri_score, r.correct, r.accuracy, st.class_id,
+              coalesce(nullif(st.name, ''), nullif(u.full_name, ''), split_part(u.email, '@', 1), 'Aluno') as name
+         from simulado_results r
+         join simulados sm on sm.id = r.simulado_id and sm.results_released and sm.use_tri = $1
+         left join users u on u.id = r.user_id
+         left join students st on st.email = u.email`,
+      [kind === 'tri'],
+    ),
+    getCatalogData(),
+  ]);
+  const list = rows.map((r) => ({ ...r, tri_score: Number(r.tri_score), accuracy: Number(r.accuracy) }));
+  // Nota usada no ranking: TRI ou % de acertos
+  const score = (r: OverviewRow) => (kind === 'tri' ? r.tri_score : r.accuracy);
+  const className = (cid: string | null) => catalog.classes.find((c) => c.id === cid)?.name ?? 'Sem turma';
+  const classKey = (cid: string | null) => cid ?? 'sem-turma';
+
+  const perSim = (filter: (r: OverviewRow) => boolean) =>
+    sims
+      .map((s) => {
+        const g = list.filter((r) => r.simulado_id === s.id && filter(r));
+        return { ...s, n: g.length, mean: g.length ? r1(avg(g.map(score))) : null };
+      })
+      .filter((s) => s.mean != null);
+
+  const classes = () => {
+    const by = new Map<string, OverviewRow[]>();
+    list.forEach((r) => by.set(classKey(r.class_id), [...(by.get(classKey(r.class_id)) ?? []), r]));
+    return [...by.entries()]
+      .map(([id, g]) => ({
+        id,
+        name: className(id === 'sem-turma' ? null : id),
+        alunos: new Set(g.map((r) => r.user_id)).size,
+        provas: new Set(g.map((r) => r.simulado_id)).size,
+        mean: r1(avg(g.map(score))),
+      }))
+      .sort((a, b) => b.mean - a.mean);
+  };
+
+  const students = (filter: (r: OverviewRow) => boolean) => {
+    const by = new Map<string, OverviewRow[]>();
+    list.filter(filter).forEach((r) => by.set(r.user_id, [...(by.get(r.user_id) ?? []), r]));
+    return [...by.entries()]
+      .map(([user_id, g]) => ({ user_id, name: g[0].name, provas: g.length, mean: r1(avg(g.map(score))), correct: r1(avg(g.map((r) => r.correct))) }))
+      .sort((a, b) => b.mean - a.mean);
+  };
+
+  return { sims, perSim, classes, students, className, classKey };
+}

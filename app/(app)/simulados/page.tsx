@@ -5,7 +5,9 @@ import { redirect } from 'next/navigation';
 import { ComboChart, type ComboPoint } from '@/components/charts/combo-chart';
 import { SegTabs } from '@/components/simulado/report';
 import { Badge, Card, EmptyState, PageHeader } from '@/components/ui';
+import { loadOverview } from '@/lib/simulado-report';
 import { requireViewer } from '@/lib/session';
+import { fmt, KindTabs, MeansChart, RankList } from './overview';
 import { sql } from '@/lib/db';
 import { ENEM_AREAS, type Simulado, type SimuladoResult, type SimuladoSubmission } from '@/lib/types';
 
@@ -41,7 +43,9 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
     <>
       <PageHeader eyebrow="ENEM" title="Simulados" subtitle="Faça as provas no tempo oficial e acompanhe sua nota estimada pela TRI." />
 
-      {done.length > 0 && (
+      {viewer.isAdmin && <AdminOverview kind={tab} />}
+
+      {!viewer.isAdmin && done.length > 0 && (
         <section className="mb-8 space-y-3">
           {/* Notas TRI | Sem TRI */}
           <SegTabs
@@ -58,7 +62,7 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
             </p>
             {chart.length ? (
               tab === 'tri' ? (
-                <ComboChart points={chart} barName="Nota TRI" lineName="Evolução" />
+                <ComboChart points={chart} min={200} ticks={[200, 400, 600, 800, 1000]} barName="Nota TRI" lineName="Evolução" />
               ) : (
                 <ComboChart points={chart} min={0} max={100} ticks={[0, 25, 50, 75, 100]} barName="% de acertos" lineName="Evolução" />
               )
@@ -134,5 +138,30 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
         <EmptyState icon={<ClipboardCheck className="size-6" />} title="Nenhum simulado publicado" description="Quando um novo simulado for liberado ele aparece aqui." />
       )}
     </>
+  );
+}
+
+/** Admin: média geral de cada prova → turmas em ranking. */
+async function AdminOverview({ kind }: { kind: 'tri' | 'sem' }) {
+  const o = await loadOverview(kind);
+  const points: ComboPoint[] = o.perSim(() => true).map((s) => ({ label: s.title, bar: s.mean, barLabel: fmt(kind, s.mean!), href: `/admin/simulados/${s.id}` }));
+  const q = kind === 'sem' ? '?v=sem' : '';
+  return (
+    <section className="mb-8 space-y-4">
+      <KindTabs kind={kind} base="/simulados" />
+      <MeansChart kind={kind} title={kind === 'tri' ? 'Média geral TRI por simulado' : 'Média geral de acertos por simulado'} points={points} />
+      <RankList
+        title="Turmas"
+        icon="users"
+        items={o.classes().map((c) => ({
+          key: c.id,
+          href: `/simulados/turma/${c.id}${q}`,
+          name: c.name,
+          sub: `${c.alunos} aluno${c.alunos === 1 ? '' : 's'} · ${c.provas} prova${c.provas === 1 ? '' : 's'}`,
+          value: fmt(kind, c.mean),
+          unit: kind === 'tri' ? 'média TRI' : 'acertos',
+        }))}
+      />
+    </section>
   );
 }
