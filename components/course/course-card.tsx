@@ -4,16 +4,30 @@ import { Img, ProgressBar } from '@/components/ui';
 import type { Course } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-const GRADIENTS = [
+/** 10 cores padrão das capas (mesmo formato: degradê escuro → cor). */
+export const GRADIENTS = [
   'from-[#0a1530] via-[#172554] to-[#2563eb]',
   'from-[#050b18] via-[#0f244c] to-[#1d4ed8]',
   'from-[#030712] via-[#0c1f44] to-[#0891b2]',
   'from-[#081226] via-[#1e1b4b] to-[#4f46e5]',
   'from-[#060d20] via-[#134e4a] to-[#0d9488]',
+  'from-[#0b0a1f] via-[#3b0764] to-[#9333ea]',
+  'from-[#14070d] via-[#4c0519] to-[#e11d48]',
+  'from-[#140b03] via-[#451a03] to-[#d97706]',
+  'from-[#04140c] via-[#064e3b] to-[#16a34a]',
+  'from-[#0b0f17] via-[#1f2937] to-[#64748b]',
 ];
 
-export function CoverFallback({ title, seed, className }: { title: string; seed: string; className?: string }) {
-  const g = GRADIENTS[[...seed].reduce((a, c) => a + c.charCodeAt(0), 0) % GRADIENTS.length];
+/** Capa escolhida como cor: "color:3" → 3 */
+export function coverColor(url?: string | null) {
+  const m = /^color:(\d)$/.exec(url ?? '');
+  return m ? Number(m[1]) : null;
+}
+/** URL de imagem de verdade (ignora capas de cor) */
+export const coverImage = (url?: string | null) => (url && coverColor(url) === null ? url : '');
+
+export function CoverFallback({ title, seed, className, color }: { title: string; seed: string; className?: string; color?: number | null }) {
+  const g = GRADIENTS[color ?? [...seed].reduce((a, c) => a + c.charCodeAt(0), 0) % 5];
   return (
     <div className={cn('absolute inset-0 bg-gradient-to-br', g, className)}>
       <div className="absolute inset-0 bg-[image:radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_55%)]" />
@@ -49,10 +63,10 @@ export function CoverCard({
   return (
     <Link href={href} className="group block w-full min-w-0 outline-none" prefetch={priority ? true : undefined}>
       <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-line bg-surface-2 shadow-card transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-glow group-focus-visible:shadow-glow">
-        {cover ? (
-          <Img src={cover} loading={priority ? 'eager' : 'lazy'} className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
+        {coverImage(cover) ? (
+          <Img src={coverImage(cover)} loading={priority ? 'eager' : 'lazy'} className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
         ) : (
-          <CoverFallback title="" seed={seed} />
+          <CoverFallback title="" seed={seed} color={coverColor(cover)} />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
         {free && (

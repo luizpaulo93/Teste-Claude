@@ -147,7 +147,7 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
               <Textarea name="description" defaultValue={edit.live?.description} rows={3} maxLength={2000} />
             </Field>
             <div className="space-y-1.5">
-              <span className="text-xs font-semibold text-ink-2">Capa (opcional, vertical 3:4)</span>
+              <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
               <ImageUpload name="cover_url" defaultValue={edit.live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
             </div>
             <div className="grid gap-3 sm:grid-cols-3">

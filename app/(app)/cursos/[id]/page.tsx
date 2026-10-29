@@ -2,7 +2,7 @@ import { ChevronLeft, Lock, MessageCircle } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CoverCard, CoverFallback } from '@/components/course/course-card';
+import { CoverCard, CoverFallback, coverColor, coverImage } from '@/components/course/course-card';
 import { Badge, Img, ProgressBar } from '@/components/ui';
 import { whatsappLink } from '@/lib/contact';
 import { getCourseTree, getMyProgress } from '@/lib/data';
@@ -58,16 +58,20 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
       <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-3xl">
         <div className="relative">
           <div className="absolute inset-0">
-            {course.banner_url || course.cover_url ? (
-              <Img src={course.banner_url || course.cover_url} loading="eager" className="size-full object-cover" />
+            {course.banner_url || coverImage(course.cover_url) ? (
+              <Img src={course.banner_url || coverImage(course.cover_url)} loading="eager" className="size-full object-cover" />
             ) : (
-              <CoverFallback title="" seed={course.id} />
+              <CoverFallback title="" seed={course.id} color={coverColor(course.cover_url)} />
             )}
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/30 backdrop-blur-[1px]" />
           </div>
           <div className="relative grid gap-6 p-5 sm:grid-cols-[180px_1fr] sm:p-8 lg:grid-cols-[220px_1fr] lg:p-10">
             <div className="relative hidden aspect-[2/3] overflow-hidden rounded-2xl border border-white/10 shadow-2xl sm:block">
-              {course.cover_url ? <Img src={course.cover_url} loading="eager" className="size-full object-cover" /> : <CoverFallback title={course.title} seed={course.id} />}
+              {coverImage(course.cover_url) ? (
+                <Img src={course.cover_url} loading="eager" className="size-full object-cover" />
+              ) : (
+                <CoverFallback title={course.title} seed={course.id} color={coverColor(course.cover_url)} />
+              )}
             </div>
             <div className="flex flex-col justify-end text-white">
               <div className="mb-3 flex flex-wrap gap-2">

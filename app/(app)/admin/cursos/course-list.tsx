@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { CoverFallback } from '@/components/course/course-card';
+import { CoverFallback, coverColor, coverImage } from '@/components/course/course-card';
 import { Badge, Button, Card, Img, buttonClass } from '@/components/ui';
 import { ActionButton, Modal } from '@/components/ui-client';
 import type { Course } from '@/lib/types';
@@ -37,7 +37,7 @@ export function CourseList({ courses, counts }: { courses: Course[]; counts: Rec
       {courses.map((c, i) => (
         <Card key={c.id} className="flex items-center gap-3 p-3 sm:gap-4">
           <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2 sm:w-16">
-            {c.cover_url ? <Img src={c.cover_url} className="size-full object-cover" /> : <CoverFallback title="" seed={c.id} />}
+            {coverImage(c.cover_url) ? <Img src={c.cover_url} className="size-full object-cover" /> : <CoverFallback title="" seed={c.id} color={coverColor(c.cover_url)} />}
           </div>
           <div className="min-w-0 flex-1">
             <Link href={`/admin/cursos/${c.id}`} className="line-clamp-1 font-bold text-ink hover:text-brand">

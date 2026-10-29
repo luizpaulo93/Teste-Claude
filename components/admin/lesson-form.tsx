@@ -71,10 +71,7 @@ export function LessonForm({
         </select>
       </Field>
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Foto de capa</span>
-        <p className="text-[11px] text-muted">
-          Com vídeo: substitui a capa do YouTube na plataforma. Só PDF: indica o tipo de material (ex.: “Lista de exercícios”, “Resumo”).
-        </p>
+        <span className="text-xs font-semibold text-ink-2">Foto de capa (16:9)</span>
         <ImageUpload name="thumbnail_url" defaultValue={lesson?.thumbnail_url} folder="lessons" aspect="aspect-video max-w-xs" maxSize={1280} />
       </div>
       <Field label="Descrição / links">

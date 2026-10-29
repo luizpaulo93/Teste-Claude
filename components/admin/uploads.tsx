@@ -8,6 +8,7 @@ import { Spinner } from '@/components/ui-client';
 import { compressImage } from '@/lib/image';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
+import { CoverFallback, coverColor, GRADIENTS } from '@/components/course/course-card';
 
 /** Upload de imagem para o bucket público `media`. Guarda a URL num input hidden `name`. */
 export function ImageUpload({
@@ -18,6 +19,7 @@ export function ImageUpload({
   hint,
   maxSize = 1400,
   className,
+  colors,
 }: {
   name: string;
   defaultValue?: string;
@@ -26,8 +28,11 @@ export function ImageUpload({
   hint?: string;
   maxSize?: number;
   className?: string;
+  /** Mostra as 10 cores padrão (capa sem foto, mesmo formato das capas) */
+  colors?: boolean;
 }) {
   const [url, setUrl] = useState(defaultValue);
+  const color = coverColor(url);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLInputElement>(null);
 
@@ -64,7 +69,9 @@ export function ImageUpload({
           aspect,
         )}
       >
-        {url ? (
+        {color !== null ? (
+          <CoverFallback title="" seed="" color={color} />
+        ) : url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={url} alt="" className="absolute inset-0 size-full object-cover" />
         ) : (
@@ -93,6 +100,20 @@ export function ImageUpload({
         )}
       </div>
       {hint && <p className="mt-1 text-[11px] text-muted">{hint}</p>}
+      {colors && (
+        <div className="mt-2 grid grid-cols-5 gap-1.5">
+          {GRADIENTS.map((g, i) => (
+            <button
+              key={i}
+              type="button"
+              aria-label={`Cor ${i + 1}`}
+              aria-pressed={color === i}
+              onClick={() => setUrl(`color:${i}`)}
+              className={cn('aspect-square rounded-lg bg-gradient-to-br ring-offset-2 ring-offset-surface transition', g, color === i ? 'ring-2 ring-brand' : 'hover:scale-105')}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

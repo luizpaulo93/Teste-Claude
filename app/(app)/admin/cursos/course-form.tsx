@@ -14,7 +14,7 @@ export function CourseForm({ course, onSaved }: { course?: Course; onSaved?: (id
       <div className="grid gap-5 sm:grid-cols-[160px_1fr]">
         <div className="space-y-1.5">
           <span className="text-xs font-semibold text-ink-2">Capa (2:3)</span>
-          <ImageUpload name="cover_url" defaultValue={course?.cover_url} folder="courses" hint="600 × 900 px" />
+          <ImageUpload name="cover_url" defaultValue={course?.cover_url} folder="courses" colors />
         </div>
         <div className="space-y-4">
           <Field label="Título">
@@ -32,8 +32,8 @@ export function CourseForm({ course, onSaved }: { course?: Course; onSaved?: (id
         <Textarea name="description" defaultValue={course?.description} maxLength={3000} rows={4} />
       </Field>
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Banner horizontal (opcional)</span>
-        <ImageUpload name="banner_url" defaultValue={course?.banner_url} folder="banners" aspect="aspect-[16/6]" maxSize={1920} hint="1920 × 720 px — aparece no topo do curso e no destaque da home" />
+        <span className="text-xs font-semibold text-ink-2">Banner (16:6)</span>
+        <ImageUpload name="banner_url" defaultValue={course?.banner_url} folder="banners" aspect="aspect-[16/6]" maxSize={1920} />
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Switch name="is_published" defaultChecked={course?.is_published ?? true} label="Publicado" description="Visível na vitrine" />

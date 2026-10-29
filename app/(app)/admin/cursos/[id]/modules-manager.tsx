@@ -139,12 +139,9 @@ export function ModulesManager({
                 </li>
               ))}
             </ul>
-            <div className="grid grid-cols-2 border-t border-line">
-              <button type="button" onClick={() => setPicker(m)} className="flex items-center justify-center gap-2 py-3 text-sm font-semibold text-brand transition hover:bg-brand-soft">
-                <Folder className="size-4" /> Adicionar aulas
-              </button>
-              <button type="button" onClick={() => setLessonModal({ moduleId: m.id })} className="flex items-center justify-center gap-2 border-l border-line py-3 text-sm font-semibold text-ink-2 transition hover:bg-surface-2">
-                <Plus className="size-4" /> Criar aula nova
+            <div className="border-t border-line">
+              <button type="button" onClick={() => setPicker(m)} className="flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold text-brand transition hover:bg-brand-soft">
+                <Folder className="size-4" /> Adicionar aulas das pastas
               </button>
             </div>
           </Card>
@@ -159,7 +156,7 @@ export function ModulesManager({
             <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
               <div className="mx-auto w-32 space-y-1.5 sm:w-auto">
                 <span className="text-xs font-semibold text-ink-2">Capa (2:3)</span>
-                <ImageUpload name="cover_url" defaultValue={moduleModal.module?.cover_url} folder="modules" hint="600 × 900 px" />
+                <ImageUpload name="cover_url" defaultValue={moduleModal.module?.cover_url} folder="modules" colors />
               </div>
               <Field label="Nome do módulo">
                 <Input name="title" defaultValue={moduleModal.module?.title} required maxLength={160} autoFocus />
