@@ -4,6 +4,7 @@ import { revalidatePath, updateTag } from 'next/cache';
 import { bool, fail, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
+import { createBroadcast, endBroadcast, getAccount, ingestFromKey, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
 
 function refresh(id?: string) {
   updateTag('lives');
@@ -110,6 +111,74 @@ export async function saveLiveAsLesson(id: string): Promise<ActionResult> {
       [newId(), live.title, live.description, live.youtube_id, live.cover_url, folder.id],
     );
     revalidatePath('/admin/aulas');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------- Estúdio: transmitir direto do app para o YouTube
+
+export async function saveYoutubeKey(key: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    const v = String(key ?? '').trim();
+    if (v && !ingestFromKey(v)) return { error: 'Chave inválida. Copie a chave HLS no YouTube Studio.' };
+    await saveAccount({ stream_key: v });
+    revalidatePath('/admin/ao-vivo');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function disconnectYoutube(): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    await saveAccount({ refresh_token: '', access_token: '', expires_at: undefined, channel_id: '', channel_title: '' });
+    revalidatePath('/admin/ao-vivo');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Prepara a live no YouTube (cria no canal ou usa a chave) e coloca a sala no ar. */
+export async function startStudio(id: string): Promise<ActionResult & { videoId?: string }> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const live = await sql.one<{ title: string; description: string; youtube_id: string }>(`select title, description, youtube_id from live_sessions where id = $1`, [id]);
+    if (!live) return { error: 'Transmissão não encontrada.' };
+    const acc = await getAccount();
+    let videoId = live.youtube_id;
+    if (oauthConfigured() && acc.refresh_token) {
+      const b = await createBroadcast(live.title, live.description);
+      videoId = b.videoId;
+      await setIngest(id, b.ingest);
+    } else if (acc.stream_key) {
+      if (!videoId) return { error: 'Cole o link da live do YouTube nesta transmissão (Editar) ou conecte a conta do YouTube.' };
+      await setIngest(id, ingestFromKey(acc.stream_key));
+    } else {
+      return { error: 'Conecte a conta do YouTube ou salve a chave da transmissão em Ao vivo.' };
+    }
+    await sql.exec(`update live_sessions set youtube_id = $2, status = 'live', updated_at = now() where id = $1`, [id, videoId]);
+    refresh(id);
+    return { ok: true, videoId };
+  } catch (e) {
+    return { error: e instanceof Error && !e.message.includes('Acesso') ? e.message : 'Não foi possível iniciar.' };
+  }
+}
+
+export async function stopStudio(id: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const live = await sql.one<{ youtube_id: string }>(`update live_sessions set status = 'ended', updated_at = now() where id = $1 returning youtube_id`, [id]);
+    await sql.exec(`delete from integrations where id = $1`, [`ingest:${id}`]);
+    const acc = await getAccount();
+    if (live?.youtube_id && oauthConfigured() && acc.refresh_token) await endBroadcast(live.youtube_id);
+    refresh(id);
     return { ok: true };
   } catch (e) {
     return fail(e);

@@ -2,17 +2,30 @@ import type { Metadata } from 'next';
 import { PageHeader } from '@/components/ui';
 import { getCatalogData, sql } from '@/lib/db';
 import type { LiveSession } from '@/lib/types';
+import { getAccount, oauthConfigured } from '@/lib/youtube';
 import { LivesManager } from './lives-manager';
 
 export const metadata: Metadata = { title: 'Ao vivo · Admin' };
 
-export default async function AdminLives() {
-  const [lives, catalog] = await Promise.all([sql.query<LiveSession>(`select * from live_sessions order by starts_at desc limit 200`), getCatalogData()]);
+const NOTICES: Record<string, string> = {
+  ok: 'Conta do YouTube conectada.',
+  erro: 'Não foi possível conectar ao YouTube. Tente de novo.',
+  'sem-config': 'Para conectar a conta, configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel.',
+};
+
+export default async function AdminLives({ searchParams }: { searchParams: Promise<{ yt?: string }> }) {
+  const { yt: notice } = await searchParams;
+  const [lives, catalog, acc] = await Promise.all([
+    sql.query<LiveSession>(`select * from live_sessions order by starts_at desc limit 200`),
+    getCatalogData(),
+    getAccount(),
+  ]);
+  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', hasKey: Boolean(acc.stream_key), notice: notice ? NOTICES[notice] : undefined };
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>
-      <PageHeader title="Ao vivo" subtitle="Transmita pelo YouTube como não listado — só alunos com acesso ao curso assistem aqui dentro." />
-      <LivesManager lives={lives} courses={courses} />
+      <PageHeader title="Ao vivo" subtitle="Transmita do Estúdio direto para o seu canal (não listado). Só alunos com acesso assistem aqui dentro." />
+      <LivesManager lives={lives} courses={courses} yt={yt} />
     </>
   );
 }

@@ -1,15 +1,16 @@
 'use client';
 
-import { CircleStop, ExternalLink, FolderPlus, Info, Pencil, Plus, Radio, RotateCcw, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleStop, ExternalLink, FolderPlus, KeyRound, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, buttonClass } from '@/components/ui';
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
 import type { Course, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
-import { deleteLive, saveLive, saveLiveAsLesson, setLiveStatus } from '../live-actions';
+import { deleteLive, disconnectYoutube, saveLive, saveLiveAsLesson, saveYoutubeKey, setLiveStatus } from '../live-actions';
+import { toast } from '@/components/toast';
 
 function toLocalInput(iso?: string) {
   const d = iso ? new Date(iso) : new Date(Date.now() + 3600_000);
@@ -22,7 +23,14 @@ function tzOffset() {
   return `${m >= 0 ? '+' : '-'}${String(Math.floor(a / 60)).padStart(2, '0')}:${String(a % 60).padStart(2, '0')}`;
 }
 
-export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses: Pick<Course, 'id' | 'title'>[] }) {
+export interface YoutubeState {
+  oauth: boolean;
+  channel: string;
+  hasKey: boolean;
+  notice?: string;
+}
+
+export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; courses: Pick<Course, 'id' | 'title'>[]; yt: YoutubeState }) {
   const [edit, setEdit] = useState<{ live?: LiveSession } | null>(null);
   const courseName = (id: string | null) => (id ? courses.find((c) => c.id === id)?.title ?? 'Curso removido' : 'Todos os alunos liberados');
 
@@ -39,7 +47,7 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
             {lives.map((l) => (
               <Card key={l.id} className={l.status === 'live' ? 'border-red-500/50 p-4' : 'p-4'}>
                 <div className="flex flex-wrap items-start gap-3">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 basis-full sm:basis-0">
                     <div className="flex flex-wrap items-center gap-2">
                       {l.status === 'live' && (
                         <span className="flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white">
@@ -49,7 +57,7 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
                       {l.status === 'scheduled' && <Badge tone="brand">Agendada</Badge>}
                       {l.status === 'ended' && <Badge>Encerrada</Badge>}
                       {!l.is_published && <Badge tone="warning">Oculta</Badge>}
-                      {!l.youtube_id && <Badge tone="danger">Sem link do YouTube</Badge>}
+                      {!l.youtube_id && !yt.channel && <Badge tone="danger">Sem link do YouTube</Badge>}
                     </div>
                     <p className="mt-1.5 font-bold text-ink">{l.title}</p>
                     <p className="text-xs text-muted">
@@ -57,6 +65,11 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
+                    {l.status !== 'ended' && (
+                      <Link href={`/admin/ao-vivo/${l.id}/estudio`} className={buttonClass('primary', 'sm')}>
+                        <Video className="size-3.5" /> Estúdio
+                      </Link>
+                    )}
                     {l.status !== 'live' && (
                       <ActionButton action={() => setLiveStatus(l.id, 'live')} confirm="Iniciar agora? Os alunos verão a transmissão." success="Transmissão no ar!" variant="primary" size="sm" className="!bg-red-600 hover:!bg-red-700">
                         <Radio className="size-3.5" /> {l.status === 'ended' ? 'Reabrir' : 'Iniciar'}
@@ -96,26 +109,7 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
         )}
       </div>
 
-      <Card className="p-5 xl:sticky xl:top-6 xl:self-start">
-        <p className="flex items-center gap-2 text-sm font-bold text-ink">
-          <Info className="size-4 text-brand" /> Como transmitir
-        </p>
-        <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm text-ink-2">
-          <li>
-            No YouTube Studio, crie a transmissão com visibilidade <strong className="text-ink">Não listado</strong>.
-          </li>
-          <li>
-            Em configurações, deixe <strong className="text-ink">Permitir incorporação</strong> ligado e “Conteúdo para crianças” desligado.
-          </li>
-          <li>Copie o link da live e cole aqui ao agendar.</li>
-          <li>
-            Na hora, clique em <strong className="text-ink">Iniciar</strong> — a live aparece para os alunos na hora, com chat.
-          </li>
-          <li>
-            Ao terminar, clique em <strong className="text-ink">Encerrar</strong>. Se “Mostrar gravação” estiver ligado, ela vira replay.
-          </li>
-        </ol>
-      </Card>
+      <YoutubeCard yt={yt} />
 
       <Modal open={Boolean(edit)} onClose={() => setEdit(null)} title={edit?.live ? 'Editar transmissão' : 'Agendar transmissão'} size="lg">
         {edit && (
@@ -162,5 +156,60 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
         )}
       </Modal>
     </div>
+  );
+}
+
+/** Conta do YouTube: conectar (cria a live no canal sozinho) ou usar a chave HLS. */
+function YoutubeCard({ yt }: { yt: YoutubeState }) {
+  const [key, setKey] = useState('');
+  const [pending, start] = useTransition();
+  return (
+    <Card className="order-first space-y-4 p-5 xl:sticky xl:top-6 xl:order-none xl:self-start">
+      <p className="flex items-center gap-2 text-sm font-bold text-ink">
+        <MonitorPlay className="size-4 text-red-500" /> YouTube
+      </p>
+      {yt.notice && <p className="rounded-xl bg-surface-2 p-3 text-xs text-ink-2">{yt.notice}</p>}
+      {yt.channel ? (
+        <div className="space-y-2">
+          <p className="flex items-center gap-2 text-sm text-ink">
+            <CheckCircle2 className="size-4 text-success" /> Conectado: <strong className="truncate">{yt.channel}</strong>
+          </p>
+          <p className="text-xs text-muted">No Estúdio, o app cria a live não listada no seu canal e transmite com a câmera e o microfone que você escolher.</p>
+          <ActionButton action={disconnectYoutube} confirm="Desconectar a conta do YouTube?" success="Conta desconectada" size="sm" variant="ghost">
+            Desconectar
+          </ActionButton>
+        </div>
+      ) : yt.oauth ? (
+        <a href="/api/youtube/connect" className={buttonClass('primary', 'md', 'w-full !bg-red-600 hover:!bg-red-700')}>
+          <MonitorPlay className="size-4" /> Conectar conta do YouTube
+        </a>
+      ) : null}
+      {!yt.channel && (
+        <div className="space-y-2 border-t border-line pt-4">
+          <p className="flex items-center gap-2 text-xs font-semibold text-ink-2">
+            <KeyRound className="size-3.5" /> Chave da transmissão (HLS) {yt.hasKey && <Badge tone="success">salva</Badge>}
+          </p>
+          <p className="text-[11px] text-muted">YouTube Studio → Transmitir → Configurações da transmissão → Protocolo HLS. Copie a URL ou a chave.</p>
+          <div className="flex gap-2">
+            <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder={yt.hasKey ? '••••••••' : 'Cole aqui'} type="password" autoComplete="off" className="min-w-0 flex-1" />
+            <Button
+              disabled={pending || !key}
+              onClick={() =>
+                start(async () => {
+                  const r = await saveYoutubeKey(key);
+                  if (r.error) toast.error(r.error);
+                  else {
+                    toast('Chave salva');
+                    setKey('');
+                  }
+                })
+              }
+            >
+              Salvar
+            </Button>
+          </div>
+        </div>
+      )}
+    </Card>
   );
 }

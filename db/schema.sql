@@ -367,3 +367,13 @@ update lessons set module_id = null, course_id = null where module_id is not nul
 -- Versão 3: simulado com ou sem TRI (sem TRI: só acertos e dados por questão)
 -- ============================================================================
 alter table simulados add column if not exists use_tri boolean not null default true;
+
+-- ============================================================================
+-- Versão 4: transmissão direto para o YouTube (conta conectada e chaves).
+-- Só o servidor lê esta tabela: nunca vai para a tela de ninguém.
+-- ============================================================================
+create table if not exists integrations (
+  id text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
