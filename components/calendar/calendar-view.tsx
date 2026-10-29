@@ -210,7 +210,7 @@ export function CalendarView({
             <p className="text-xs text-muted">Assuntos da semana, simulados, revisões, feriados e aniversários</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full items-center justify-center gap-2 sm:w-auto">
           <button
             type="button"
             onClick={() => setView((v) => (v === 'month' ? 'year' : 'month'))}
