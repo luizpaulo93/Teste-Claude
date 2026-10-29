@@ -238,8 +238,8 @@ export function CalendarView({
       </div>
 
       {/* Navegação */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col items-center gap-2">
+        <div className="flex items-center justify-center gap-2">
           <button type="button" aria-label="Anterior" onClick={view === 'year' ? () => goYear(year - 1, 0) : prevMonth} className="grid size-9 place-items-center rounded-full bg-surface-2 text-brand hover:bg-surface-3">
             <ChevronLeft className="size-4" />
           </button>
@@ -248,7 +248,7 @@ export function CalendarView({
             <ChevronRight className="size-4" />
           </button>
         </div>
-        <p className="text-xs font-medium text-muted">
+        <p className="text-center text-xs font-medium text-muted">
           {addMode ? 'Clique em um dia ou arraste sobre vários dias para criar o evento' : 'Toque em uma data para ver os eventos do dia'}
         </p>
       </div>
@@ -350,11 +350,6 @@ export function CalendarView({
                   {shortDate(selected)} de {selected.slice(0, 4)}
                 </h2>
               </div>
-              {isAdmin && (
-                <button type="button" onClick={() => openNew(selected, selected)} className="flex shrink-0 items-center gap-1.5 rounded-xl bg-brand px-3 py-1.5 text-xs font-bold text-white hover:bg-brand-strong">
-                  <Plus className="size-3.5" /> Novo evento
-                </button>
-              )}
             </div>
             {!dayEvents.length && !dayBdays.length ? (
               <div className="space-y-1 rounded-2xl border border-line bg-surface-2 p-5 text-center">
