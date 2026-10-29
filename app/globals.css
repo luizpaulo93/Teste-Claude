@@ -112,11 +112,14 @@ body {
 /* Rolagem horizontal suave para trilhos de cursos */
 .rail {
   scroll-snap-type: x mandatory;
+  /* encaixa respeitando a margem da tela (não cola na borda) */
+  scroll-padding-inline: 1rem;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
 }
 .rail::-webkit-scrollbar { display: none; }
 .rail > * { scroll-snap-align: start; }
+@media (min-width: 40rem) { .rail { scroll-padding-inline: 0; } }
 
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 0, var(--surface-3) 40%, var(--surface-2) 80%);
