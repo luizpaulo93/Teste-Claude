@@ -4,6 +4,7 @@ import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronRight, Eye, EyeOff, FileTe
 import { useState, useTransition } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { LessonForm } from '@/components/admin/lesson-form';
+import { ImageUpload } from '@/components/admin/uploads';
 import { toast } from '@/components/toast';
 import { Badge, Button, Card, EmptyState, Field, Img, Input, Textarea } from '@/components/ui';
 import { ActionButton, Modal, Spinner, SubmitButton, Switch } from '@/components/ui-client';
@@ -155,9 +156,15 @@ export function ModulesManager({
           <ActionForm action={saveModule} success="Módulo salvo" onSuccess={() => setModuleModal(null)} className="space-y-4">
             <input type="hidden" name="course_id" value={courseId} />
             {moduleModal.module && <input type="hidden" name="id" value={moduleModal.module.id} />}
-            <Field label="Nome do módulo">
-              <Input name="title" defaultValue={moduleModal.module?.title} required maxLength={160} autoFocus />
-            </Field>
+            <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
+              <div className="mx-auto w-32 space-y-1.5 sm:w-auto">
+                <span className="text-xs font-semibold text-ink-2">Capa (2:3)</span>
+                <ImageUpload name="cover_url" defaultValue={moduleModal.module?.cover_url} folder="modules" hint="600 × 900 px" />
+              </div>
+              <Field label="Nome do módulo">
+                <Input name="title" defaultValue={moduleModal.module?.title} required maxLength={160} autoFocus />
+              </Field>
+            </div>
             <Field label="Descrição (opcional)">
               <Textarea name="description" defaultValue={moduleModal.module?.description} maxLength={1500} rows={3} />
             </Field>

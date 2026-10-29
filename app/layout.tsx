@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { cookies } from 'next/headers';
 import { Toaster } from '@/components/toast';
+import { ConfirmHost } from '@/components/confirm';
 import './globals.css';
 
 const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
@@ -31,6 +32,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-dvh">
         {children}
         <Toaster />
+        <ConfirmHost />
       </body>
     </html>
   );

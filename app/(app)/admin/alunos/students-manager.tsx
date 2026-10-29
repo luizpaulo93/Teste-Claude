@@ -1,5 +1,7 @@
 'use client';
 
+import { confirmDialog } from '@/components/confirm';
+
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Pencil, Search, Trash2, Upload, UserPlus } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useState, useTransition } from 'react';
@@ -125,7 +127,7 @@ export function StudentsManager({
           <Button size="sm" variant="secondary" onClick={() => bulk({ status: 'blocked' }, 'Alunos bloqueados')}>
             <Ban className="size-3.5" /> Bloquear
           </Button>
-          <Button size="sm" variant="danger" onClick={() => window.confirm(`Remover ${selected.size} alunos da lista?`) && bulk({ remove: true }, 'Alunos removidos')}>
+          <Button size="sm" variant="danger" onClick={async () => (await confirmDialog(`Remover ${selected.size} alunos da lista?`)) && bulk({ remove: true }, 'Alunos removidos')}>
             <Trash2 className="size-3.5" /> Remover
           </Button>
           {pending && <Spinner className="text-brand" />}

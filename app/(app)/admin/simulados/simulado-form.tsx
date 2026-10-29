@@ -1,19 +1,22 @@
 'use client';
 
-import { FileText, X } from 'lucide-react';
-import { useState } from 'react';
+import { Check, FileText, ListChecks, X } from 'lucide-react';
+import { useEffect, useState, useTransition } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { PdfDrop } from '@/components/admin/uploads';
-import { Field, Input, Select, Textarea } from '@/components/ui';
-import { SubmitButton, Switch } from '@/components/ui-client';
+import { toast } from '@/components/toast';
+import { buttonClass, Field, Input, Select } from '@/components/ui';
+import { Modal, SubmitButton, Switch } from '@/components/ui-client';
+import { cn } from '@/lib/utils';
 import { ENEM_AREAS, type Simulado } from '@/lib/types';
-import { saveSimulado } from '../simulado-actions';
+import { saveAnswerKey, saveSimulado } from '../simulado-actions';
 
 export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?: Simulado; answerKey?: string; onSaved?: () => void }) {
   const [pdf, setPdf] = useState(simulado?.pdf_path ?? '');
   const [count, setCount] = useState(simulado?.question_count ?? 45);
-  const [key, setKey] = useState(answerKey);
-  const clean = key.toUpperCase().replace(/[^A-E]/g, '');
+  const [key, setKey] = useState(() => fitKey(answerKey, simulado?.question_count ?? 45));
+  // Gabarito acompanha o nº de questões (novas bolhas nascem em A)
+  useEffect(() => setKey((k) => fitKey(k, count)), [count]);
 
   return (
     <ActionForm action={saveSimulado} success="Simulado salvo" onSuccess={onSaved} className="space-y-4">
@@ -52,16 +55,8 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
           <PdfDrop folder="simulados" onUploaded={(r) => setPdf(r.path)} label="Enviar PDF da prova" />
         )}
       </div>
-      <Field
-        label="Gabarito oficial"
-        hint={
-          <span className={clean.length === count ? 'text-success' : clean.length ? 'text-warning' : ''}>
-            {clean.length}/{count} letras · digite em sequência (ex.: ABCDE…). Espaços e números são ignorados.
-          </span>
-        }
-      >
-        <Textarea name="answer_key" value={key} onChange={(e) => setKey(e.target.value)} rows={3} className="font-mono tracking-widest uppercase" placeholder="ABCDEABCDE…" />
-      </Field>
+      <input type="hidden" name="answer_key" value={key} />
+      <AnswerKeyButton simuladoId={simulado?.id} count={count} value={key} onChange={setKey} />
       <Switch
         name="use_tri"
         defaultChecked={simulado?.use_tri ?? true}
@@ -73,5 +68,99 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
         <SubmitButton>Salvar simulado</SubmitButton>
       </div>
     </ActionForm>
+  );
+}
+
+const LETTERS = ['A', 'B', 'C', 'D', 'E'] as const;
+
+function fitKey(key: string, count: number) {
+  const clean = key.toUpperCase().replace(/[^A-E]/g, '').slice(0, count);
+  return clean + 'A'.repeat(Math.max(0, count - clean.length));
+}
+
+/** Botão do gabarito: abre um popup com as bolhas para marcar. */
+function AnswerKeyButton({
+  simuladoId,
+  count,
+  value,
+  onChange,
+}: {
+  simuladoId?: string;
+  count: number;
+  value: string;
+  onChange: (key: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [pending, start] = useTransition();
+
+  const save = () =>
+    start(async () => {
+      if (simuladoId) {
+        const res = await saveAnswerKey(simuladoId, draft);
+        if (res && 'error' in res && res.error) return void toast.error(res.error);
+        toast('Gabarito salvo · notas atualizadas');
+      }
+      onChange(draft);
+      setOpen(false);
+    });
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setDraft(fitKey(value, count));
+          setOpen(true);
+        }}
+        className="flex w-full items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-3.5 text-left transition hover:border-brand/60"
+      >
+        <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand">
+          <ListChecks className="size-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-ink">Gabarito oficial</span>
+          <span className="block truncate font-mono text-xs tracking-wider text-muted">{value.slice(0, 40)}{value.length > 40 ? '…' : ''}</span>
+        </span>
+        <span className="shrink-0 text-xs font-semibold text-brand">Editar</span>
+      </button>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        title={`Gabarito · ${count} questões`}
+        size="md"
+        footer={
+          <button type="button" onClick={save} disabled={pending} className={buttonClass('primary', 'md', 'w-full sm:w-auto')}>
+            <Check className="size-4" /> {pending ? 'Salvando…' : 'Salvar gabarito'}
+          </button>
+        }
+      >
+        <ol className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
+          {Array.from({ length: count }, (_, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="w-7 shrink-0 text-right text-xs font-bold text-muted tabular-nums">{i + 1}</span>
+              {LETTERS.map((letter) => {
+                const on = draft[i] === letter;
+                return (
+                  <button
+                    key={letter}
+                    type="button"
+                    aria-label={`Questão ${i + 1}: ${letter}`}
+                    aria-pressed={on}
+                    onClick={() => setDraft((d) => d.slice(0, i) + letter + d.slice(i + 1))}
+                    className={cn(
+                      'grid size-8 place-items-center rounded-full border text-xs font-bold transition',
+                      on ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:border-brand/60',
+                    )}
+                  >
+                    {letter}
+                  </button>
+                );
+              })}
+            </li>
+          ))}
+        </ol>
+      </Modal>
+    </>
   );
 }

@@ -1,5 +1,7 @@
 'use client';
 
+import { confirmDialog } from '@/components/confirm';
+
 import { MessageSquare, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
@@ -49,7 +51,7 @@ export function LessonComments({
   }
 
   async function remove(id: string) {
-    if (!window.confirm('Excluir este comentário?')) return;
+    if (!(await confirmDialog('Excluir este comentário?'))) return;
     const r = await deleteComment(lessonId, id);
     if (r.error) toast.error(r.error);
     else setList((l) => l.filter((c) => c.id !== id));

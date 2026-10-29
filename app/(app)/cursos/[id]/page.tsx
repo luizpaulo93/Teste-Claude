@@ -1,14 +1,13 @@
-import { CheckCircle2, ChevronLeft, FileText, Lock, MessageCircle, Play, PlayCircle } from 'lucide-react';
+import { ChevronLeft, Lock, MessageCircle, Play } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { CoverFallback } from '@/components/course/course-card';
+import { CoverCard, CoverFallback } from '@/components/course/course-card';
 import { Badge, Img, LinkButton, ProgressBar } from '@/components/ui';
 import { whatsappLink } from '@/lib/contact';
 import { getCourseTree, getMyProgress } from '@/lib/data';
 import { getCatalogData } from '@/lib/db';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
-import { cn, youtubeThumb } from '@/lib/utils';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -38,7 +37,21 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   const lastInCourse = progress.find((p) => inCourse.has(p.lesson_id));
   const firstPending = lessons.find((l) => !done.has(l.id));
   const resumeId = lastInCourse?.lesson_id ?? firstPending?.id ?? lessons[0]?.id;
-  const visibleLessons = lessons; // RLS já esconde aulas bloqueadas (exceto grátis)
+  // Bloqueado: mostra os módulos publicados (com cadeado) para o aluno ver o que tem no curso
+  const cards = (locked ? catalog.modules.filter((m) => m.course_id === course.id && m.is_published) : modules)
+    .map((m) => {
+      const ml = locked
+        ? new Set(catalog.lessons.filter((l) => l.module_id === m.id && l.is_published).map((l) => l.id))
+        : new Set(lessons.filter((l) => l.module_id === m.id).map((l) => l.id));
+      const mdone = [...ml].filter((x) => done.has(x)).length;
+      return {
+        ...m,
+        count: ml.size,
+        pct: !locked && ml.size ? Math.round((mdone / ml.size) * 100) : 0,
+        free: locked && lessons.some((l) => l.module_id === m.id),
+      };
+    })
+    .filter((m) => m.count > 0);
 
   return (
     <div className="space-y-8">
@@ -107,82 +120,25 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
         </a>
       )}
 
-      {locked && visibleLessons.length === 0 ? (
-        <div className="space-y-3">
-          {/* O aluno vê o que tem no curso, tudo com cadeado */}
-          {catalog.modules
-            .filter((m) => m.course_id === course.id && m.is_published)
-            .map((m, mi) => {
-              const titles = [...new Map(catalog.lessons.filter((l) => l.module_id === m.id && l.is_published).map((l) => [l.id, l.title])).values()];
-              if (!titles.length) return null;
-              return (
-                <details key={m.id} open={mi === 0} className="group overflow-hidden rounded-2xl border border-line bg-surface">
-                  <summary className="flex cursor-pointer list-none items-center gap-3 p-4 select-none [&::-webkit-details-marker]:hidden">
-                    <Lock className="size-4 shrink-0 text-muted" />
-                    <span className="min-w-0 flex-1 truncate font-bold text-ink">{m.title}</span>
-                    <span className="text-xs text-muted">{titles.length}</span>
-                  </summary>
-                  <ol className="border-t border-line">
-                    {titles.map((t, i) => (
-                      <li key={i} className="flex items-center gap-3 px-4 py-2.5 text-sm text-muted">
-                        <span className="w-6 text-xs tabular-nums">{String(i + 1).padStart(2, '0')}</span>
-                        <span className="min-w-0 flex-1 truncate">{t}</span>
-                        <Lock className="size-3.5 shrink-0" />
-                      </li>
-                    ))}
-                  </ol>
-                </details>
-              );
-            })}
+      {/* Módulos/playlists como capas, igual à tela inicial */}
+      {cards.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 sm:gap-x-4 md:grid-cols-4 xl:grid-cols-5">
+          {cards.map((m, i) => (
+            <CoverCard
+              key={m.id}
+              href={`/cursos/${course.id}/m/${m.id}`}
+              title={m.title}
+              cover={m.cover_url || course.cover_url}
+              seed={m.id}
+              locked={locked && !m.free}
+              progress={m.pct}
+              priority={i < 6}
+              caption={`${m.count} aula${m.count === 1 ? '' : 's'}${m.pct ? ` · ${m.pct}%` : ''}`}
+            />
+          ))}
         </div>
       ) : (
-        <div className="space-y-4">
-          {modules.map((m, mi) => {
-            const ml = visibleLessons.filter((l) => l.module_id === m.id);
-            if (!ml.length) return null;
-            const mdone = ml.filter((l) => done.has(l.id)).length;
-            return (
-              <details key={m.id} open={mi < 2} className="group overflow-hidden rounded-2xl border border-line bg-surface shadow-card">
-                <summary className="flex cursor-pointer list-none items-center gap-4 p-4 select-none sm:p-5 [&::-webkit-details-marker]:hidden">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand-soft text-sm font-extrabold text-brand">{mi + 1}</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-bold text-ink">{m.title}</p>
-                    <p className="text-xs text-muted">
-                      {ml.length} aulas · {mdone} concluídas
-                    </p>
-                  </div>
-                  <ChevronLeft className="size-5 -rotate-90 text-muted transition-transform group-open:rotate-90" />
-                </summary>
-                <ol className="border-t border-line">
-                  {ml.map((l, li) => {
-                    const isDone = done.has(l.id);
-                    return (
-                      <li key={`${m.id}-${l.id}`} className="cv-auto">
-                        <Link href={`/aula/${l.id}?c=${course.id}`} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2 sm:px-5">
-                          <span className="w-6 text-xs font-semibold text-muted tabular-nums">{String(li + 1).padStart(2, '0')}</span>
-                          <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-surface-3 sm:w-24">
-                            {l.thumbnail_url || l.youtube_id ? (
-                              <Img src={l.thumbnail_url || youtubeThumb(l.youtube_id)} className="size-full object-cover" />
-                            ) : (
-                              <FileText className="absolute inset-0 m-auto size-5 text-danger" />
-                            )}
-                            <span className={cn('absolute right-1 bottom-1 grid size-5 place-items-center rounded-full', isDone ? 'bg-success text-white' : 'bg-black/60 text-white')}>
-                              {isDone ? <CheckCircle2 className="size-3.5" /> : l.youtube_id ? <PlayCircle className="size-3.5" /> : <FileText className="size-3" />}
-                            </span>
-                          </span>
-                          <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{l.title}</span>
-                          {l.is_free && locked && <Badge tone="success">Grátis</Badge>}
-                          {l.duration && <span className="text-xs text-muted tabular-nums">{l.duration}</span>}
-                        </Link>
-                      </li>
-                    );
-                  })}
-                </ol>
-              </details>
-            );
-          })}
-          {!visibleLessons.length && <p className="text-sm text-muted">As aulas deste curso serão publicadas em breve.</p>}
-        </div>
+        <p className="text-sm text-muted">As aulas deste curso serão publicadas em breve.</p>
       )}
     </div>
   );

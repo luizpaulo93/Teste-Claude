@@ -1,4 +1,4 @@
-import { ChevronLeft, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -53,10 +53,9 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
 
   return (
     <>
-      <Link href={`/cursos/${lesson.course_id}`} className="mb-4 inline-flex max-w-full items-center gap-1 truncate text-sm font-semibold text-muted hover:text-ink">
-        <ChevronLeft className="size-4 shrink-0" /> <span className="truncate">{course?.title ?? 'Curso'}</span>
-      </Link>
       <LessonView
+        courseTitle={course?.title ?? 'Curso'}
+        courseHref={`/cursos/${lesson.course_id}`}
         lesson={lesson}
         materials={lesson.materials ?? []}
         modules={tree.modules.map((m) => ({ id: m.id, title: m.title }))}

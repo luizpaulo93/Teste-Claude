@@ -6,6 +6,8 @@ import { useFormStatus } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { buttonClass } from './ui';
 import { toast } from './toast';
+import { confirmDialog } from './confirm';
+import { createPortal } from 'react-dom';
 
 export function SubmitButton({
   children,
@@ -66,9 +68,9 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
   const widths = { sm: 'sm:max-w-md', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl', xl: 'sm:max-w-4xl', full: 'sm:max-w-6xl' };
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4" role="dialog" aria-modal="true">
       <div className="absolute inset-0 animate-fade-in bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div
@@ -84,10 +86,11 @@ export function Modal({
             <X className="size-5" />
           </button>
         </div>
-        <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        <div className={cn('scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5', footer ? 'pb-5' : 'pb-[calc(1.5rem+env(safe-area-inset-bottom))]')}>{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3 safe-bottom">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -121,8 +124,8 @@ export function ActionButton({
       aria-label={title}
       disabled={pending || disabled}
       className={buttonClass(variant, size, className)}
-      onClick={() => {
-        if (confirm && !window.confirm(confirm)) return;
+      onClick={async () => {
+        if (confirm && !(await confirmDialog(confirm))) return;
         start(async () => {
           const res = await action();
           if (res && res.error) toast.error(res.error);

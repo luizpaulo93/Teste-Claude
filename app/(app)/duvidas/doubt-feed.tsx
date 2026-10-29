@@ -1,5 +1,7 @@
 'use client';
 
+import { confirmDialog } from '@/components/confirm';
+
 import { CheckCircle2, Heart, MessageCircle, MessageCircleQuestion, ShieldCheck, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -104,7 +106,7 @@ function DoubtCard({
   };
 
   const remove = async () => {
-    if (!window.confirm('Excluir esta dúvida e todas as respostas?')) return;
+    if (!(await confirmDialog('Excluir esta dúvida e todas as respostas?'))) return;
     const r = await deleteDoubt(doubt.id);
     if (r.error) toast.error(r.error);
     else {
@@ -114,7 +116,7 @@ function DoubtCard({
   };
 
   const removeReply = async (id: string) => {
-    if (!window.confirm('Excluir esta resposta?')) return;
+    if (!(await confirmDialog('Excluir esta resposta?'))) return;
     const r = await deleteReply(doubt.id, id);
     if (!r.error) setReplies((list) => list?.filter((x) => x.id !== id) ?? null);
   };

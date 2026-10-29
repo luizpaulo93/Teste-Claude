@@ -28,6 +28,8 @@ interface Props {
   userId: string;
   /** Nome/CPF carimbados nos PDFs (vazio para admin) */
   pdfOwner?: PdfOwner | null;
+  courseTitle: string;
+  courseHref: string;
   watermark: string;
   comments?: ReactNode;
 }
@@ -139,6 +141,105 @@ export function LessonView(p: Props) {
 
   return (
     <div className={cn('mx-auto space-y-4', theater ? 'max-w-none' : 'max-w-5xl')}>
+      {/* Topo: voltar ao curso + aulas do curso (só se houver mais de uma) */}
+      <div className="flex items-center gap-2">
+        <Link href={p.courseHref} className="inline-flex min-w-0 flex-1 items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+          <ChevronLeft className="size-4 shrink-0" /> <span className="truncate">{p.courseTitle}</span>
+        </Link>
+        {total > 1 && (
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setListOpen((v) => !v)}
+              aria-expanded={listOpen}
+              className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-xs font-bold text-ink transition hover:bg-surface-2"
+            >
+              <ListVideo className="size-4 text-brand" />
+              <span>Aulas do curso</span>
+              <span className="font-semibold text-muted tabular-nums">
+                {pos + 1}/{total}
+              </span>
+              <ChevronDown className={cn('size-3.5 text-muted transition-transform', listOpen && 'rotate-180')} />
+            </button>
+            {listOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setListOpen(false)} />
+                <div className="absolute top-full right-0 z-40 mt-2 flex max-h-[65dvh] w-[min(92vw,420px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+                  <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-muted tabular-nums">
+                      {doneCount} de {total} concluídas
+                    </span>
+                    <Link
+                      href={p.prevId ? `/aula/${p.prevId}${q}` : '#'}
+                      aria-disabled={!p.prevId}
+                      aria-label="Aula anterior"
+                      onClick={() => setListOpen(false)}
+                      className={cn('grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2', !p.prevId && 'pointer-events-none opacity-40')}
+                    >
+                      <ChevronLeft className="size-4" />
+                    </Link>
+                    <Link
+                      href={p.nextId ? `/aula/${p.nextId}${q}` : '#'}
+                      aria-disabled={!p.nextId}
+                      aria-label="Próxima aula"
+                      onClick={() => setListOpen(false)}
+                      className={cn('grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2', !p.nextId && 'pointer-events-none opacity-40')}
+                    >
+                      <ChevronRight className="size-4" />
+                    </Link>
+                  </div>
+                  <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
+                  {p.modules.map((m) => {
+                      const items = p.lessons.filter((l) => l.module_id === m.id);
+                      if (!items.length) return null;
+                      return (
+                        <div key={m.id}>
+                          <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">{m.title}</p>
+                          {items.map((l) => {
+                            const active = l.id === p.lesson.id;
+                            const isDone = doneSet.has(l.id);
+                            return (
+                              <Link
+                                key={l.id}
+                                href={`/aula/${l.id}${q}`}
+                                scroll={false}
+                                onClick={() => setListOpen(false)}
+                                className={cn('flex items-center gap-3 border-l-2 px-3 py-2 text-sm transition', active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2')}
+                              >
+                                <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-surface-3">
+                                  {l.thumb ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img src={l.thumb} alt="" loading="lazy" className="size-full object-cover" />
+                                  ) : (
+                                    <FileText className="absolute inset-0 m-auto size-4 text-danger" />
+                                  )}
+                                  {active && (
+                                    <span className="absolute inset-0 grid place-items-center bg-black/45">
+                                      <PlayCircle className="size-5 text-white" />
+                                    </span>
+                                  )}
+                                  {isDone && !active && (
+                                    <span className="absolute top-1 right-1 grid size-4 place-items-center rounded-full bg-success text-white">
+                                      <CheckCircle2 className="size-3" />
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug">{l.title}</span>
+                                {l.duration && <span className="shrink-0 text-[11px] text-muted tabular-nums">{l.duration}</span>}
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="-mx-4 sm:mx-0">
         {hasVideo ? (
           <VideoPlayer
@@ -206,98 +307,6 @@ export function LessonView(p: Props) {
           <span className="hidden sm:inline">{completed ? 'Concluída' : 'Concluir'}</span>
         </button>
       </div>
-
-      {/* Aulas do curso: menu suspenso logo abaixo do vídeo */}
-      {total > 0 && (
-        <div className="flex items-stretch gap-2">
-          <Link
-            href={p.prevId ? `/aula/${p.prevId}${q}` : '#'}
-            aria-disabled={!p.prevId}
-            aria-label="Aula anterior"
-            className={cn('grid w-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink-2 transition hover:bg-surface-2', !p.prevId && 'pointer-events-none opacity-40')}
-          >
-            <ChevronLeft className="size-5" />
-          </Link>
-          <div className="relative min-w-0 flex-1">
-            <button
-              type="button"
-              onClick={() => setListOpen((v) => !v)}
-              aria-expanded={listOpen}
-              className="flex h-full w-full items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:bg-surface-2"
-            >
-              <ListVideo className="size-4 shrink-0 text-brand" />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold text-ink">Aulas do curso</span>
-                <span className="block text-[11px] text-muted tabular-nums">
-                  {pos + 1} de {total} · {doneCount} concluídas
-                </span>
-              </span>
-              <span className="hidden h-1.5 w-20 overflow-hidden rounded-full bg-surface-3 sm:block">
-                <span className="block h-full rounded-full bg-brand" style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} />
-              </span>
-              <ChevronDown className={cn('size-4 shrink-0 text-muted transition-transform', listOpen && 'rotate-180')} />
-            </button>
-            {listOpen && (
-              <>
-                <div className="fixed inset-0 z-30" onClick={() => setListOpen(false)} />
-                <div className="scrollbar-thin absolute inset-x-0 top-full z-40 mt-2 max-h-[60dvh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
-                  {p.modules.map((m) => {
-                    const items = p.lessons.filter((l) => l.module_id === m.id);
-                    if (!items.length) return null;
-                    return (
-                      <div key={m.id}>
-                        <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">{m.title}</p>
-                        {items.map((l) => {
-                          const active = l.id === p.lesson.id;
-                          const isDone = doneSet.has(l.id);
-                          return (
-                            <Link
-                              key={l.id}
-                              href={`/aula/${l.id}${q}`}
-                              scroll={false}
-                              onClick={() => setListOpen(false)}
-                              className={cn('flex items-center gap-3 border-l-2 px-3 py-2 text-sm transition', active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2')}
-                            >
-                              <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-surface-3">
-                                {l.thumb ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={l.thumb} alt="" loading="lazy" className="size-full object-cover" />
-                                ) : (
-                                  <FileText className="absolute inset-0 m-auto size-4 text-danger" />
-                                )}
-                                {active && (
-                                  <span className="absolute inset-0 grid place-items-center bg-black/45">
-                                    <PlayCircle className="size-5 text-white" />
-                                  </span>
-                                )}
-                                {isDone && !active && (
-                                  <span className="absolute top-1 right-1 grid size-4 place-items-center rounded-full bg-success text-white">
-                                    <CheckCircle2 className="size-3" />
-                                  </span>
-                                )}
-                              </span>
-                              <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug">{l.title}</span>
-                              {l.duration && <span className="shrink-0 text-[11px] text-muted tabular-nums">{l.duration}</span>}
-                            </Link>
-                          );
-                        })}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-          <Link
-            href={p.nextId ? `/aula/${p.nextId}${q}` : '#'}
-            aria-disabled={!p.nextId}
-            aria-label="Próxima aula"
-            className={cn('grid w-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink-2 transition hover:bg-surface-2', !p.nextId && 'pointer-events-none opacity-40')}
-          >
-            <ChevronRight className="size-5" />
-          </Link>
-        </div>
-      )}
 
       {/* Descrição e materiais: tudo num lugar só, abre ao tocar */}
       {(p.lesson.description || p.materials.length > 0) && (

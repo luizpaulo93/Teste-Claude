@@ -124,13 +124,20 @@ export async function saveModule(fd: FormData): Promise<ActionResult> {
     if (!title) return { error: 'Informe o nome do módulo.' };
     const description = str(fd, 'description', 1500);
     const published = bool(fd, 'is_published');
+    const cover = str(fd, 'cover_url', 2000);
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
-      await sql.exec(`update modules set title = $2, description = $3, is_published = $4, updated_at = now() where id = $1`, [id, title, description, published]);
+      await sql.exec(`update modules set title = $2, description = $3, is_published = $4, cover_url = $5, updated_at = now() where id = $1`, [
+        id,
+        title,
+        description,
+        published,
+        cover,
+      ]);
     } else {
       await sql.exec(
-        `insert into modules (id, course_id, title, description, is_published, position) values ($1, $2, $3, $4, $5, $6)`,
-        [newId(), course_id, title, description, published, await nextPosition('modules', course_id)],
+        `insert into modules (id, course_id, title, description, is_published, position, cover_url) values ($1, $2, $3, $4, $5, $6, $7)`,
+        [newId(), course_id, title, description, published, await nextPosition('modules', course_id), cover],
       );
     }
     revalidateContent(course_id);

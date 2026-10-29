@@ -51,33 +51,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Eventos do curso (topo, compacto) */}
-      {events.length > 0 && (
-        <section className="rail -mx-4 flex gap-2.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          {events.map((e) => {
-            const color = EVENT_COLORS[eventColor(e.category, e.color)] ?? EVENT_COLORS.blue;
-            return (
-              <Link
-                key={e.id}
-                href={`/calendario?d=${e.start_date}`}
-                className="flex w-[78%] shrink-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
-              >
-                <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
-                  <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
-                  <span className="block text-[11px] text-muted uppercase">
-                    {formatDate(e.start_date)}
-                    {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
-                  </span>
-                </span>
-              </Link>
-            );
-          })}
-        </section>
-      )}
-
       {!viewer.isMember && (
         <Card className="flex flex-col gap-4 border-warning/30 bg-warning/5 p-5 sm:flex-row sm:items-center">
           <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-warning/15 text-warning">
@@ -210,6 +183,42 @@ export default async function HomePage() {
       )}
 
       {!courses.length && <p className="text-sm text-muted">Nenhum curso publicado ainda.</p>}
+
+      {/* Datas e eventos: um embaixo do outro no celular, lado a lado no tablet/PC */}
+      {events.length > 0 && (
+        <section className="space-y-2.5">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-bold text-ink sm:text-lg">Datas e eventos</h2>
+            <Link href="/calendario" className="text-xs font-semibold text-brand">
+              Calendário
+            </Link>
+          </div>
+          <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+          {events.map((e) => {
+            const color = EVENT_COLORS[eventColor(e.category, e.color)] ?? EVENT_COLORS.blue;
+            return (
+              <Link
+                key={e.id}
+                href={`/calendario?d=${e.start_date}`}
+                className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
+              >
+                <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
+                  <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
+                  <span className="block text-[11px] text-muted uppercase">
+                    {formatDate(e.start_date)}
+                    {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+          </div>
+        </section>
+      )}
+
 
     </div>
   );

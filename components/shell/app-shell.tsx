@@ -80,7 +80,8 @@ export function AppShell({
     ...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean),
     ...items.filter((i) => !preferred.includes(i.href)),
   ].slice(0, 4) as NavItem[];
-  const mobileMore = items.filter((i) => !mobileMain.includes(i));
+  // Minhas aulas e Perfil ficam no menu da foto (topo)
+  const mobileMore = items.filter((i) => !mobileMain.includes(i) && i.href !== '/minhas-aulas');
 
   return (
     <div className="min-h-dvh">
@@ -144,6 +145,9 @@ export function AppShell({
               <Link href="/perfil" className="flex items-center gap-2.5 px-4 py-3 text-sm text-ink-2 hover:bg-surface-2">
                 <User className="size-4" /> Meu perfil
               </Link>
+              <Link href="/minhas-aulas" className="flex items-center gap-2.5 px-4 py-3 text-sm text-ink-2 hover:bg-surface-2">
+                <Heart className="size-4" /> Minhas aulas
+              </Link>
               {isAdmin && (
                 <Link href="/admin" className="flex items-center gap-2.5 px-4 py-3 text-sm text-ink-2 hover:bg-surface-2">
                   <Settings2 className="size-4" /> Painel admin
@@ -187,7 +191,7 @@ export function AppShell({
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2 pb-2">
-              {[...mobileMore, { href: '/perfil', label: 'Perfil', icon: User }, ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : [])].map(
+              {[...mobileMore, ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : [])].map(
                 (item) => (
                   <Link
                     key={item.href}

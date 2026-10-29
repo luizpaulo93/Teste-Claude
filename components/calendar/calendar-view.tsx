@@ -1,5 +1,7 @@
 'use client';
 
+import { confirmDialog } from '@/components/confirm';
+
 import { Cake, CalendarDays, Check, ChevronLeft, ChevronRight, LayoutGrid, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
@@ -428,8 +430,8 @@ function EventActions({ ev, onEdit }: { ev: CalendarEvent; onEdit: () => void })
         type="button"
         title="Excluir"
         disabled={pending}
-        onClick={() => {
-          if (!confirm('Excluir este evento?')) return;
+        onClick={async () => {
+          if (!(await confirmDialog('Excluir este evento?'))) return;
           start(async () => {
             const r = await deleteEvent(ev.id);
             if (r.error) toast.error(r.error);

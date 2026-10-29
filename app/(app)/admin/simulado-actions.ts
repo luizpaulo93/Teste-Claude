@@ -47,8 +47,31 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
         [simId, key],
       );
     });
+    // Gabarito editado depois das entregas: recalcula a nota de todos na hora
+    if (id) await recalibrateIfReleased(simId);
     refresh(simId);
     return { ok: true, id: simId };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Salva só o gabarito (popup de bolhas) e recalcula as notas se já liberadas. */
+export async function saveAnswerKey(id: string, answerKey: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const key = String(answerKey ?? '').toUpperCase().replace(/[^A-E]/g, '');
+    const sim = await sql.one<{ question_count: number }>(`select question_count from simulados where id = $1`, [id]);
+    if (!sim) return { error: 'Simulado não encontrado.' };
+    if (key.length !== sim.question_count) return { error: `O gabarito precisa de ${sim.question_count} respostas.` };
+    await sql.exec(
+      `insert into simulado_keys (simulado_id, answer_key) values ($1, $2) on conflict (simulado_id) do update set answer_key = excluded.answer_key`,
+      [id, key],
+    );
+    await recalibrateIfReleased(id);
+    refresh(id);
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }
