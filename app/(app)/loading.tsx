@@ -11,7 +11,7 @@ export default function Loading() {
         <div className="skeleton h-5 w-40 rounded-lg" />
         <div className="flex gap-4 overflow-hidden">
           {Array.from({ length: 6 }, (_, i) => (
-            <div key={i} className="skeleton aspect-[2/3] w-[42%] shrink-0 rounded-2xl sm:w-[180px] lg:w-[200px]" />
+            <div key={i} className="skeleton aspect-[2/3] w-[46%] shrink-0 rounded-2xl sm:w-[210px] lg:w-[240px]" />
           ))}
         </div>
       </div>

@@ -2,7 +2,7 @@
 
 import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
-import { EVENT_CATEGORIES, EVENT_COLORS } from '@/lib/calendar';
+import { EVENT_CATEGORIES, EVENT_COLORS, eventColor } from '@/lib/calendar';
 import { emailKey, newId, sql, tx } from '@/lib/db';
 import { BOOTSTRAP_ADMIN } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
@@ -24,7 +24,7 @@ export async function saveEvent(fd: FormData): Promise<ActionResult> {
       title: str(fd, 'title', 160),
       description: str(fd, 'description', 2000),
       category: category in EVENT_CATEGORIES ? category : 'evento_curso',
-      color: color in EVENT_COLORS ? color : 'blue',
+      color: eventColor(category, color in EVENT_COLORS ? color : 'blue'),
       start_date,
       end_date,
       is_published: bool(fd, 'is_published'),

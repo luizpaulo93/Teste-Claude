@@ -1,12 +1,12 @@
 'use client';
 
-import { CheckCircle2, ChevronLeft, ChevronRight, Circle, FileText, Heart, Download, PlayCircle, ExternalLink } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Circle, Download, ExternalLink, FileText, Heart, ListVideo, PlayCircle } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
-import { buttonClass, Card } from '@/components/ui';
+import { buttonClass } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { getFileUrl } from '@/lib/storage/client';
 import { saveProgressServer, setFavoriteServer } from './actions';
@@ -37,6 +37,7 @@ export function LessonView(p: Props) {
   const [pdf, setPdf] = useState<{ title: string; url: string } | null>(null);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const [listOpen, setListOpen] = useState(false);
   // Modo cinema: vídeo na largura toda (lembrado neste navegador)
   const [theater, setTheater] = useState(false);
   useEffect(() => {
@@ -113,178 +114,206 @@ export function LessonView(p: Props) {
     else setPdf({ title: m.title, url: signedUrl });
   };
 
-  const goNext = p.nextId ? () => router.push(`/aula/${p.nextId}`) : undefined;
+  const q = p.lesson.course_id ? `?c=${p.lesson.course_id}` : '';
+  const goNext = p.nextId ? () => router.push(`/aula/${p.nextId}${q}`) : undefined;
   const hasVideo = p.lesson.youtube_id.length >= 6;
   const total = p.lessons.length;
   const doneCount = p.lessons.filter((l) => doneSet.has(l.id)).length;
 
+  const pos = p.lessons.findIndex((l) => l.id === p.lesson.id);
+  const currentModule = p.modules.find((m) => m.id === p.lesson.module_id);
+
   return (
-    <div className={cn('grid gap-6', !theater && 'lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_380px]')}>
-      <div className="min-w-0 space-y-5">
-        <div className={cn('-mx-4 sm:mx-0', theater && 'lg:mx-auto lg:max-w-[min(100%,calc((100dvh-140px)*16/9))]')}>
-          {hasVideo ? (
-            <VideoPlayer
-              key={p.lesson.id}
-              videoId={p.lesson.youtube_id}
-              title={p.lesson.title}
-              completed={completed}
-              onToggleComplete={() => setDone(!completed)}
-              theater={theater}
-              onToggleTheater={toggleTheater}
-              poster={p.lesson.thumbnail_url || youtubeThumb(p.lesson.youtube_id)}
-              watermark={p.watermark}
-              startAt={p.startAt}
-              onProgress={onProgress}
-              onEnded={() => !completed && setDone(true)}
-              onNext={goNext}
-            />
-          ) : (
-            <div className="grid aspect-video place-items-center bg-surface-2 sm:rounded-2xl">
-              <div className="text-center">
-                <FileText className="mx-auto size-10 text-brand" />
-                <p className="mt-2 text-sm text-muted">Esta aula é composta por materiais de leitura.</p>
-              </div>
+    <div className={cn('mx-auto space-y-4', theater ? 'max-w-none' : 'max-w-5xl')}>
+      <div className="-mx-4 sm:mx-0">
+        {hasVideo ? (
+          <VideoPlayer
+            key={p.lesson.id}
+            videoId={p.lesson.youtube_id}
+            title={p.lesson.title}
+            completed={completed}
+            onToggleComplete={() => setDone(!completed)}
+            theater={theater}
+            onToggleTheater={toggleTheater}
+            poster={p.lesson.thumbnail_url || youtubeThumb(p.lesson.youtube_id)}
+            watermark={p.watermark}
+            startAt={p.startAt}
+            onProgress={onProgress}
+            onEnded={() => !completed && setDone(true)}
+            onNext={goNext}
+          />
+        ) : (
+          <div className="relative grid aspect-video place-items-center overflow-hidden bg-surface-2 sm:rounded-2xl">
+            {p.lesson.thumbnail_url && (
+              // Foto escolhida pelo professor para indicar o tipo de material
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={p.lesson.thumbnail_url} alt="" className="absolute inset-0 size-full object-cover" />
+            )}
+            {p.lesson.thumbnail_url && <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />}
+            <div className={cn('relative text-center', p.lesson.thumbnail_url && 'self-end pb-6 text-white')}>
+              {!p.lesson.thumbnail_url && <FileText className="mx-auto size-10 text-brand" />}
+              <p className={cn('mt-2 text-sm', p.lesson.thumbnail_url ? 'font-semibold text-white/90' : 'text-muted')}>Material em PDF</p>
+              {p.materials[0] && (
+                <button type="button" onClick={() => openMaterial(p.materials[0])} className={buttonClass('primary', 'md', 'mt-3')}>
+                  {openingId === p.materials[0].id ? <Spinner /> : <FileText className="size-4" />} Abrir PDF
+                </button>
+              )}
             </div>
-          )}
-        </div>
-
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{p.lesson.title}</h1>
-            {p.lesson.duration && <p className="mt-1 text-sm text-muted">{p.lesson.duration}</p>}
           </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={toggleFav}
-              aria-pressed={favorite}
-              className={buttonClass('secondary', 'md', favorite ? 'text-danger' : '')}
-            >
-              <Heart className={cn('size-4', favorite && 'fill-current')} />
-              <span className="hidden sm:inline">{favorite ? 'Favorita' : 'Favoritar'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setDone(!completed)}
-              className={buttonClass(completed ? 'secondary' : 'primary', 'md', completed ? 'text-success' : '')}
-            >
-              {completed ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
-              {completed ? 'Concluída' : 'Marcar como concluída'}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          {p.prevId && (
-            <Link href={`/aula/${p.prevId}`} className={buttonClass('outline', 'md', 'flex-1 sm:flex-none')}>
-              <ChevronLeft className="size-4" /> Anterior
-            </Link>
-          )}
-          {p.nextId && (
-            <Link href={`/aula/${p.nextId}`} className={buttonClass('outline', 'md', 'ml-auto flex-1 sm:flex-none')}>
-              Próxima <ChevronRight className="size-4" />
-            </Link>
-          )}
-        </div>
-
-        {p.materials.length > 0 && (
-          <Card className="p-4 sm:p-5">
-            <p className="mb-3 text-sm font-bold text-ink">Materiais da aula</p>
-            <ul className="space-y-2">
-              {p.materials.map((m) => (
-                <li key={m.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface-2/60 p-3">
-                  <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">
-                    <FileText className="size-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink">{m.title}</p>
-                    {m.size_label && <p className="text-xs text-muted">{m.size_label}</p>}
-                  </div>
-                  <button type="button" onClick={() => openMaterial(m)} className={buttonClass('secondary', 'sm')} disabled={openingId === m.id}>
-                    {openingId === m.id ? <Spinner /> : <ExternalLink className="size-3.5" />} Abrir
-                  </button>
-                  <button type="button" aria-label="Baixar" onClick={() => openMaterial(m, true)} className={buttonClass('ghost', 'sm', 'px-2')}>
-                    <Download className="size-4" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </Card>
         )}
-
-        {p.lesson.description && (
-          <Card className="p-4 sm:p-5">
-            <p className="mb-2 text-sm font-bold text-ink">Sobre a aula</p>
-            <p className="text-sm leading-relaxed whitespace-pre-line text-ink-2">{linkify(p.lesson.description)}</p>
-          </Card>
-        )}
-
-        {p.comments}
       </div>
 
-      {/* Lista de aulas */}
-      <aside className={cn(!theater && 'lg:sticky lg:top-6 lg:self-start')}>
-        <Card className="overflow-hidden">
-          <div className="border-b border-line p-4">
-            <p className="text-sm font-bold text-ink">Conteúdo do curso</p>
-            <p className="text-xs text-muted">
-              {doneCount}/{total} concluídas
-            </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-3">
-              <div className="h-full rounded-full bg-gradient-to-r from-brand to-accent transition-all" style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} />
-            </div>
-          </div>
-          <div className="scrollbar-thin max-h-[60vh] overflow-y-auto lg:max-h-[calc(100dvh-220px)]">
-            {p.modules.map((m) => {
-              const items = p.lessons.filter((l) => l.module_id === m.id);
-              if (!items.length) return null;
-              return (
-                <div key={m.id}>
-                  <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">
-                    {m.title}
-                  </p>
-                  {items.map((l) => {
-                    const active = l.id === p.lesson.id;
-                    const isDone = doneSet.has(l.id);
+      {/* Título + ações (enxuto) */}
+      <div className="flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg leading-snug font-extrabold tracking-tight text-ink sm:text-xl">{p.lesson.title}</h1>
+          {currentModule && <p className="mt-0.5 truncate text-xs text-muted">{currentModule.title}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={toggleFav}
+          aria-pressed={favorite}
+          aria-label={favorite ? 'Remover dos favoritos' : 'Favoritar'}
+          title={favorite ? 'Remover dos favoritos' : 'Favoritar'}
+          className={cn('grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface transition hover:bg-surface-2', favorite ? 'text-danger' : 'text-ink-2')}
+        >
+          <Heart className={cn('size-4', favorite && 'fill-current')} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setDone(!completed)}
+          title={completed ? 'Concluída' : 'Marcar como concluída'}
+          className={cn(
+            'flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition',
+            completed ? 'border border-success/40 bg-success/10 text-success' : 'bg-brand text-white hover:bg-brand-strong',
+          )}
+        >
+          {completed ? <CheckCircle2 className="size-4" /> : <Circle className="size-4" />}
+          <span className="hidden sm:inline">{completed ? 'Concluída' : 'Concluir'}</span>
+        </button>
+      </div>
+
+      {/* Aulas do curso: menu suspenso logo abaixo do vídeo */}
+      {total > 0 && (
+        <div className="flex items-stretch gap-2">
+          <Link
+            href={p.prevId ? `/aula/${p.prevId}${q}` : '#'}
+            aria-disabled={!p.prevId}
+            aria-label="Aula anterior"
+            className={cn('grid w-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink-2 transition hover:bg-surface-2', !p.prevId && 'pointer-events-none opacity-40')}
+          >
+            <ChevronLeft className="size-5" />
+          </Link>
+          <div className="relative min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => setListOpen((v) => !v)}
+              aria-expanded={listOpen}
+              className="flex h-full w-full items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-left transition hover:bg-surface-2"
+            >
+              <ListVideo className="size-4 shrink-0 text-brand" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-bold text-ink">Aulas do curso</span>
+                <span className="block text-[11px] text-muted tabular-nums">
+                  {pos + 1} de {total} · {doneCount} concluídas
+                </span>
+              </span>
+              <span className="hidden h-1.5 w-20 overflow-hidden rounded-full bg-surface-3 sm:block">
+                <span className="block h-full rounded-full bg-brand" style={{ width: `${total ? (doneCount / total) * 100 : 0}%` }} />
+              </span>
+              <ChevronDown className={cn('size-4 shrink-0 text-muted transition-transform', listOpen && 'rotate-180')} />
+            </button>
+            {listOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setListOpen(false)} />
+                <div className="scrollbar-thin absolute inset-x-0 top-full z-40 mt-2 max-h-[60dvh] overflow-y-auto rounded-2xl border border-line bg-surface shadow-2xl">
+                  {p.modules.map((m) => {
+                    const items = p.lessons.filter((l) => l.module_id === m.id);
+                    if (!items.length) return null;
                     return (
-                      <Link
-                        key={l.id}
-                        href={`/aula/${l.id}`}
-                        scroll={false}
-                        className={cn(
-                          'flex items-center gap-3 border-l-2 px-3 py-2.5 text-sm transition',
-                          active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2',
-                        )}
-                      >
-                        <span className="relative aspect-video w-24 shrink-0 overflow-hidden rounded-lg bg-surface-3">
-                          {l.thumb ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={l.thumb} alt="" loading="lazy" className="size-full object-cover" />
-                          ) : (
-                            <FileText className="absolute inset-0 m-auto size-4 text-muted" />
-                          )}
-                          {active && (
-                            <span className="absolute inset-0 grid place-items-center bg-black/45">
-                              <PlayCircle className="size-5 text-white" />
-                            </span>
-                          )}
-                          {isDone && !active && (
-                            <span className="absolute top-1 right-1 grid size-4 place-items-center rounded-full bg-success text-white">
-                              <CheckCircle2 className="size-3" />
-                            </span>
-                          )}
-                          {l.duration && <span className="absolute right-1 bottom-1 rounded bg-black/75 px-1 text-[9px] font-semibold text-white tabular-nums">{l.duration}</span>}
-                        </span>
-                        <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug">{l.title}</span>
-                      </Link>
+                      <div key={m.id}>
+                        <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">{m.title}</p>
+                        {items.map((l) => {
+                          const active = l.id === p.lesson.id;
+                          const isDone = doneSet.has(l.id);
+                          return (
+                            <Link
+                              key={l.id}
+                              href={`/aula/${l.id}${q}`}
+                              scroll={false}
+                              onClick={() => setListOpen(false)}
+                              className={cn('flex items-center gap-3 border-l-2 px-3 py-2 text-sm transition', active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2')}
+                            >
+                              <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-surface-3">
+                                {l.thumb ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={l.thumb} alt="" loading="lazy" className="size-full object-cover" />
+                                ) : (
+                                  <FileText className="absolute inset-0 m-auto size-4 text-danger" />
+                                )}
+                                {active && (
+                                  <span className="absolute inset-0 grid place-items-center bg-black/45">
+                                    <PlayCircle className="size-5 text-white" />
+                                  </span>
+                                )}
+                                {isDone && !active && (
+                                  <span className="absolute top-1 right-1 grid size-4 place-items-center rounded-full bg-success text-white">
+                                    <CheckCircle2 className="size-3" />
+                                  </span>
+                                )}
+                              </span>
+                              <span className="line-clamp-2 min-w-0 flex-1 text-[13px] leading-snug">{l.title}</span>
+                              {l.duration && <span className="shrink-0 text-[11px] text-muted tabular-nums">{l.duration}</span>}
+                            </Link>
+                          );
+                        })}
+                      </div>
                     );
                   })}
                 </div>
-              );
-            })}
+              </>
+            )}
           </div>
-        </Card>
-      </aside>
+          <Link
+            href={p.nextId ? `/aula/${p.nextId}${q}` : '#'}
+            aria-disabled={!p.nextId}
+            aria-label="Próxima aula"
+            className={cn('grid w-11 shrink-0 place-items-center rounded-xl border border-line bg-surface text-ink-2 transition hover:bg-surface-2', !p.nextId && 'pointer-events-none opacity-40')}
+          >
+            <ChevronRight className="size-5" />
+          </Link>
+        </div>
+      )}
+
+      {p.materials.length > 0 && (
+        <ul className="space-y-2">
+          {p.materials.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-2.5">
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">
+                <FileText className="size-4" />
+              </span>
+              <p className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</p>
+              <button type="button" onClick={() => openMaterial(m)} className={buttonClass('secondary', 'sm')} disabled={openingId === m.id}>
+                {openingId === m.id ? <Spinner /> : <ExternalLink className="size-3.5" />} Abrir
+              </button>
+              <button type="button" aria-label="Baixar" onClick={() => openMaterial(m, true)} className={buttonClass('ghost', 'sm', 'px-2')}>
+                <Download className="size-4" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {p.lesson.description && (
+        <details className="group rounded-xl border border-line bg-surface">
+          <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3 text-sm font-semibold text-ink-2 [&::-webkit-details-marker]:hidden">
+            Descrição <ChevronDown className="size-4 text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <p className="px-4 pb-4 text-sm leading-relaxed whitespace-pre-line text-ink-2">{linkify(p.lesson.description)}</p>
+        </details>
+      )}
+
+      {p.comments}
 
       <Modal open={Boolean(pdf)} onClose={() => setPdf(null)} title={pdf?.title} size="full">
         {pdf && <iframe src={`${pdf.url}#toolbar=0&navpanes=0`} title={pdf.title} className="h-[75dvh] w-full rounded-xl bg-white" />}

@@ -6,20 +6,39 @@ import type { CalendarEvent, Course, LessonProgress } from './types';
 
 export type { LessonSummary } from './db';
 
-/** Cursos publicados + nº de aulas publicadas por curso (vem do cache, sem custo de leitura). */
+/** Cursos publicados + aulas publicadas de cada curso (vem do cache, sem custo de leitura). */
 export const getCatalog = cache(async () => {
-  const { courses, lessons } = await getCatalogData();
+  const { courses, modules, lessons } = await getCatalogData();
   const published = courses.filter((c) => c.is_published);
-  const lessonCount = new Map<string, number>();
-  lessons.forEach((l) => l.is_published && lessonCount.set(l.course_id, (lessonCount.get(l.course_id) ?? 0) + 1));
-  return { courses: published, lessonCount };
+  const openModules = new Set(modules.filter((m) => m.is_published).map((m) => m.id));
+  // Aulas distintas por curso (uma aula pode estar em mais de um módulo)
+  const courseLessons = new Map<string, Set<string>>();
+  lessons.forEach((l) => {
+    if (!l.is_published || !openModules.has(l.module_id)) return;
+    if (!courseLessons.has(l.course_id)) courseLessons.set(l.course_id, new Set());
+    courseLessons.get(l.course_id)!.add(l.id);
+  });
+  const lessonCount = new Map([...courseLessons].map(([k, v]) => [k, v.size]));
+  return { courses: published, lessonCount, courseLessons };
 });
 
-/** Aulas que este usuário pode ver (mesma regra de antes: publicada e liberada, ou grátis). */
+/** Aulas que este usuário pode ver (publicada, em módulo visível, e liberada ou grátis). Uma linha por módulo onde a aula está. */
 export async function visibleLessons(viewer: Viewer, filter?: (l: LessonSummary) => boolean) {
-  const [{ courses, lessons }, settings] = await Promise.all([getCatalogData(), getSettings()]);
+  const [{ courses, modules, lessons }, settings] = await Promise.all([getCatalogData(), getSettings()]);
   const byId = new Map(courses.map((c) => [c.id, c]));
-  return lessons.filter((l) => (!filter || filter(l)) && canSeeLesson(viewer, l, byId.get(l.course_id), settings.restrict_to_student_list));
+  const openModules = new Set(modules.filter((m) => m.is_published || viewer.isAdmin).map((m) => m.id));
+  return lessons.filter(
+    (l) => (!filter || filter(l)) && openModules.has(l.module_id) && canSeeLesson(viewer, l, byId.get(l.course_id), settings.restrict_to_student_list),
+  );
+}
+
+/**
+ * Onde o aluno pode assistir esta aula. Prefere o curso pedido (?c=) e devolve null se não tiver acesso.
+ * Admin pode abrir qualquer aula, mesmo fora de cursos (só no banco de aulas).
+ */
+export async function lessonPlacement(viewer: Viewer, lessonId: string, preferCourse?: string) {
+  const list = await visibleLessons(viewer, (l) => l.id === lessonId);
+  return list.find((l) => l.course_id === preferCourse) ?? list[0] ?? null;
 }
 
 /** Progresso e favoritos do aluno (2 consultas leves, em paralelo). */
@@ -59,8 +78,9 @@ export const getUpcomingEvents = cache(async (limit = 5) => {
   );
 });
 
-export function courseProgress(courseId: string, total: number, progress: LessonProgress[]) {
-  if (!total) return 0;
-  const done = progress.filter((p) => p.course_id === courseId && p.completed).length;
-  return Math.round((done / total) * 100);
+/** % de aulas concluídas de um curso (conta pelas aulas, então vale mesmo se a aula estiver em vários cursos). */
+export function courseProgress(lessonIds: Set<string> | undefined, progress: LessonProgress[]) {
+  if (!lessonIds?.size) return 0;
+  const done = progress.filter((p) => p.completed && lessonIds.has(p.lesson_id)).length;
+  return Math.round((done / lessonIds.size) * 100);
 }

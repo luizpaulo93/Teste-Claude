@@ -43,7 +43,7 @@ export default async function AdminHome() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Alunos na lista" value={students} hint={`${active} ativos`} icon={<Users className="size-4" />} />
         <Stat label="Contas criadas" value={users} hint="Pessoas que já entraram" icon={<UserCheck className="size-4" />} />
-        <Stat label="Cursos / aulas" value={`${catalog.courses.length} / ${catalog.lessons.length}`} icon={<BookOpen className="size-4" />} />
+        <Stat label="Cursos / aulas" value={`${catalog.courses.length} / ${new Set(catalog.lessons.map((l) => l.id)).size}`} icon={<BookOpen className="size-4" />} />
         <Stat label="Turmas" value={catalog.classes.length} hint="Grupos de acesso" icon={<PlayCircle className="size-4" />} />
         <Stat label="Dúvidas abertas" value={openDoubts} hint={<Link href="/duvidas?f=abertas" className="text-brand">Responder</Link>} icon={<MessageCircleQuestion className="size-4" />} />
         <Stat label="Simulados publicados" value={sims} icon={<ClipboardCheck className="size-4" />} />

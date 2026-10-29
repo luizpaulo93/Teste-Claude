@@ -327,3 +327,38 @@ create table if not exists live_messages (
   created_at timestamptz not null default now()
 );
 create index if not exists live_messages_idx on live_messages (live_id, created_at desc);
+
+-- ============================================================================
+-- Versão 2: banco de aulas com pastas (como no MemberClass).
+-- A aula é criada uma vez (com pasta) e pode entrar em vários módulos/cursos.
+-- ============================================================================
+create table if not exists lesson_folders (
+  id text primary key,
+  name text not null,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table lessons add column if not exists folder_id text references lesson_folders (id) on delete set null;
+create index if not exists lessons_folder_idx on lessons (folder_id, position);
+
+-- Em que módulos (e em que ordem) cada aula aparece
+create table if not exists module_lessons (
+  module_id text not null references modules (id) on delete cascade,
+  lesson_id text not null references lessons (id) on delete cascade,
+  position int not null default 0,
+  primary key (module_id, lesson_id)
+);
+create index if not exists module_lessons_lesson_idx on module_lessons (lesson_id);
+
+-- Aulas antigas: continuam nos mesmos módulos, na mesma ordem
+insert into module_lessons (module_id, lesson_id, position)
+  select l.module_id, l.id, l.position from lessons l join modules m on m.id = l.module_id
+  on conflict do nothing;
+
+-- Apagar um curso ou módulo não apaga mais as aulas (elas ficam no banco de aulas)
+alter table lessons drop constraint if exists lessons_module_id_fkey;
+alter table lessons drop constraint if exists lessons_course_id_fkey;
+alter table lessons alter column module_id drop not null;
+alter table lessons alter column course_id drop not null;
+update lessons set module_id = null, course_id = null where module_id is not null or course_id is not null;

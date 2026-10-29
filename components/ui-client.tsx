@@ -101,8 +101,10 @@ export function ActionButton({
   size = 'sm',
   className,
   title,
+  disabled,
 }: {
   action: () => Promise<{ error?: string } | void>;
+  disabled?: boolean;
   confirm?: string;
   children: ReactNode;
   success?: string;
@@ -117,7 +119,7 @@ export function ActionButton({
       type="button"
       title={title}
       aria-label={title}
-      disabled={pending}
+      disabled={pending || disabled}
       className={buttonClass(variant, size, className)}
       onClick={() => {
         if (confirm && !window.confirm(confirm)) return;

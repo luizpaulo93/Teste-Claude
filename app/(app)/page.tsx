@@ -13,7 +13,7 @@ import { cn, firstName, formatDate, formatDateTime, youtubeThumb } from '@/lib/u
 
 export default async function HomePage() {
   const viewer = await requireViewer();
-  const [settings, { courses, lessonCount }, progress, events, lives] = await Promise.all([
+  const [settings, { courses, lessonCount, courseLessons }, progress, events, lives] = await Promise.all([
     getSettings(),
     getCatalog(),
     getMyProgress(viewer.userId),
@@ -38,8 +38,9 @@ export default async function HomePage() {
   const breakdown = mine
     .map((c) => {
       const total = lessonCount.get(c.id) ?? 0;
-      const done = progress.filter((p) => p.course_id === c.id && p.completed).length;
-      return { course: c, total, done: Math.min(done, total), pct: courseProgress(c.id, total, progress) };
+      const ids = courseLessons.get(c.id);
+      const done = progress.filter((p) => p.completed && ids?.has(p.lesson_id)).length;
+      return { course: c, total, done: Math.min(done, total), pct: courseProgress(ids, progress) };
     })
     .filter((x) => x.total > 0);
   const totalLessons = breakdown.reduce((a, b) => a + b.total, 0);
@@ -172,8 +173,8 @@ export default async function HomePage() {
           {mine.map((course, i) => {
             const total = lessonCount.get(course.id) ?? 0;
             return (
-              <div key={course.id} className="w-[42%] shrink-0 sm:w-[180px] lg:w-[200px]">
-                <CourseCard course={course} locked={false} lessons={total} progress={courseProgress(course.id, total, progress)} priority={i < 5} />
+              <div key={course.id} className="w-[46%] shrink-0 sm:w-[210px] lg:w-[240px]">
+                <CourseCard course={course} locked={false} lessons={total} progress={courseProgress(courseLessons.get(course.id), progress)} priority={i < 5} />
               </div>
             );
           })}
@@ -199,7 +200,7 @@ export default async function HomePage() {
       {others.length > 0 && (
         <Rail title={mine.length ? 'Outros cursos' : 'Cursos'} subtitle="Conteúdo exclusivo para alunos matriculados">
           {others.map((course) => (
-            <div key={course.id} className="w-[42%] shrink-0 sm:w-[180px] lg:w-[200px]">
+            <div key={course.id} className="w-[46%] shrink-0 sm:w-[210px] lg:w-[240px]">
               <CourseCard course={course} locked lessons={lessonCount.get(course.id) ?? 0} progress={0} />
             </div>
           ))}
@@ -272,7 +273,7 @@ export default async function HomePage() {
                 return (
                   <Link
                     key={e.id}
-                    href={`/calendario?m=${e.start_date.slice(0, 7)}`}
+                    href={`/calendario?d=${e.start_date}`}
                     className={cn('group flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:brightness-110', color.chip)}
                   >
                     <span className="flex min-w-0 items-center gap-3">

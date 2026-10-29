@@ -9,7 +9,14 @@ export const metadata: Metadata = { title: 'Cursos · Admin' };
 export default async function AdminCourses() {
   const { courses, lessons } = await getCatalogData();
   const counts: Record<string, number> = {};
-  lessons.forEach((l) => (counts[l.course_id] = (counts[l.course_id] ?? 0) + 1));
+  // Aulas distintas por curso (a mesma aula pode estar em mais de um módulo)
+  const seen = new Set<string>();
+  lessons.forEach((l) => {
+    const k = `${l.course_id}:${l.id}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    counts[l.course_id] = (counts[l.course_id] ?? 0) + 1;
+  });
   return (
     <>
       <PageHeader title="Cursos" subtitle="Crie cursos, organize em módulos e publique aulas." actions={<NewCourseButton />} />

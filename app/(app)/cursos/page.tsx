@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Cursos' };
 
 export default async function CoursesPage({ searchParams }: { searchParams: Promise<{ c?: string }> }) {
   const viewer = await requireViewer();
-  const [{ c }, settings, { courses, lessonCount }, progress] = await Promise.all([
+  const [{ c }, settings, { courses, lessonCount, courseLessons }, progress] = await Promise.all([
     searchParams,
     getSettings(),
     getCatalog(),
@@ -30,7 +30,7 @@ export default async function CoursesPage({ searchParams }: { searchParams: Prom
             const total = lessonCount.get(course.id) ?? 0;
             return (
               <div key={course.id} className="animate-slide-up" style={{ animationDelay: `${Math.min(i, 10) * 30}ms` }}>
-                <CourseCard course={course} locked={locked} lessons={total} progress={locked ? 0 : courseProgress(course.id, total, progress)} priority={i < 6} />
+                <CourseCard course={course} locked={locked} lessons={total} progress={locked ? 0 : courseProgress(courseLessons.get(course.id), progress)} priority={i < 6} />
               </div>
             );
           })}

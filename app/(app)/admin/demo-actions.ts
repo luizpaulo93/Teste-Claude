@@ -46,12 +46,15 @@ export async function loadDemo(): Promise<ActionResult> {
     mod('demo_m_qg', 'demo_quimica', 'Química Geral', 0);
     mod('demo_m_est', 'demo_gratis', 'Primeiros passos', 0);
 
-    const lesson = (id: string, module_id: string, course_id: string, title: string, youtube_id: string, position: number, is_free = false) =>
+    const placements: [string, string, number][] = [];
+    const lesson = (id: string, module_id: string, _course: string, title: string, youtube_id: string, position: number, is_free = false) => {
+      placements.push([module_id, id, position]);
       set(`lessons/${id}`, {
-        module_id, course_id, title, youtube_id, position, is_free, is_published: true,
+        folder_id: 'demo_pasta', title, youtube_id, position: placements.length, is_free, is_published: true,
         description: 'Aula de exemplo com vídeo da Khan Academy Brasil. No painel, troque pelo link da sua aula.',
         duration: '', thumbnail_url: '', materials: '[]', material_paths: [], created_at: iso(),
       });
+    };
     lesson('demo_l1', 'demo_m_cin', 'demo_fisica', 'Velocidade média e instantânea', 'kDr0yBQLk6g', 0);
     lesson('demo_l2', 'demo_m_cin', 'demo_fisica', 'Escolhendo as equações da cinemática', 'Zwsn-aTwW18', 1);
     lesson('demo_l3', 'demo_m_din', 'demo_fisica', 'Primeira lei de Newton', 'OoGSZc38Svg', 0);
@@ -72,7 +75,9 @@ export async function loadDemo(): Promise<ActionResult> {
     set('doubts/demo_d1', { author_id: viewer.userId, ...authorOf(viewer), text: 'Bem-vindos ao fórum de dúvidas! Mandem suas perguntas aqui (pode enviar foto da questão).', image_url: '', is_resolved: false, likes_count: 0, replies_count: 0, created_at: iso() });
 
     await tx(async (t) => {
+      await t.exec(`insert into lesson_folders (id, name, position) values ('demo_pasta', 'Aulas de exemplo', -1) on conflict do nothing`);
       for (const [table, data] of rows) await insert(t, table, data);
+      for (const [m, l, pos] of placements) await t.exec(`insert into module_lessons (module_id, lesson_id, position) values ($1, $2, $3)`, [m, l, pos]);
       await t.exec(`insert into simulado_keys (simulado_id, answer_key) values ('demo_sim', 'ABCDEABCDE')`);
     });
     refreshCatalog();
@@ -92,6 +97,7 @@ export async function removeDemo(): Promise<ActionResult> {
     // Apagar o curso/simulado/live/dúvida leva junto módulos, aulas, comentários, entregas e mensagens
     await tx(async (t) => {
       for (const table of DEMO_TABLES) await t.exec(`delete from ${table} where demo`);
+      await t.exec(`delete from lesson_folders where id = 'demo_pasta'`);
     });
     refreshCatalog();
     updateTag('lives');

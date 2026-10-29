@@ -4,8 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { bool, fail, int, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { newId, sql, tx } from '@/lib/db';
 import { removeObjects } from '@/lib/storage/server';
-import { evaluateCohort } from '@/lib/tri';
-import type { EnemArea, SimuladoSubmission } from '@/lib/types';
+import { computeResults, recalibrateIfReleased } from '@/lib/simulado-results';
+import type { EnemArea } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
 
 function refresh(id?: string) {
@@ -88,30 +88,8 @@ export async function releaseResults(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const [sim, key, subs] = await Promise.all([
-      sql.one<{ area: EnemArea; question_count: number }>(`select area, question_count from simulados where id = $1`, [id]),
-      sql.one<{ answer_key: string }>(`select answer_key from simulado_keys where simulado_id = $1`, [id]),
-      sql.query<SimuladoSubmission>(`select * from simulado_submissions where simulado_id = $1 and status = 'completed'`, [id]),
-    ]);
-    const answerKey = key?.answer_key ?? '';
-    if (!sim) return { error: 'Simulado não encontrado.' };
-    if (answerKey.length !== sim.question_count) return { error: 'Cadastre o gabarito completo antes de liberar.' };
-
-    const { rows, stats } = evaluateCohort(sim.area, sim.question_count, answerKey, subs);
-    await tx(async (t) => {
-      await t.exec(`delete from simulado_results where simulado_id = $1`, [id]);
-      // Grava em blocos com jsonb_to_recordset (uma consulta por bloco, mesmo com milhares de alunos)
-      for (let i = 0; i < rows.length; i += 500) {
-        await t.exec(
-          `insert into simulado_results (simulado_id, user_id, correct, wrong, blank, accuracy, coherence, tri_score, tri_min, tri_mean, tri_max, tiers, breakdown)
-           select $1, r.user_id, r.correct, r.wrong, r.blank, r.accuracy, r.coherence, r.tri_score, r.tri_min, r.tri_mean, r.tri_max, r.tiers, r.breakdown
-             from jsonb_to_recordset($2::jsonb) as r(user_id text, correct int, wrong int, blank int, accuracy float8, coherence float8,
-               tri_score float8, tri_min float8, tri_mean float8, tri_max float8, tiers jsonb, breakdown jsonb)`,
-          [id, JSON.stringify(rows.slice(i, i + 500))],
-        );
-      }
-      await t.exec(`update simulados set results_released = true, stats = $2 where id = $1`, [id, JSON.stringify(stats)]);
-    });
+    const r = await computeResults(id);
+    if (r.error) return { error: r.error };
     refresh(id);
     return { ok: true };
   } catch (e) {
@@ -140,6 +118,7 @@ export async function resetSubmission(simuladoId: string, userId: string): Promi
       await t.exec(`delete from simulado_results where simulado_id = $1 and user_id = $2`, [simuladoId, userId]);
       await t.exec(`delete from simulado_submissions where simulado_id = $1 and user_id = $2`, [simuladoId, userId]);
     });
+    await recalibrateIfReleased(simuladoId);
     refresh(simuladoId);
     return { ok: true };
   } catch (e) {

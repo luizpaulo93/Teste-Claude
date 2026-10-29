@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronLeft, Lock, Play, PlayCircle } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, FileText, Lock, Play, PlayCircle } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -6,6 +6,7 @@ import { CoverFallback } from '@/components/course/course-card';
 import { Badge, Card, Img, LinkButton, ProgressBar } from '@/components/ui';
 import { getCourseTree, getMyProgress } from '@/lib/data';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
+import { cn, youtubeThumb } from '@/lib/utils';
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -27,9 +28,11 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
 
   const locked = !canAccessCourse(viewer, course, settings.restrict_to_student_list);
   const done = new Set(progress.filter((p) => p.completed).map((p) => p.lesson_id));
-  const completedCount = lessons.filter((l) => done.has(l.id)).length;
-  const pct = lessons.length ? Math.round((completedCount / lessons.length) * 100) : 0;
-  const lastInCourse = progress.find((p) => p.course_id === course.id);
+  const uniqueIds = [...new Set(lessons.map((l) => l.id))];
+  const completedCount = uniqueIds.filter((x) => done.has(x)).length;
+  const pct = uniqueIds.length ? Math.round((completedCount / uniqueIds.length) * 100) : 0;
+  const inCourse = new Set(lessons.map((l) => l.id));
+  const lastInCourse = progress.find((p) => inCourse.has(p.lesson_id));
   const firstPending = lessons.find((l) => !done.has(l.id));
   const resumeId = lastInCourse?.lesson_id ?? firstPending?.id ?? lessons[0]?.id;
   const visibleLessons = lessons; // RLS já esconde aulas bloqueadas (exceto grátis)
@@ -70,14 +73,14 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
               {!locked && lessons.length > 0 && (
                 <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
                   {resumeId && (
-                    <LinkButton href={`/aula/${resumeId}`} size="lg">
+                    <LinkButton href={`/aula/${resumeId}?c=${course.id}`} size="lg">
                       <Play className="size-4 fill-current" /> {completedCount ? 'Continuar' : 'Começar curso'}
                     </LinkButton>
                   )}
                   <div className="w-full max-w-xs">
                     <div className="mb-1.5 flex justify-between text-xs text-white/70">
                       <span>
-                        {completedCount} de {lessons.length} aulas
+                        {completedCount} de {uniqueIds.length} aulas
                       </span>
                       <span className="font-bold text-white">{pct}%</span>
                     </div>
@@ -122,12 +125,19 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                   {ml.map((l, li) => {
                     const isDone = done.has(l.id);
                     return (
-                      <li key={l.id} className="cv-auto">
-                        <Link href={`/aula/${l.id}`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2 sm:px-5">
-                          <span className={isDone ? 'text-success' : 'text-muted'}>
-                            {isDone ? <CheckCircle2 className="size-5" /> : <PlayCircle className="size-5" />}
-                          </span>
+                      <li key={`${m.id}-${l.id}`} className="cv-auto">
+                        <Link href={`/aula/${l.id}?c=${course.id}`} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2 sm:px-5">
                           <span className="w-6 text-xs font-semibold text-muted tabular-nums">{String(li + 1).padStart(2, '0')}</span>
+                          <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-surface-3 sm:w-24">
+                            {l.thumbnail_url || l.youtube_id ? (
+                              <Img src={l.thumbnail_url || youtubeThumb(l.youtube_id)} className="size-full object-cover" />
+                            ) : (
+                              <FileText className="absolute inset-0 m-auto size-5 text-danger" />
+                            )}
+                            <span className={cn('absolute right-1 bottom-1 grid size-5 place-items-center rounded-full', isDone ? 'bg-success text-white' : 'bg-black/60 text-white')}>
+                              {isDone ? <CheckCircle2 className="size-3.5" /> : l.youtube_id ? <PlayCircle className="size-3.5" /> : <FileText className="size-3" />}
+                            </span>
+                          </span>
                           <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{l.title}</span>
                           {l.is_free && locked && <Badge tone="success">Grátis</Badge>}
                           {l.duration && <span className="text-xs text-muted tabular-nums">{l.duration}</span>}

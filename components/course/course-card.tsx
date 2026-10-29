@@ -47,9 +47,9 @@ export function CourseCard({
             className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           />
         ) : (
-          <CoverFallback title={course.title} seed={course.id} />
+          <CoverFallback title="" seed={course.id} />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-80" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
         <div className="absolute top-2.5 left-2.5 flex gap-1.5">
           {course.is_free && <span className="rounded-full bg-success px-2 py-0.5 text-[10px] font-bold text-white">GRÁTIS</span>}
         </div>
@@ -62,18 +62,15 @@ export function CourseCard({
             <PlayCircle className="size-14 text-white drop-shadow-lg" strokeWidth={1.5} />
           </div>
         )}
-        {!locked && progress > 0 && (
-          <div className="absolute inset-x-3 bottom-3">
-            <ProgressBar value={progress} className="bg-white/20" />
-          </div>
-        )}
+        {/* Nome completo na capa */}
+        <div className="absolute inset-x-0 bottom-0 space-y-2 p-3 sm:p-3.5">
+          <p className="text-[13px] leading-tight font-extrabold tracking-wide text-balance text-white uppercase drop-shadow">{course.title}</p>
+          {!locked && progress > 0 && <ProgressBar value={progress} className="h-1 bg-white/20" />}
+        </div>
       </div>
-      <div className="mt-2.5 px-0.5">
-        <p className="line-clamp-1 text-sm font-bold text-ink">{course.title}</p>
-        <p className="mt-0.5 text-xs text-muted">
-          {locked ? 'Conteúdo exclusivo' : `${lessons} aula${lessons === 1 ? '' : 's'}${progress ? ` · ${progress}%` : ''}`}
-        </p>
-      </div>
+      <p className="mt-2 px-0.5 text-xs text-muted">
+        {locked ? 'Exclusivo para alunos' : `${lessons} aula${lessons === 1 ? '' : 's'}${progress ? ` · ${progress}%` : ''}`}
+      </p>
     </Link>
   );
 }

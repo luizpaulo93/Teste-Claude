@@ -150,8 +150,13 @@ export type LessonSummary = Pick<
   'id' | 'module_id' | 'course_id' | 'title' | 'duration' | 'thumbnail_url' | 'youtube_id' | 'position' | 'is_free' | 'is_published' | 'created_at'
 >;
 
-export const LESSON_SUMMARY_COLUMNS =
-  'id, module_id, course_id, title, duration, thumbnail_url, youtube_id, position, is_free, is_published, created_at';
+/** Aula + onde ela está (módulo, curso e posição no módulo). Uma aula em 2 módulos vira 2 linhas. */
+export const LESSON_PLACEMENT_SQL = `
+  select l.id, ml.module_id, m.course_id, l.title, l.duration, l.thumbnail_url, l.youtube_id, ml.position,
+         l.is_free, l.is_published, l.created_at
+    from module_lessons ml
+    join lessons l on l.id = ml.lesson_id
+    join modules m on m.id = ml.module_id`;
 
 /**
  * Configurações e catálogo ficam em cache no servidor: mil alunos abrindo a página inicial não
@@ -181,11 +186,11 @@ export const getCatalogData = unstable_cache(
     const [courses, modules, lessons, classes] = await Promise.all([
       sql.query<Course>(`select * from courses order by position, created_at`),
       sql.query<Module>(`select * from modules order by position, created_at`),
-      sql.query<LessonSummary>(`select ${LESSON_SUMMARY_COLUMNS} from lessons order by position, created_at`),
+      sql.query<LessonSummary>(`${LESSON_PLACEMENT_SQL} order by ml.position, l.created_at`),
       sql.query<ClassGroup>(`select id, name, description, access_all, course_ids from classes order by name`),
     ]);
     return { courses, modules, lessons, classes };
   },
-  ['catalog-pg-v1'],
+  ['catalog-pg-v2'],
   { tags: ['catalog'], revalidate: 3600 },
 );

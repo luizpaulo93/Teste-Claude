@@ -1,22 +1,6 @@
 'use client';
 
-import {
-  CalendarDays,
-  ClipboardCheck,
-  Compass,
-  Heart,
-  Home,
-  Menu,
-  MessageCircleQuestion,
-  Moon,
-  Radio,
-  Settings2,
-  Shield,
-  Sun,
-  Target,
-  User,
-  X,
-} from 'lucide-react';
+import { BarChart3, CalendarDays, ClipboardCheck, Compass, Heart, Home, Menu, MessageCircleQuestion, Moon, Radio, Settings2, Shield, Sun, Target, User, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -81,6 +65,7 @@ export function AppShell({
     { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow },
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
+    { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
     { href: '/mentoria', label: 'Mentoria', icon: Target, show: hasMentoria },
     { href: '/calendario', label: 'Calendário', icon: CalendarDays },

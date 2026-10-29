@@ -1,6 +1,8 @@
 'use server';
 
+import { revalidatePath } from 'next/cache';
 import { sql, tx } from '@/lib/db';
+import { recalibrateIfReleased } from '@/lib/simulado-results';
 import { getViewer } from '@/lib/session';
 import type { Simulado, SimuladoSubmission } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -38,7 +40,7 @@ export async function startSimulado(simuladoId: string) {
 export async function saveAnswers(simuladoId: string, answers: string) {
   const c = await context(simuladoId);
   if ('error' in c) return { error: c.error };
-  return tx(async (t) => {
+  const r = await tx(async (t) => {
     const sub = await t.one<SimuladoSubmission>(`select * from simulado_submissions where id = $1 for update`, [c.subId]);
     if (!sub) return { error: 'Prova não iniciada.' };
     if (sub.status === 'completed') return { error: 'Prova já entregue.', completed: true };
@@ -54,15 +56,28 @@ export async function saveAnswers(simuladoId: string, answers: string) {
     await t.exec(`update simulado_submissions set answers = $2, updated_at = now() where id = $1`, [c.subId, cleanAnswers(answers, c.sim.question_count)]);
     return { ok: true };
   });
+  if ('completed' in r && r.completed) await afterDelivery(simuladoId);
+  return r;
+}
+
+/** Entrega nova depois da liberação: recalibra a TRI e a coerência de toda a turma. */
+async function afterDelivery(simuladoId: string) {
+  try {
+    await recalibrateIfReleased(simuladoId);
+    revalidatePath('/simulados', 'layout');
+    revalidatePath(`/admin/simulados/${simuladoId}`);
+  } catch (e) {
+    console.error('[tri]', e instanceof Error ? e.message : e);
+  }
 }
 
 export async function finishSimulado(simuladoId: string, answers: string) {
   const c = await context(simuladoId);
   if ('error' in c) return { error: c.error };
-  return tx(async (t) => {
+  const r = await tx(async (t) => {
     const sub = await t.one<SimuladoSubmission>(`select * from simulado_submissions where id = $1 for update`, [c.subId]);
     if (!sub) return { error: 'Prova não iniciada.' };
-    if (sub.status === 'completed') return { ok: true };
+    if (sub.status === 'completed') return { ok: true, already: true };
     const started = new Date(sub.started_at).getTime();
     const limit = c.sim.time_limit_minutes * 60_000;
     const late = limit > 0 && Date.now() > started + limit + GRACE_MS;
@@ -73,4 +88,6 @@ export async function finishSimulado(simuladoId: string, answers: string) {
     );
     return { ok: true };
   });
+  if (r.ok && !('already' in r)) await afterDelivery(simuladoId);
+  return { ok: r.ok, error: r.error };
 }

@@ -58,8 +58,11 @@ export interface Lesson {
   materials?: LessonMaterial[];
   material_paths?: string[];
   created_at?: string;
+  /** Módulo/curso de onde a aula está sendo vista (uma aula pode estar em vários). */
   module_id: string;
   course_id: string;
+  /** Pasta no banco de aulas (só para organizar o painel). */
+  folder_id?: string | null;
   title: string;
   description: string;
   youtube_id: string;
@@ -75,6 +78,12 @@ export interface LessonMaterial {
   title: string;
   file_path: string;
   size_label: string;
+}
+
+export interface LessonFolder {
+  id: string;
+  name: string;
+  position: number;
 }
 
 export interface ClassGroup {
@@ -106,7 +115,7 @@ export interface LessonProgress {
   updated_at: string;
 }
 
-export type EventCategory = 'assunto_semana' | 'evento_curso' | 'simulado' | 'revisao' | 'feriado' | 'aviso';
+export type EventCategory = 'assunto_semana' | 'evento_curso' | 'simulado' | 'revisao' | 'feriado' | 'feriado_nacional' | 'feriado_para' | 'aviso';
 
 export interface CalendarEvent {
   id: string;

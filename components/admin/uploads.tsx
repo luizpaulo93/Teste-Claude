@@ -109,22 +109,45 @@ export async function uploadPdf(file: File, folder: string) {
   return { path, size: sizeLabel(file.size), title: file.name.replace(/\.pdf$/i, '') };
 }
 
-export function PdfDrop({ onUploaded, folder, label = 'Adicionar PDF', multiple }: { onUploaded: (r: { path: string; size: string; title: string }) => void; folder: string; label?: string; multiple?: boolean }) {
+export function PdfDrop({
+  onUploaded,
+  onBatchDone,
+  onBatchStart,
+  folder,
+  label = 'Adicionar PDF',
+  multiple,
+}: {
+  onUploaded: (r: { path: string; size: string; title: string }) => void;
+  /** Chamado quando todos os arquivos do lote terminaram */
+  onBatchDone?: () => void;
+  onBatchStart?: () => void;
+  folder: string;
+  label?: string;
+  multiple?: boolean;
+}) {
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(0);
 
   async function onFiles(files: FileList | null) {
     if (!files?.length) return;
     const list = Array.from(files);
+    onBatchStart?.();
     setBusy(list.length);
-    for (const f of list) {
-      try {
-        onUploaded(await uploadPdf(f, folder));
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : 'Falha no upload.');
+    // Envia 3 por vez (mais rápido em lote, sem travar a conexão)
+    let next = 0;
+    const worker = async () => {
+      while (next < list.length) {
+        const f = list[next++];
+        try {
+          onUploaded(await uploadPdf(f, folder));
+        } catch (e) {
+          toast.error(`${f.name}: ${e instanceof Error ? e.message : 'falha no upload.'}`);
+        }
+        setBusy((n) => n - 1);
       }
-      setBusy((n) => n - 1);
-    }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, list.length) }, worker));
+    onBatchDone?.();
     if (ref.current) ref.current.value = '';
   }
 

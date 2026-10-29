@@ -1,9 +1,10 @@
 'use server';
 
 import { authorOf } from '@/lib/author';
-import { getCatalogData, newId, nowIso, sql } from '@/lib/db';
-import { canSeeLesson, getSettings, getViewer, type Viewer } from '@/lib/session';
-import type { Lesson, LessonComment } from '@/lib/types';
+import { lessonPlacement } from '@/lib/data';
+import { newId, sql } from '@/lib/db';
+import { getViewer, type Viewer } from '@/lib/session';
+import type { LessonComment } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
 
 /** Grava a posição do vídeo / aula concluída (chamado a cada 30 s enquanto o vídeo toca). */
@@ -35,14 +36,9 @@ export async function setFavoriteServer(lessonId: string, value: boolean) {
   return { ok: true };
 }
 
+/** O usuário pode ver esta aula em algum curso? */
 async function lessonFor(viewer: Viewer, lessonId: string) {
-  const [lesson, settings, catalog] = await Promise.all([
-    sql.one<Lesson>(`select id, course_id, is_free, is_published from lessons where id = $1`, [lessonId]),
-    getSettings(),
-    getCatalogData(),
-  ]);
-  if (!lesson || !canSeeLesson(viewer, lesson, catalog.courses.find((c) => c.id === lesson.course_id), settings.restrict_to_student_list)) return null;
-  return lesson;
+  return (await lessonPlacement(viewer, lessonId)) ?? (viewer.isAdmin ? { id: lessonId } : null);
 }
 
 export async function addComment(lessonId: string, text: string): Promise<{ error?: string; comment?: LessonComment }> {

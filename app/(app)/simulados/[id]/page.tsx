@@ -33,7 +33,7 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
   let body: React.ReactNode;
   if (result && simulado.results_released) {
     body = <ResultView simulado={simulado} result={result} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} />;
-  } else if (submission?.status === 'in_progress' && !simulado.results_released) {
+  } else if (submission?.status === 'in_progress') {
     body = <ExamRunner simulado={simulado} submission={submission} pdfUrl={pdfUrl} serverNow={Date.now()} />;
   } else {
     body = <StartCard simulado={simulado} submission={submission} />;

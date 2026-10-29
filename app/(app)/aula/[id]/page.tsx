@@ -3,9 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
-import { getCourseTree, getMyState } from '@/lib/data';
+import { getCourseTree, getMyState, lessonPlacement } from '@/lib/data';
 import { getCatalogData, sql } from '@/lib/db';
-import { canSeeLesson, getSettings, requireViewer } from '@/lib/session';
+import { requireViewer } from '@/lib/session';
 import type { Lesson, LessonComment } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
 import { LessonComments } from './lesson-comments';
@@ -13,21 +13,23 @@ import { LessonView } from './lesson-view';
 
 export const metadata: Metadata = { title: 'Aula' };
 
-export default async function LessonPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
+export default async function LessonPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ c?: string }> }) {
+  const [{ id }, { c }] = await Promise.all([params, searchParams]);
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
   // Tudo em paralelo (uma ida ao banco): aula, comentários e progresso do aluno
-  const [lesson, settings, catalog, comments, state] = await Promise.all([
+  const [row, place, catalog, comments, state] = await Promise.all([
     sql.one<Lesson>(`select * from lessons where id = $1`, [id]),
-    getSettings(),
+    lessonPlacement(viewer, id, c),
     getCatalogData(),
     sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 order by created_at desc limit 30`, [id]),
     getMyState(viewer.userId),
   ]);
-  const course = lesson ? catalog.courses.find((c) => c.id === lesson.course_id) : undefined;
+  // A aula pode estar em vários cursos: usa o curso de onde o aluno veio (?c=) ou o primeiro liberado
+  const lesson = row && (place || viewer.isAdmin) ? { ...row, course_id: place?.course_id ?? '', module_id: place?.module_id ?? '' } : null;
+  const course = lesson ? catalog.courses.find((x) => x.id === lesson.course_id) : undefined;
 
-  if (!lesson || !canSeeLesson(viewer, lesson, course, settings.restrict_to_student_list)) {
+  if (!lesson) {
     return (
       <Card className="mx-auto mt-10 flex max-w-md flex-col items-center p-10 text-center">
         <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand">
@@ -42,12 +44,12 @@ export default async function LessonPage({ params }: { params: Promise<{ id: str
     );
   }
 
-  const tree = await getCourseTree(lesson.course_id, viewer); // vem do cache do catálogo
+  const tree = lesson.course_id ? await getCourseTree(lesson.course_id, viewer) : { course: null, modules: [], lessons: [] }; // vem do cache do catálogo
   const progress = state.progress;
   const prog = progress.find((x) => x.lesson_id === id);
   const ordered = tree.modules.flatMap((m) => tree.lessons.filter((l) => l.module_id === m.id));
   const idx = ordered.findIndex((l) => l.id === id);
-  const completedIds = progress.filter((p) => p.course_id === lesson.course_id && p.completed).map((p) => p.lesson_id);
+  const completedIds = progress.filter((p) => p.completed).map((p) => p.lesson_id);
 
   return (
     <>
