@@ -31,10 +31,6 @@ export function CourseForm({ course, onSaved }: { course?: Course; onSaved?: (id
       <Field label="Descrição">
         <Textarea name="description" defaultValue={course?.description} maxLength={3000} rows={4} />
       </Field>
-      <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Banner (16:6)</span>
-        <ImageUpload name="banner_url" defaultValue={course?.banner_url} folder="banners" aspect="aspect-[16/6]" maxSize={1920} />
-      </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <Switch name="is_published" defaultChecked={course?.is_published ?? true} label="Publicado" description="Visível na vitrine" />
         <Switch name="featured" defaultChecked={course?.featured} label="Destaque" description="Aparece no topo da home" />
