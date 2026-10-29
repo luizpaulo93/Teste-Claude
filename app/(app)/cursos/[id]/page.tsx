@@ -1,9 +1,9 @@
-import { ChevronLeft, Lock, MessageCircle, Play } from 'lucide-react';
+import { ChevronLeft, Lock, MessageCircle } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CoverCard, CoverFallback } from '@/components/course/course-card';
-import { Badge, Img, LinkButton, ProgressBar } from '@/components/ui';
+import { Badge, Img, ProgressBar } from '@/components/ui';
 import { whatsappLink } from '@/lib/contact';
 import { getCourseTree, getMyProgress } from '@/lib/data';
 import { getCatalogData } from '@/lib/db';
@@ -33,10 +33,6 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
   const uniqueIds = [...new Set(lessons.map((l) => l.id))];
   const completedCount = uniqueIds.filter((x) => done.has(x)).length;
   const pct = uniqueIds.length ? Math.round((completedCount / uniqueIds.length) * 100) : 0;
-  const inCourse = new Set(lessons.map((l) => l.id));
-  const lastInCourse = progress.find((p) => inCourse.has(p.lesson_id));
-  const firstPending = lessons.find((l) => !done.has(l.id));
-  const resumeId = lastInCourse?.lesson_id ?? firstPending?.id ?? lessons[0]?.id;
   // Bloqueado: mostra os módulos publicados (com cadeado) para o aluno ver o que tem no curso
   const cards = (locked ? catalog.modules.filter((m) => m.course_id === course.id && m.is_published) : modules)
     .map((m) => {
@@ -84,16 +80,9 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                 )}
               </div>
               <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{course.title}</h1>
-              {course.subtitle && <p className="mt-2 text-white/80">{course.subtitle}</p>}
-              {course.description && <p className="mt-3 line-clamp-4 max-w-2xl text-sm whitespace-pre-line text-white/65">{course.description}</p>}
               {!locked && lessons.length > 0 && (
-                <div className="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center">
-                  {resumeId && (
-                    <LinkButton href={`/aula/${resumeId}?c=${course.id}`} size="lg">
-                      <Play className="size-4 fill-current" /> {completedCount ? 'Continuar' : 'Começar curso'}
-                    </LinkButton>
-                  )}
-                  <div className="w-full max-w-xs">
+                <div className="mt-5">
+                  <div className="w-full sm:max-w-sm">
                     <div className="mb-1.5 flex justify-between text-xs text-white/70">
                       <span>
                         {completedCount} de {uniqueIds.length} aulas
