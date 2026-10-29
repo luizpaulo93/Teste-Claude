@@ -155,7 +155,7 @@ export function LessonView(p: Props) {
               className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-xs font-bold text-ink transition hover:bg-surface-2"
             >
               <ListVideo className="size-4 text-brand" />
-              <span>Aulas do curso</span>
+              <span>Aulas da playlist</span>
               <span className="font-semibold text-muted tabular-nums">
                 {pos + 1}/{total}
               </span>

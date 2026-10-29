@@ -47,7 +47,8 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
   const tree = lesson.course_id ? await getCourseTree(lesson.course_id, viewer) : { course: null, modules: [], lessons: [] }; // vem do cache do catálogo
   const progress = state.progress;
   const prog = progress.find((x) => x.lesson_id === id);
-  const ordered = tree.modules.flatMap((m) => tree.lessons.filter((l) => l.module_id === m.id));
+  // Só as aulas da playlist (módulo) atual: lista, anterior/próxima e "próxima aula" no fim do vídeo
+  const ordered = tree.lessons.filter((l) => l.module_id === lesson.module_id);
   const idx = ordered.findIndex((l) => l.id === id);
   const completedIds = progress.filter((p) => p.completed).map((p) => p.lesson_id);
 
@@ -58,7 +59,7 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
         courseHref={`/cursos/${lesson.course_id}`}
         lesson={lesson}
         materials={lesson.materials ?? []}
-        modules={tree.modules.map((m) => ({ id: m.id, title: m.title }))}
+        modules={tree.modules.filter((m) => m.id === lesson.module_id).map((m) => ({ id: m.id, title: m.title }))}
         lessons={ordered.map((l) => ({
           id: l.id,
           title: l.title,
