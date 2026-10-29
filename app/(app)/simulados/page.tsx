@@ -32,6 +32,8 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
   const triDone = done.filter((s) => s.use_tri !== false);
   const plainDone = done.filter((s) => s.use_tri === false);
   const shown = tab === 'tri' ? triDone : plainDone;
+  // Provas com nota são acessadas pelo gráfico; embaixo ficam só as que o aluno ainda pode fazer
+  const toDo = viewer.isAdmin ? [] : simulados.filter((s) => !resBy.has(s.id) && !s.results_released);
   const chart: ComboPoint[] = shown.map((s) => {
     const r = resBy.get(s.id)!;
     return tab === 'tri'
@@ -99,11 +101,11 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
         </section>
       )}
 
-      {simulados.length > 0 && <h2 className="mb-3 text-base font-bold text-ink">Provas</h2>}
+      {toDo.length > 0 && <h2 className="mb-3 text-base font-bold text-ink">Para fazer</h2>}
 
-      {simulados.length ? (
+      {toDo.length ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {simulados.map((s) => {
+          {toDo.map((s) => {
             const st = subBy.get(s.id);
             const r = resBy.get(s.id);
             let badge = <Badge tone="brand">Disponível</Badge>;
@@ -135,7 +137,9 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
           })}
         </div>
       ) : (
-        <EmptyState icon={<ClipboardCheck className="size-6" />} title="Nenhum simulado publicado" description="Quando um novo simulado for liberado ele aparece aqui." />
+        !simulados.length && (
+          <EmptyState icon={<ClipboardCheck className="size-6" />} title="Nenhum simulado publicado" description="Quando um novo simulado for liberado ele aparece aqui." />
+        )
       )}
     </>
   );
