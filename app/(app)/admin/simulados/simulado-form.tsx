@@ -62,6 +62,12 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
       >
         <Textarea name="answer_key" value={key} onChange={(e) => setKey(e.target.value)} rows={3} className="font-mono tracking-widest uppercase" placeholder="ABCDEABCDE…" />
       </Field>
+      <Switch
+        name="use_tri"
+        defaultChecked={simulado?.use_tri ?? true}
+        label="Calcular nota TRI"
+        description="Desligado: o aluno vê só o número de acertos e os dados por questão"
+      />
       <Switch name="is_published" defaultChecked={simulado?.is_published} label="Publicado" description="Alunos liberados podem iniciar a prova" />
       <div className="flex justify-end">
         <SubmitButton>Salvar simulado</SubmitButton>

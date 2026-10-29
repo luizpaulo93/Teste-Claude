@@ -82,3 +82,36 @@ export async function deleteLive(id: string): Promise<ActionResult> {
     return fail(e, 'Não foi possível excluir.');
   }
 }
+
+/**
+ * Salva a gravação da live como aula na pasta "Lives" do banco de aulas (como no MemberClass).
+ * Depois é só adicionar essa aula em qualquer curso.
+ */
+export async function saveLiveAsLesson(id: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string }>(
+      `select title, description, youtube_id, cover_url from live_sessions where id = $1`,
+      [id],
+    );
+    if (!live) return { error: 'Transmissão não encontrada.' };
+    if (!live.youtube_id) return { error: 'A live não tem link do YouTube.' };
+    const exists = await sql.one(`select 1 from lessons where youtube_id = $1`, [live.youtube_id]);
+    if (exists) return { error: 'Esta gravação já está no banco de aulas.' };
+    let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = 'lives' limit 1`);
+    if (!folder) {
+      folder = { id: newId() };
+      await sql.exec(`insert into lesson_folders (id, name, position) select $1, 'Lives', coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id]);
+    }
+    await sql.exec(
+      `insert into lessons (id, title, description, youtube_id, thumbnail_url, is_published, folder_id, position)
+       select $1, $2, $3, $4, $5, true, $6, coalesce(max(position), -1) + 1 from lessons where folder_id = $6`,
+      [newId(), live.title, live.description, live.youtube_id, live.cover_url, folder.id],
+    );
+    revalidatePath('/admin/aulas');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}

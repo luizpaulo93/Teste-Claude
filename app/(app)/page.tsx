@@ -1,15 +1,15 @@
-import { CalendarDays, CheckCircle2, ChevronRight, Lock, Play, Radio, Sparkles } from 'lucide-react';
+import { ChevronRight, Lock, Play, Radio } from 'lucide-react';
 import Link from 'next/link';
 import { CourseCard, CoverFallback } from '@/components/course/course-card';
 import { Rail } from '@/components/home/rail';
 import { LiveCard } from '@/components/live/live-card';
 import { Card, Img } from '@/components/ui';
-import { EVENT_COLORS } from '@/lib/calendar';
+import { EVENT_COLORS, eventColor } from '@/lib/calendar';
 import { courseProgress, getCatalog, getMyProgress, getUpcomingEvents, visibleLessons } from '@/lib/data';
 import { visibleLives } from '@/lib/live';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
 import type { LiveSession } from '@/lib/types';
-import { cn, firstName, formatDate, formatDateTime, youtubeThumb } from '@/lib/utils';
+import { cn, firstName, formatDate, youtubeThumb } from '@/lib/utils';
 
 export default async function HomePage() {
   const viewer = await requireViewer();
@@ -28,24 +28,14 @@ export default async function HomePage() {
   const resume = recent.map((r) => ({ p: r, lesson: playable.find((l) => l.id === r.lesson_id) })).find((x) => x.lesson);
 
   const restrict = settings.restrict_to_student_list;
-  const mine = courses.filter((c) => canAccessCourse(viewer, c, restrict));
-  const others = courses.filter((c) => !canAccessCourse(viewer, c, restrict));
+  // Curso gratuito só aparece para quem não está em nenhuma turma
+  const shown = courses.filter((c) => !(c.is_free && viewer.classGroup && !viewer.isAdmin));
+  const mine = shown.filter((c) => canAccessCourse(viewer, c, restrict));
+  const others = shown.filter((c) => !canAccessCourse(viewer, c, restrict));
   const liveNow = lives.filter((l) => l.status === 'live');
   const soon = lives.filter((l) => l.status === 'scheduled').sort((a, b) => a.starts_at.localeCompare(b.starts_at)).slice(0, 10);
   const name = firstName(viewer.profile.full_name);
 
-  // Progresso geral e por curso (só cursos liberados que têm aulas)
-  const breakdown = mine
-    .map((c) => {
-      const total = lessonCount.get(c.id) ?? 0;
-      const ids = courseLessons.get(c.id);
-      const done = progress.filter((p) => p.completed && ids?.has(p.lesson_id)).length;
-      return { course: c, total, done: Math.min(done, total), pct: courseProgress(ids, progress) };
-    })
-    .filter((x) => x.total > 0);
-  const totalLessons = breakdown.reduce((a, b) => a + b.total, 0);
-  const totalDone = breakdown.reduce((a, b) => a + b.done, 0);
-  const overall = totalLessons ? Math.round((totalDone / totalLessons) * 100) : 0;
   const resumeCourse = resume?.lesson ? courses.find((c) => c.id === resume.lesson!.course_id) : undefined;
   const resumePct =
     resume && resume.p.duration_sec > 0 ? Math.min(98, Math.max(4, Math.round((resume.p.position_sec / resume.p.duration_sec) * 100))) : 0;
@@ -59,22 +49,34 @@ export default async function HomePage() {
           <h1 className="text-2xl leading-[1.12] font-extrabold tracking-tight text-balance text-ink sm:text-4xl md:text-[2.75rem]">{settings.hero_title}</h1>
           {settings.hero_subtitle && <p className="max-w-lg text-sm font-medium text-ink-2 sm:text-base">{settings.hero_subtitle}</p>}
         </div>
-        <Link
-          href="/calendario"
-          className="group inline-flex shrink-0 items-center gap-3 self-start rounded-full border border-brand/30 bg-surface p-1.5 pr-4 shadow-card transition hover:border-brand/70 hover:bg-surface-2"
-        >
-          <span className="relative grid size-10 place-items-center rounded-full bg-gradient-to-tr from-blue-600 to-blue-300 text-white transition-transform group-hover:rotate-6 sm:size-11">
-            <CalendarDays className="size-5" />
-            <span className="absolute -top-0.5 -right-0.5 grid size-3.5 place-items-center rounded-full border-2 border-surface bg-emerald-400">
-              <Sparkles className="size-2 text-black" />
-            </span>
-          </span>
-          <span className="text-left">
-            <span className="block text-xs font-extrabold text-ink">Calendário</span>
-            <span className="block text-[10px] font-semibold text-brand">Semana & eventos</span>
-          </span>
-        </Link>
       </section>
+
+      {/* Eventos do curso (topo, compacto) */}
+      {events.length > 0 && (
+        <section className="rail -mx-4 flex gap-2.5 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          {events.map((e) => {
+            const color = EVENT_COLORS[eventColor(e.category, e.color)] ?? EVENT_COLORS.blue;
+            return (
+              <Link
+                key={e.id}
+                href={`/calendario?d=${e.start_date}`}
+                className="flex w-[78%] shrink-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
+              >
+                <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
+                  <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
+                  <span className="block text-[11px] text-muted uppercase">
+                    {formatDate(e.start_date)}
+                    {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </section>
+      )}
 
       {!viewer.isMember && (
         <Card className="flex flex-col gap-4 border-warning/30 bg-warning/5 p-5 sm:flex-row sm:items-center">
@@ -209,102 +211,6 @@ export default async function HomePage() {
 
       {!courses.length && <p className="text-sm text-muted">Nenhum curso publicado ainda.</p>}
 
-      {/* 4. Progresso + próximos eventos */}
-      <section className="grid gap-5 lg:grid-cols-2">
-        <Card className="min-w-0 space-y-4 p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-extrabold tracking-wider text-ink uppercase">
-                <CheckCircle2 className="size-4 text-brand" /> Seu progresso
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">Aulas concluídas nos cursos liberados</p>
-            </div>
-            <span className="rounded-xl border border-brand/30 bg-brand/10 px-3 py-1.5 text-sm font-extrabold text-brand tabular-nums">{overall}%</span>
-          </div>
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs font-semibold text-ink-2">
-              <span>Aulas concluídas</span>
-              <span className="font-bold text-ink tabular-nums">
-                {totalDone} / {totalLessons}
-              </span>
-            </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-surface-3">
-              <div className="h-full rounded-full bg-gradient-to-r from-brand to-accent transition-[width] duration-500" style={{ width: `${overall}%` }} />
-            </div>
-          </div>
-          {breakdown.length > 0 && (
-            <div className="space-y-2 border-t border-line pt-3">
-              <p className="text-[11px] font-bold tracking-wider text-muted uppercase">Por curso</p>
-              <div className="scrollbar-thin max-h-52 space-y-2 overflow-y-auto pr-1">
-                {breakdown.map(({ course, done, total, pct }) => (
-                  <Link key={course.id} href={`/cursos/${course.id}`} className="group block space-y-1.5 rounded-xl border border-line bg-surface-2 p-2.5 transition-colors hover:bg-surface-3">
-                    <span className="flex items-center justify-between gap-2 text-xs">
-                      <span className="truncate font-bold text-ink transition-colors group-hover:text-brand">{course.title}</span>
-                      <span className="shrink-0 text-[11px] font-semibold text-ink-2 tabular-nums">
-                        {done}/{total} ({pct}%)
-                      </span>
-                    </span>
-                    <span className="block h-1.5 overflow-hidden rounded-full bg-surface-3">
-                      <span className="block h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
-                    </span>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </Card>
-
-        <Card className="min-w-0 space-y-3.5 p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="flex items-center gap-2 text-sm font-extrabold tracking-wider text-ink uppercase">
-                <CalendarDays className="size-4 text-brand" /> Próximos eventos
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">Toque em um evento para abrir o calendário</p>
-            </div>
-            <Link href="/calendario" className="shrink-0 rounded-xl border border-brand/30 bg-brand/10 px-3.5 py-2 text-xs font-bold text-brand transition-colors hover:bg-brand hover:text-white">
-              Ver calendário
-            </Link>
-          </div>
-          {events.length ? (
-            <div className="space-y-2">
-              {events.map((e) => {
-                const color = EVENT_COLORS[e.color] ?? EVENT_COLORS.blue;
-                return (
-                  <Link
-                    key={e.id}
-                    href={`/calendario?d=${e.start_date}`}
-                    className={cn('group flex items-center justify-between gap-3 rounded-xl border p-3 transition hover:brightness-110', color.chip)}
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <span className={cn('size-2.5 shrink-0 rounded-full', color.dot)} />
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-bold text-ink">{e.title}</span>
-                        {e.description && <span className="block truncate text-[11px] text-ink-2">{e.description}</span>}
-                      </span>
-                    </span>
-                    <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-bold uppercase">
-                      {formatDate(e.start_date)}
-                      {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
-                      <ChevronRight className="size-4 opacity-60 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          ) : (
-            <Link href="/calendario" className="block rounded-xl border border-line bg-surface-2 p-6 text-center transition-colors hover:bg-surface-3">
-              <span className="block text-xs font-bold text-ink">Nenhum evento próximo</span>
-              <span className="mt-1 block text-[11px] font-semibold text-brand">Abrir o calendário completo</span>
-            </Link>
-          )}
-          {soon[0] && (
-            <p className="flex items-center gap-2 border-t border-line pt-3 text-xs text-muted">
-              <Radio className="size-3.5 text-rose-500" /> Próximo aulão: <strong className="truncate text-ink-2">{soon[0].title}</strong> · {formatDateTime(soon[0].starts_at)}
-            </p>
-          )}
-        </Card>
-      </section>
     </div>
   );
 }

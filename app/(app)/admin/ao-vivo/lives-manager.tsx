@@ -1,6 +1,6 @@
 'use client';
 
-import { CircleStop, ExternalLink, Info, Pencil, Plus, Radio, RotateCcw, Trash2 } from 'lucide-react';
+import { CircleStop, ExternalLink, FolderPlus, Info, Pencil, Plus, Radio, RotateCcw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
@@ -9,7 +9,7 @@ import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, button
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
 import type { Course, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
-import { deleteLive, saveLive, setLiveStatus } from '../live-actions';
+import { deleteLive, saveLive, saveLiveAsLesson, setLiveStatus } from '../live-actions';
 
 function toLocalInput(iso?: string) {
   const d = iso ? new Date(iso) : new Date(Date.now() + 3600_000);
@@ -70,6 +70,11 @@ export function LivesManager({ lives, courses }: { lives: LiveSession[]; courses
                     {l.status === 'ended' && (
                       <ActionButton action={() => setLiveStatus(l.id, 'scheduled')} success="Voltou para agendada" size="sm" variant="ghost" title="Voltar para agendada">
                         <RotateCcw className="size-3.5" />
+                      </ActionButton>
+                    )}
+                    {l.status === 'ended' && l.youtube_id && (
+                      <ActionButton action={() => saveLiveAsLesson(l.id)} success='Salva na pasta "Lives" do banco de aulas' variant="ghost" size="sm" className="px-2" title="Salvar como aula (pasta Lives)">
+                        <FolderPlus className="size-4" />
                       </ActionButton>
                     )}
                     <Link href={`/ao-vivo/${l.id}`} target="_blank" className={buttonClass('ghost', 'sm', 'px-2')} aria-label="Abrir sala">

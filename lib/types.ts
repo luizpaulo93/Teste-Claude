@@ -137,6 +137,8 @@ export interface Simulado {
   pdf_path: string;
   is_published: boolean;
   results_released: boolean;
+  /** false = simulado sem TRI (só acertos e dados por questão) */
+  use_tri: boolean;
   stats: SimuladoStats | Record<string, never>;
   created_at: string;
 }

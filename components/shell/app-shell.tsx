@@ -74,9 +74,12 @@ export function AppShell({
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const inAdmin = pathname.startsWith('/admin');
 
-  const mobileMain = items
-    .filter((i) => (liveNow ? ['/', '/cursos', '/ao-vivo', '/simulados'] : ['/', '/cursos', '/simulados', '/duvidas']).includes(i.href))
-    .slice(0, 4);
+  // Sempre 4 atalhos + "Mais": primeiro os preferidos, depois completa com os outros
+  const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/calendario', '/simulados'] : ['/', '/cursos', '/simulados', '/calendario', '/duvidas'];
+  const mobileMain = [
+    ...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean),
+    ...items.filter((i) => !preferred.includes(i.href)),
+  ].slice(0, 4) as NavItem[];
   const mobileMore = items.filter((i) => !mobileMain.includes(i));
 
   return (
@@ -158,7 +161,7 @@ export function AppShell({
 
       {/* Bottom nav mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg-elev/90 backdrop-blur-xl safe-bottom lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5">
+        <div className="mx-auto grid max-w-lg justify-items-center" style={{ gridTemplateColumns: `repeat(${mobileMain.length + 1}, minmax(0, 1fr))` }}>
           {mobileMain.map((item) => (
             <BottomLink key={item.href} item={item} active={isActive(item.href)} />
           ))}

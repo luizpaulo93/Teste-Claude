@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Card } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
+import { useStampedPdf, type PdfOwner } from '@/lib/pdf-stamp';
 import { finishSimulado, saveAnswers } from '../actions';
 import type { Simulado, SimuladoSubmission } from '@/lib/types';
 import { cn, formatClock } from '@/lib/utils';
@@ -15,15 +16,20 @@ const OPTIONS = ['A', 'B', 'C', 'D', 'E'] as const;
 export function ExamRunner({
   simulado,
   submission,
-  pdfUrl,
+  pdfUrl: rawPdf,
+  pdfOwner,
   serverNow,
 }: {
   simulado: Simulado;
   submission: SimuladoSubmission;
   pdfUrl: string;
+  pdfOwner?: PdfOwner | null;
   serverNow: number;
 }) {
   const router = useRouter();
+  // Caderno com nome e CPF do aluno em todas as páginas
+  const stamped = useStampedPdf(rawPdf, pdfOwner);
+  const pdfUrl = rawPdf;
   const n = simulado.question_count;
   const [answers, setAnswers] = useState(() => (submission.answers || '').padEnd(n, '-').slice(0, n));
   const [saveState, setSaveState] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -234,8 +240,14 @@ export function ExamRunner({
       <div className={cn('grid gap-4', pdfUrl && 'lg:grid-cols-[minmax(0,1fr)_380px]')}>
         {pdfUrl && (
           <Card className={cn('overflow-hidden', tab !== 'prova' && 'hidden lg:block')}>
-            <iframe src={`${pdfUrl}#toolbar=0&navpanes=0&view=FitH`} title="Caderno de questões" className="h-[70dvh] w-full bg-white lg:h-[calc(100dvh-180px)]" />
-            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="block border-t border-line py-2.5 text-center text-xs font-semibold text-brand lg:hidden">
+            {stamped ? (
+              <iframe src={`${stamped}#toolbar=0&navpanes=0&view=FitH`} title="Caderno de questões" className="h-[70dvh] w-full bg-white lg:h-[calc(100dvh-180px)]" />
+            ) : (
+              <div className="grid h-[70dvh] place-items-center bg-surface-2 lg:h-[calc(100dvh-180px)]">
+                <Spinner />
+              </div>
+            )}
+            <a href={stamped || '#'} target="_blank" rel="noopener noreferrer" className="block border-t border-line py-2.5 text-center text-xs font-semibold text-brand lg:hidden">
               Abrir prova em tela cheia
             </a>
           </Card>

@@ -74,6 +74,7 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
         prevId={idx > 0 ? ordered[idx - 1].id : null}
         nextId={idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1].id : null}
         userId={viewer.userId}
+        pdfOwner={viewer.isAdmin ? null : { name: viewer.student?.name || viewer.profile.full_name || viewer.email, cpf: viewer.student?.cpf ?? '' }}
         watermark={`${viewer.profile.full_name || ''} · ${viewer.email}`.trim()}
         comments={
           <LessonComments

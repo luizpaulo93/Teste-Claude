@@ -362,3 +362,8 @@ alter table lessons drop constraint if exists lessons_course_id_fkey;
 alter table lessons alter column module_id drop not null;
 alter table lessons alter column course_id drop not null;
 update lessons set module_id = null, course_id = null where module_id is not null or course_id is not null;
+
+-- ============================================================================
+-- Versão 3: simulado com ou sem TRI (sem TRI: só acertos e dados por questão)
+-- ============================================================================
+alter table simulados add column if not exists use_tri boolean not null default true;

@@ -148,19 +148,20 @@ export function CalendarView({
     const bandShape = (s: string, e: string) => {
       const isS = cell.date === s;
       const isE = cell.date === e;
-      if (isS && isE) return 'left-1 right-1 rounded-full border-x';
-      if (isS) return 'left-1 right-0 rounded-l-full border-l';
-      if (isE) return 'left-0 right-1 rounded-r-full border-r';
+      if (isS && isE) return 'left-1 right-1 rounded-full';
+      if (isS) return 'left-1 right-0 rounded-l-full';
+      if (isE) return 'left-0 right-1 rounded-r-full';
       return col === 0 ? 'left-0 right-0' : col === 6 ? 'left-0 right-0' : 'left-0 right-0';
     };
 
-    let circle = cell.inMonth ? 'text-ink-2 group-hover:bg-surface-3' : 'text-muted/50';
-    if (inRange) circle = cell.date === range!.start || cell.date === range!.end ? 'bg-emerald-500 text-white scale-105 shadow-[0_0_14px_rgba(16,185,129,0.8)]' : 'text-emerald-500 font-bold';
-    else if (isSel) circle = 'bg-brand text-white scale-105 ring-2 ring-white/50 shadow-glow';
-    else if (cell.date === today) circle = 'border-2 border-brand bg-brand/20 font-extrabold text-ink';
-    else if (holiday) circle = 'border-2 border-rose-500/80 bg-rose-500/25 font-extrabold text-ink';
-    else if (primary && !multi) circle = cn('border-2 font-extrabold text-ink', pal.circle);
-    else if (multi) circle = 'font-extrabold text-ink';
+    // Visual suave: tons claros, sem bordas grossas nem brilho
+    let circle = cell.inMonth ? 'font-medium text-ink-2 group-hover:bg-surface-2' : 'text-muted/40';
+    if (inRange) circle = cell.date === range!.start || cell.date === range!.end ? 'bg-brand font-semibold text-white' : 'font-semibold text-brand';
+    else if (isSel) circle = 'bg-brand font-semibold text-white shadow-[0_4px_14px_-4px_rgba(37,99,235,0.6)]';
+    else if (cell.date === today) circle = 'font-bold text-brand ring-1 ring-brand/50';
+    else if (holiday) circle = 'bg-rose-500/12 font-semibold text-rose-400';
+    else if (primary && !multi) circle = cn('font-semibold', pal.circle);
+    else if (multi) circle = 'font-semibold text-ink';
 
     return (
       <div
@@ -172,14 +173,14 @@ export function CalendarView({
         onTouchStart={() => startDrag(cell.date)}
         className="group relative flex h-12 cursor-pointer items-center justify-center select-none sm:h-14"
       >
-        {multi && !inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 border-y sm:h-10', pal.band, bandShape(multi.start_date, multi.end_date))} />}
-        {inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 border-y border-emerald-400/40 bg-emerald-500/25 sm:h-10', bandShape(range!.start, range!.end))} />}
+        {multi && !inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 sm:h-10', pal.band, bandShape(multi.start_date, multi.end_date))} />}
+        {inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 bg-brand/12 sm:h-10', bandShape(range!.start, range!.end))} />}
         {bdays.length > 0 && (
           <span className="pointer-events-none absolute top-0 left-1/2 z-20 -translate-x-1/2 text-[10px] leading-none" title={`Aniversário: ${bdays.map((b) => b.name).join(', ')}`}>
             🎂
           </span>
         )}
-        <div className={cn('relative z-10 grid size-9 place-items-center rounded-full text-xs font-bold transition-all sm:size-10 sm:text-sm', circle)}>{cell.day}</div>
+        <div className={cn('relative z-10 grid size-9 place-items-center rounded-full text-xs transition-all duration-200 ease-out sm:size-10 sm:text-sm', circle)}>{cell.day}</div>
         {dots.length > 0 && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0.5 z-20 flex justify-center gap-1">
             {dots.map((e) => (
@@ -224,7 +225,7 @@ export function CalendarView({
               }}
               className={cn(
                 'flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-bold text-white transition',
-                addMode ? 'bg-emerald-500 ring-2 ring-emerald-300 shadow-[0_0_16px_rgba(16,185,129,0.5)]' : 'bg-brand hover:bg-brand-strong',
+                addMode ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-brand hover:bg-brand-strong',
               )}
             >
               {addMode ? <Check className="size-3.5" /> : <Plus className="size-3.5" />}
@@ -376,7 +377,7 @@ export function CalendarView({
                   const pal = EVENT_COLORS[e.color] ?? EVENT_COLORS.blue;
                   const system = e.id.startsWith('h-');
                   return (
-                    <div key={e.id} className={cn('flex items-start justify-between gap-3 rounded-2xl border bg-surface-2 p-3.5', pal.band.split(' ')[1])}>
+                    <div key={e.id} className={cn('flex items-start justify-between gap-3 rounded-2xl border bg-surface-2 p-3.5', pal.chip.split(' ')[2])}>
                       <div className="flex min-w-0 items-start gap-3">
                         <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', pal.dot)} />
                         <div className="min-w-0 space-y-1">

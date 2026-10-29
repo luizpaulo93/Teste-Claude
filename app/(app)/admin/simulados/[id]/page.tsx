@@ -37,7 +37,7 @@ export default async function AdminSimulado({ params }: { params: Promise<{ id: 
   const rawCorrect = (answers: string) => [...answers].filter((c, i) => c !== '-' && c === answerKey[i]).length;
   const rows = submissions
     .map((s) => ({ s, p: profBy.get(s.user_id), r: resBy.get(s.user_id) }))
-    .sort((a, b) => (Number(b.r?.tri_score ?? -1) - Number(a.r?.tri_score ?? -1)) || rawCorrect(b.s.answers) - rawCorrect(a.s.answers));
+    .sort((a, b) => (simulado.use_tri !== false ? Number(b.r?.tri_score ?? -1) - Number(a.r?.tri_score ?? -1) : 0) || rawCorrect(b.s.answers) - rawCorrect(a.s.answers));
   const completed = submissions.filter((s) => s.status === 'completed').length;
 
   return (
@@ -54,7 +54,11 @@ export default async function AdminSimulado({ params }: { params: Promise<{ id: 
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Entregas" value={completed} hint={`${submissions.length - completed} em andamento`} />
-        <Stat label="Média TRI" value={simulado.results_released && stats?.meanTri ? stats.meanTri.toFixed(1) : '—'} />
+        {simulado.use_tri !== false ? (
+          <Stat label="Média TRI" value={simulado.results_released && stats?.meanTri ? stats.meanTri.toFixed(1) : '—'} />
+        ) : (
+          <Stat label="Tipo" value="Sem TRI" hint="Só acertos" />
+        )}
         <Stat label="Média de acertos" value={simulado.results_released && stats?.meanCorrect !== undefined ? stats.meanCorrect : '—'} />
         <Stat label="Status" value={<span className="text-base">{simulado.results_released ? 'Resultados liberados' : simulado.is_published ? 'Aberto' : 'Rascunho'}</span>} />
       </div>
@@ -94,8 +98,8 @@ export default async function AdminSimulado({ params }: { params: Promise<{ id: 
                   <th className="px-2 py-3">Status</th>
                   <th className="px-2 py-3">Tempo</th>
                   <th className="px-2 py-3">Acertos</th>
-                  <th className="px-2 py-3">TRI</th>
-                  <th className="px-2 py-3">Coerência</th>
+                  {simulado.use_tri !== false && <th className="px-2 py-3">TRI</th>}
+                  {simulado.use_tri !== false && <th className="px-2 py-3">Coerência</th>}
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -112,8 +116,8 @@ export default async function AdminSimulado({ params }: { params: Promise<{ id: 
                     </td>
                     <td className="px-2 py-3 text-xs tabular-nums">{s.status === 'completed' ? formatClock(s.duration_seconds) : '—'}</td>
                     <td className="px-2 py-3 font-semibold tabular-nums">{r ? r.correct : answerKey ? rawCorrect(s.answers) : '—'}</td>
-                    <td className="px-2 py-3 font-bold text-brand tabular-nums">{r ? Number(r.tri_score).toFixed(1) : '—'}</td>
-                    <td className="px-2 py-3 tabular-nums">{r ? `${r.coherence}%` : '—'}</td>
+                    {simulado.use_tri !== false && <td className="px-2 py-3 font-bold text-brand tabular-nums">{r ? Number(r.tri_score).toFixed(1) : '—'}</td>}
+                    {simulado.use_tri !== false && <td className="px-2 py-3 tabular-nums">{r ? `${r.coherence}%` : '—'}</td>}
                     <td className="px-4 py-3 text-right">
                       <ResetButton simuladoId={simulado.id} userId={s.user_id} />
                     </td>

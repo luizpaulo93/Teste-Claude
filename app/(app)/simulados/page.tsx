@@ -15,7 +15,7 @@ export default async function SimuladosPage() {
   if (!viewer.isMember) redirect('/');
   const [simulados, subs, results] = await Promise.all([
     sql.query<Simulado>(
-      `select id, title, area, question_count, time_limit_minutes, results_released, created_at from simulados where is_published order by created_at desc`,
+      `select id, title, area, question_count, time_limit_minutes, results_released, use_tri, created_at from simulados where is_published order by created_at desc`,
     ),
     sql.query<Pick<SimuladoSubmission, 'simulado_id' | 'status'>>(`select simulado_id, status from simulado_submissions where user_id = $1`, [viewer.userId]),
     sql.query<SimuladoResult>(`select simulado_id, tri_score, correct, accuracy from simulado_results where user_id = $1`, [viewer.userId]),
@@ -24,7 +24,7 @@ export default async function SimuladosPage() {
   const resBy = new Map(results.map((r) => [r.simulado_id, r]));
 
   const chart = simulados
-    .filter((s) => resBy.has(s.id))
+    .filter((s) => resBy.has(s.id) && s.use_tri !== false)
     .reverse()
     .map((s) => ({ label: s.title, value: Number(resBy.get(s.id)!.tri_score) }));
 
@@ -47,7 +47,7 @@ export default async function SimuladosPage() {
             const st = subBy.get(s.id);
             const r = resBy.get(s.id);
             let badge = <Badge tone="brand">Disponível</Badge>;
-            if (r) badge = <Badge tone="success"><Trophy className="size-3" /> {Number(r.tri_score).toFixed(0)} pts</Badge>;
+            if (r) badge = <Badge tone="success"><Trophy className="size-3" /> {s.use_tri === false ? `${r.correct}/${s.question_count} acertos` : `${Number(r.tri_score).toFixed(0)} pts`}</Badge>;
             else if (st === 'completed') badge = <Badge tone="warning"><Hourglass className="size-3" /> Aguardando resultado</Badge>;
             else if (st === 'in_progress') badge = <Badge tone="warning"><Clock className="size-3" /> Em andamento</Badge>;
             else if (s.results_released) badge = <Badge><Lock className="size-3" /> Encerrado</Badge>;

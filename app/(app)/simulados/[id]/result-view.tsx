@@ -1,3 +1,6 @@
+'use client';
+
+import { useStampedPdf, type PdfOwner } from '@/lib/pdf-stamp';
 import { Brain, CheckCircle2, CircleSlash, FileText, Trophy, Users, XCircle } from 'lucide-react';
 import { Badge, Card, Stat } from '@/components/ui';
 import { ENEM_AREAS, type Simulado, type SimuladoResult, type SimuladoStats, type Tier } from '@/lib/types';
@@ -5,13 +8,28 @@ import { cn } from '@/lib/utils';
 
 const TIER_LABEL: Record<Tier, string> = { easy: 'Fáceis', medium: 'Médias', hard: 'Difíceis' };
 
-export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simulado; result: SimuladoResult; stats?: SimuladoStats; pdfUrl: string }) {
+export function ResultView({
+  simulado,
+  result,
+  stats,
+  pdfUrl: rawPdf,
+  pdfOwner,
+}: {
+  simulado: Simulado;
+  result: SimuladoResult;
+  stats?: SimuladoStats;
+  pdfUrl: string;
+  pdfOwner?: PdfOwner | null;
+}) {
+  const stamped = useStampedPdf(rawPdf, pdfOwner);
+  const pdfUrl = rawPdf ? stamped : '';
   const score = Number(result.tri_score);
   const min = Number(result.tri_min);
   const max = Number(result.tri_max);
   const mean = Number(result.tri_mean);
   const pos = max > min ? ((score - min) / (max - min)) * 100 : 50;
   const hitPct = new Map((stats?.items ?? []).map((i) => [i.q, i.hitPct]));
+  const tri = simulado.use_tri !== false;
 
   return (
     <div className="space-y-6">
@@ -26,12 +44,14 @@ export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simu
             </div>
             <div className="text-left sm:text-right">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-white/70 sm:justify-end">
-                <Trophy className="size-3.5" /> Nota TRI estimada
+                <Trophy className="size-3.5" /> {tri ? 'Nota TRI estimada' : 'Acertos'}
               </p>
-              <p className="text-5xl font-black tracking-tight tabular-nums sm:text-6xl">{score.toFixed(1)}</p>
+              <p className="text-5xl font-black tracking-tight tabular-nums sm:text-6xl">
+                {tri ? score.toFixed(1) : `${result.correct}/${simulado.question_count}`}
+              </p>
             </div>
           </div>
-          <div className="relative mt-6">
+          {tri && <div className="relative mt-6">
             <div className="relative h-2 rounded-full bg-white/20">
               <div className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-lg" style={{ left: `${Math.max(0, Math.min(100, pos))}%` }} />
             </div>
@@ -41,7 +61,7 @@ export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simu
               <span>máx {max.toFixed(0)}</span>
             </div>
             <p className="mt-2 text-xs text-white/60">Faixa possível para {result.correct} acertos. Sua posição depende da coerência pedagógica das respostas.</p>
-          </div>
+          </div>}
         </div>
       </Card>
 
@@ -49,11 +69,15 @@ export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simu
         <Stat label="Acertos" value={result.correct} hint={`${result.accuracy}% da prova`} icon={<CheckCircle2 className="size-4" />} />
         <Stat label="Erros" value={result.wrong} icon={<XCircle className="size-4" />} />
         <Stat label="Em branco" value={result.blank} icon={<CircleSlash className="size-4" />} />
-        <Stat label="Coerência" value={`${result.coherence}%`} hint="Padrão de acertos" icon={<Brain className="size-4" />} />
+        {tri ? (
+          <Stat label="Coerência" value={`${result.coherence}%`} hint="Padrão de acertos" icon={<Brain className="size-4" />} />
+        ) : (
+          <Stat label="Aproveitamento" value={`${result.accuracy}%`} icon={<Brain className="size-4" />} />
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card className="p-5">
+        {tri && <Card className="p-5">
           <p className="mb-4 text-sm font-bold text-ink">Desempenho por dificuldade</p>
           <div className="space-y-4">
             {(['easy', 'medium', 'hard'] as Tier[]).map((t) => {
@@ -77,7 +101,7 @@ export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simu
               );
             })}
           </div>
-        </Card>
+        </Card>}
         {stats && stats.completed > 0 && (
           <Card className="p-5">
             <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
@@ -85,9 +109,13 @@ export function ResultView({ simulado, result, stats, pdfUrl }: { simulado: Simu
             </p>
             <dl className="space-y-3 text-sm">
               <Row label="Participantes" value={stats.completed} />
-              <Row label="Média TRI da turma" value={stats.meanTri.toFixed(1)} />
+              {tri && <Row label="Média TRI da turma" value={stats.meanTri.toFixed(1)} />}
               <Row label="Média de acertos" value={stats.meanCorrect} />
-              <Row label="Você vs. média" value={`${score >= stats.meanTri ? '+' : ''}${(score - stats.meanTri).toFixed(1)}`} highlight={score >= stats.meanTri} />
+              {tri ? (
+                <Row label="Você vs. média" value={`${score >= stats.meanTri ? '+' : ''}${(score - stats.meanTri).toFixed(1)}`} highlight={score >= stats.meanTri} />
+              ) : (
+                <Row label="Você vs. média" value={`${result.correct >= stats.meanCorrect ? '+' : ''}${(result.correct - stats.meanCorrect).toFixed(1)} acertos`} highlight={result.correct >= stats.meanCorrect} />
+              )}
             </dl>
           </Card>
         )}

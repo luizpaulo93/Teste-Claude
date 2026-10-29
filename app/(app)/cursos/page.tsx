@@ -16,12 +16,14 @@ export default async function CoursesPage({ searchParams }: { searchParams: Prom
     getCatalog(),
     getMyProgress(viewer.userId),
   ]);
-  const categories = [...new Set(courses.map((x) => x.category).filter(Boolean))];
-  const list = c ? courses.filter((x) => x.category === c) : courses;
+  // Curso gratuito só aparece para quem não está em nenhuma turma
+  const visible = courses.filter((x) => !(x.is_free && viewer.classGroup && !viewer.isAdmin));
+  const categories = [...new Set(visible.map((x) => x.category).filter(Boolean))];
+  const list = c ? visible.filter((x) => x.category === c) : visible;
 
   return (
     <>
-      <PageHeader eyebrow="Catálogo" title="Cursos" subtitle="Escolha um curso e continue sua trilha de estudos." />
+      <PageHeader eyebrow="Catálogo" title="Cursos" />
       {categories.length > 1 && <CategoryFilter categories={categories} active={c} />}
       {list.length ? (
         <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 md:grid-cols-4 xl:grid-cols-5">

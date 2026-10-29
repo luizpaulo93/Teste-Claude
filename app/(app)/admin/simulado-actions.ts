@@ -27,17 +27,17 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
     if (key && key.length !== question_count) return { error: `O gabarito tem ${key.length} letras, mas a prova tem ${question_count} questões.` };
     if (id && !isDocId(id)) return { error: 'Inválido.' };
     const simId = id || newId();
-    const values = [simId, title, area, question_count, int(fd, 'time_limit_minutes', 0, 600, 0), str(fd, 'pdf_path', 500), bool(fd, 'is_published')];
+    const values = [simId, title, area, question_count, int(fd, 'time_limit_minutes', 0, 600, 0), str(fd, 'pdf_path', 500), bool(fd, 'is_published'), bool(fd, 'use_tri')];
 
     await tx(async (t) => {
       if (id) {
         await t.exec(
-          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, updated_at = now() where id = $1`,
+          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, use_tri = $8, updated_at = now() where id = $1`,
           values,
         );
       } else {
         await t.exec(
-          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published) values ($1, $2, $3, $4, $5, $6, $7)`,
+          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published, use_tri) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
           values,
         );
       }

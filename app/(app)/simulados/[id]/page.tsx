@@ -30,11 +30,12 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
     pdfUrl = await createDownloadUrl(simulado.pdf_path, 60 * 60 * 6);
   }
 
+  const owner = viewer.isAdmin ? null : { name: viewer.student?.name || viewer.profile.full_name || viewer.email, cpf: viewer.student?.cpf ?? '' };
   let body: React.ReactNode;
   if (result && simulado.results_released) {
-    body = <ResultView simulado={simulado} result={result} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} />;
+    body = <ResultView simulado={simulado} result={result} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} pdfOwner={owner} />;
   } else if (submission?.status === 'in_progress') {
-    body = <ExamRunner simulado={simulado} submission={submission} pdfUrl={pdfUrl} serverNow={Date.now()} />;
+    body = <ExamRunner simulado={simulado} submission={submission} pdfUrl={pdfUrl} pdfOwner={owner} serverNow={Date.now()} />;
   } else {
     body = <StartCard simulado={simulado} submission={submission} />;
   }

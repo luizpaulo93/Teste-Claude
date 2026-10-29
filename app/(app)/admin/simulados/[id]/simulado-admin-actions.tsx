@@ -26,8 +26,12 @@ export function SimuladoAdminActions({ simulado, answerKey }: { simulado: Simula
       </ActionButton>
       <ActionButton
         action={() => releaseResults(simulado.id)}
-        confirm={simulado.results_released ? 'Recalcular as notas com todas as entregas atuais?' : 'Liberar resultados? Novas entregas serão bloqueadas e os alunos verão a nota TRI.'}
-        success="Notas TRI calculadas e liberadas"
+        confirm={
+          simulado.results_released
+            ? 'Recalcular as notas com todas as entregas atuais?'
+            : `Liberar resultados? Os alunos verão ${simulado.use_tri === false ? 'os acertos' : 'a nota TRI'}. Quem ainda está fazendo a prova pode entregar, e a turma é recalibrada a cada entrega.`
+        }
+        success={simulado.use_tri === false ? 'Resultados liberados' : 'Notas TRI calculadas e liberadas'}
         variant="primary"
         size="md"
       >

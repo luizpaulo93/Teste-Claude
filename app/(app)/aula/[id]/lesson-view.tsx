@@ -8,6 +8,7 @@ import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { buttonClass } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
+import { stampedPdfUrl, type PdfOwner } from '@/lib/pdf-stamp';
 import { getFileUrl } from '@/lib/storage/client';
 import { saveProgressServer, setFavoriteServer } from './actions';
 import type { Lesson, LessonMaterial } from '@/lib/types';
@@ -25,6 +26,8 @@ interface Props {
   prevId: string | null;
   nextId: string | null;
   userId: string;
+  /** Nome/CPF carimbados nos PDFs (vazio para admin) */
+  pdfOwner?: PdfOwner | null;
   watermark: string;
   comments?: ReactNode;
 }
@@ -101,17 +104,28 @@ export function LessonView(p: Props) {
 
   const openMaterial = async (m: LessonMaterial, download = false) => {
     setOpeningId(m.id);
-    let signedUrl = '';
+    // No celular abre numa aba nova; a aba é aberta já no toque (senão o navegador bloqueia)
+    const mobile = !download && window.matchMedia('(max-width: 768px)').matches;
+    const tab = mobile ? window.open('', '_blank') : null;
+    let url = '';
     try {
-      signedUrl = await getFileUrl(m.file_path, download ? m.title : undefined);
+      // PDF com nome e CPF do aluno carimbados em todas as páginas
+      url = await stampedPdfUrl(await getFileUrl(m.file_path, download ? m.title : undefined), p.pdfOwner);
     } catch {
+      tab?.close();
       setOpeningId(null);
       return toast.error('Arquivo indisponível.');
     }
     setOpeningId(null);
-    if (download) window.location.href = signedUrl;
-    else if (window.matchMedia('(max-width: 768px)').matches) window.open(signedUrl, '_blank', 'noopener');
-    else setPdf({ title: m.title, url: signedUrl });
+    if (download) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${m.title.replace(/[\\/:*?"<>|]/g, '')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } else if (tab) tab.location.href = url;
+    else setPdf({ title: m.title, url });
   };
 
   const q = p.lesson.course_id ? `?c=${p.lesson.course_id}` : '';
