@@ -3,6 +3,7 @@
 import { Check, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { ScopePicker, type MentoriaScope } from '@/components/mentoria/scope-picker';
 import { toast } from '@/components/toast';
 import { buttonClass, Field, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
@@ -35,6 +36,7 @@ export function GroupForm({
   const [end, setEnd] = useState(group?.end_date ?? '');
   const [cls, setCls] = useState<string[]>(group?.class_ids ?? []);
   const [emails, setEmails] = useState<string[]>(group?.student_emails ?? []);
+  const [scope, setScope] = useState<MentoriaScope>(group?.scope === 'especifica' ? 'especifica' : 'completa');
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const term = q.trim().toLowerCase();
@@ -53,6 +55,7 @@ export function GroupForm({
       exam_date: examDate,
       start_date: start,
       end_date: end,
+      scope,
     });
     setBusy(false);
     if (r.error) return toast.error(r.error);
@@ -64,6 +67,7 @@ export function GroupForm({
 
   return (
     <div className="space-y-4">
+      <ScopePicker value={scope} onChange={setScope} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome do grupo">
           <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="Ex.: Mentoria Medicina 2026" />

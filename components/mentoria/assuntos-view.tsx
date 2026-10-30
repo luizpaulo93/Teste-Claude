@@ -32,12 +32,15 @@ export function AssuntosView({
   disciplines,
   today,
   student = false,
+  archived = false,
 }: {
   rows: AssuntoRow[];
   disciplines: { key: string; name: string }[];
   /** hoje (AAAA-MM-DD): o aluno pode acrescentar o assunto a hoje ou aos próximos 6 dias */
   today?: string;
   student?: boolean;
+  /** ciclo salvo: só mostra como ficou (sem datas) */
+  archived?: boolean;
 }) {
   const [disc, setDisc] = useState(disciplines[0]?.key ?? '');
   const [open, setOpen] = useState<AssuntoRow | null>(null);
@@ -108,8 +111,8 @@ export function AssuntosView({
                         {r.last_acc !== null && <span>acerto {r.last_acc}%</span>}
                         {r.level !== null && r.level >= 1 && r.scheduled && <span>· próxima revisão {formatDate(r.scheduled)}</span>}
                         {r.level === 0 && r.scheduled && <span>· estudar em {formatDate(r.scheduled)}</span>}
-                        {r.level === 0 && !r.scheduled && <span>· não cabe no período da mentoria</span>}
-                        {r.level === null && <span>fora do cronograma</span>}
+                        {r.level === 0 && !r.scheduled && !archived && <span>· não cabe no período da mentoria</span>}
+                        {r.level === null && <span>{archived ? 'não entrou neste ciclo' : 'fora do cronograma'}</span>}
                         {r.extra && (
                           <span className="flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 font-bold text-violet-500">
                             <Plus className="size-2.5" /> {student ? 'você acrescentou' : 'aluno acrescentou'} · {formatDate(r.extra)}

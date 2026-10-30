@@ -1,6 +1,7 @@
 'use server';
 
-import { reschedule } from '@/lib/mentoria-data';
+import { DISCIPLINES } from '@/lib/enem-matriz';
+import { appendCards, orderedKeys, reschedule, writePlan } from '@/lib/mentoria-data';
 import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { EVENT_CATEGORIES, EVENT_COLORS, eventColor } from '@/lib/calendar';
@@ -140,24 +141,34 @@ export async function saveMentoria(fd: FormData): Promise<ActionResult> {
       start_date: dateOrNull(fd, 'start_date') ?? new Date().toISOString().slice(0, 10),
       end_date: dateOrNull(fd, 'end_date'),
       exam_date: dateOrNull(fd, 'exam_date'),
+      scope: str(fd, 'scope', 12) === 'especifica' ? 'especifica' : 'completa',
     };
     if (!EMAIL_RE.test(row.student_email)) return { error: 'E-mail do aluno inválido.' };
     const key = emailKey(row.student_email);
     if (id && id !== key) return { error: 'Não dá para trocar o e-mail de uma mentoria. Crie uma nova para o outro e-mail.' };
-    const values = [key, row.student_email, row.student_name, row.status, row.goal, row.exam_target, row.weekly_hours_target, row.start_date, row.end_date, row.exam_date];
+    const values = [key, row.student_email, row.student_name, row.status, row.goal, row.exam_target, row.weekly_hours_target, row.start_date, row.end_date, row.exam_date, row.scope];
     if (id) {
       await sql.exec(
         `update mentorias set student_email = $2, student_name = $3, status = $4, goal = $5, exam_target = $6, weekly_hours_target = $7,
-           start_date = $8, end_date = $9, exam_date = $10, updated_at = now() where id = $1`,
+           start_date = $8, end_date = $9, exam_date = $10, scope = $11, updated_at = now() where id = $1`,
         values,
       );
     } else {
       const n = await sql.exec(
-        `insert into mentorias (id, student_email, student_name, status, goal, exam_target, weekly_hours_target, start_date, end_date, exam_date)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) on conflict do nothing`,
+        `insert into mentorias (id, student_email, student_name, status, goal, exam_target, weekly_hours_target, start_date, end_date, exam_date, scope)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) on conflict do nothing`,
         values,
       );
       if (!n) return { error: 'Este aluno já tem mentoria.' };
+    }
+    // Mentoria completa: todos os assuntos (mais cobrados primeiro). Se já tinha cronograma, só entram os que faltam.
+    if (row.scope === 'completa') {
+      const all = DISCIPLINES.map((d) => d.key);
+      if (!(await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [key]))) await writePlan(key, all, 'prioridade');
+      else {
+        await appendCards(key, orderedKeys(all, 'prioridade'));
+        await sql.exec(`update mentorias set plan_disciplines = $2 where id = $1`, [key, all]);
+      }
     }
     // Período mudou: o cronograma fecha no novo fim
     await reschedule(key);

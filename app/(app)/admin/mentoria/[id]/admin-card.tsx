@@ -8,6 +8,7 @@ import { ActionButton, Modal } from '@/components/ui-client';
 import type { Mentoria } from '@/lib/types';
 import { deleteMentoria } from '../../misc-actions';
 import { MentoriaForm } from '../mentoria-form';
+import { NewCycleButton } from '@/components/mentoria/new-cycle';
 
 /** Dados do mentorado: editar ou excluir. */
 export function MentoriaAdminCard({ mentoria }: { mentoria: Mentoria }) {
@@ -19,6 +20,7 @@ export function MentoriaAdminCard({ mentoria }: { mentoria: Mentoria }) {
         <p className="truncate text-sm font-semibold text-ink">{mentoria.student_email}</p>
         <p className="text-xs text-muted">{mentoria.status === 'active' ? 'Mentoria ativa' : mentoria.status === 'paused' ? 'Pausada' : 'Encerrada'}</p>
       </div>
+      {!(mentoria as Mentoria & { group_id?: string | null }).group_id && <NewCycleButton mentoriaId={mentoria.id} scope={mentoria.scope} />}
       <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>
         <Pencil className="size-3.5" /> Editar
       </Button>

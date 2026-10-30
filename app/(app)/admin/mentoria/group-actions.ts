@@ -28,6 +28,7 @@ export interface GroupInput {
   exam_date: string;
   start_date: string;
   end_date: string;
+  scope?: 'completa' | 'especifica';
 }
 
 /** Cria/edita a mentoria em grupo: alunos um a um e/ou turmas inteiras. */
@@ -50,16 +51,29 @@ export async function saveGroup(data: GroupInput): Promise<ActionResult> {
       date(data.exam_date),
       date(data.start_date) ?? new Date().toISOString().slice(0, 10),
       date(data.end_date),
+      data.scope === 'especifica' ? 'especifica' : 'completa',
     ];
     await sql.exec(
-      `insert into mentoria_groups (id, name, description, student_emails, class_ids, exam_target, exam_date, start_date, end_date)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `insert into mentoria_groups (id, name, description, student_emails, class_ids, exam_target, exam_date, start_date, end_date, scope)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        on conflict (id) do update set name = excluded.name, description = excluded.description, student_emails = excluded.student_emails,
          class_ids = excluded.class_ids, exam_target = excluded.exam_target, exam_date = excluded.exam_date, start_date = excluded.start_date,
-         end_date = excluded.end_date, updated_at = now()`,
+         end_date = excluded.end_date, scope = excluded.scope, updated_at = now()`,
       values,
     );
-    await syncGroup(id);
+    // Grupo completo: todos os assuntos (mais cobrados primeiro); se já tinha, só entram os que faltam
+    let delta: { add: string[]; remove: string[] } | undefined;
+    if (values[9] === 'completa') {
+      const all = DISCIPLINES.map((d) => d.key);
+      const ordered = orderedKeys(all, 'prioridade');
+      const cur = await sql.one<{ plan_keys: string[] }>(`select plan_keys from mentoria_groups where id = $1`, [id]);
+      const add = ordered.filter((k) => !(cur?.plan_keys ?? []).includes(k));
+      if (add.length) {
+        await sql.exec(`update mentoria_groups set plan_keys = plan_keys || $2::text[], plan_disciplines = $3 where id = $1`, [id, add, all]);
+        if (cur?.plan_keys.length) delta = { add, remove: [] };
+      }
+    }
+    await syncGroup(id, undefined, delta);
     refresh(id);
     return { ok: true, id };
   } catch (e) {
@@ -92,8 +106,10 @@ export async function buildGroupPlan(id: string, disciplines: string[], order: '
     if (!chosen.length) return { error: 'Escolha pelo menos uma disciplina.' };
     const mode = order === 'matriz' ? 'matriz' : 'prioridade';
     const keys = orderedKeys(chosen, mode);
+    const old = (await sql.one<{ plan_keys: string[] }>(`select plan_keys from mentoria_groups where id = $1`, [id]))?.plan_keys ?? [];
     await sql.exec(`update mentoria_groups set plan_disciplines = $2, plan_order = $3, plan_keys = $4, updated_at = now() where id = $1`, [id, chosen, mode, keys]);
-    await syncGroup(id);
+    // Quem já tem cronograma: entram os assuntos novos e saem os que ele ainda não estudou (o progresso fica)
+    await syncGroup(id, undefined, old.length ? { add: keys.filter((k) => !old.includes(k)), remove: old.filter((k) => !keys.includes(k)) } : undefined);
     refresh(id);
     return { ok: true, count: keys.length };
   } catch (e) {

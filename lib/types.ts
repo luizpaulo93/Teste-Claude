@@ -238,6 +238,8 @@ export interface Mentoria {
   /** 1 (fraco) a 5 (forte) */
   subject_levels: Record<string, number>;
   diagnosed_at: string | null;
+  /** completa = todos os assuntos; especifica = só os escolhidos pelo mentor */
+  scope?: 'completa' | 'especifica';
 }
 
 export interface MentoriaTask {

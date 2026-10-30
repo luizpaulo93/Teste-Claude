@@ -2,6 +2,7 @@ import { CalendarClock, Target } from 'lucide-react';
 import { Badge, EmptyState, LinkButton } from '@/components/ui';
 import { emailKey } from '@/lib/db';
 import { daysUntil } from '@/lib/mentoria';
+import { countCycles } from '@/lib/mentoria-cycles';
 import { getMentoria } from '@/lib/mentoria-data';
 import { ensureGroupMember } from '@/lib/mentoria-space';
 import { requireViewer } from '@/lib/session';
@@ -23,6 +24,7 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
     );
   }
   const left = daysUntil(m.exam_date);
+  const previous = await countCycles(m.id);
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -53,6 +55,7 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
           { href: '/duvidas', label: 'Dúvidas' },
           { href: '/lives', label: 'Lives' },
           { href: '/horarios', label: 'Horários' },
+          ...(previous ? [{ href: '/anteriores', label: `Anteriores (${previous})` }] : []),
         ]}
       />
       {children}

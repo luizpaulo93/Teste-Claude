@@ -11,7 +11,7 @@ export default async function MentoriaSubjects() {
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  const { rows, disciplines } = await assuntoRows(m.id);
+  const { rows, disciplines } = await assuntoRows(m.id, undefined, m.scope);
   if (!disciplines.length) return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Os assuntos aparecem quando o mentor montar seu cronograma.</p>;
   return <AssuntosView rows={rows} disciplines={disciplines} today={todayBR()} student />;
 }

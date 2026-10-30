@@ -33,6 +33,7 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
         <BlocksPanel space={`m:${m.id}`} blocks={blocks.filter((b) => b.space === `m:${m.id}`)} today={todayBR()} />
         {m.group_id && <p className="mt-3 text-[11px] text-muted">Os períodos do grupo são editados na página do grupo e também aparecem para este aluno.</p>}
       </Card>
+      {m.scope !== 'especifica' && (
       <Card className="p-4 sm:p-5">
         <PlanBuilder mentoriaId={m.id} disciplines={disciplines} chosen={m.plan_disciplines} order={m.plan_order} hasSchedule={Boolean(m.diagnosed_at)} />
         {list.length > 0 && (
@@ -44,6 +45,7 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
           </p>
         )}
       </Card>
+      )}
       {extras.length > 0 && (
         <Card className="border-violet-500/40 p-4 sm:p-5">
           <p className="text-sm font-bold text-ink">O aluno acrescentou {extras.length} assunto{extras.length > 1 ? 's' : ''}</p>
@@ -57,10 +59,10 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
         </Card>
       )}
       <Card className="p-4 sm:p-5">
-        <details className="group">
+        <details className="group" open={m.scope === 'especifica' && list.length === 0}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden">
             <span>
-              <span className="block text-sm font-bold text-ink">Escolher assuntos manualmente</span>
+              <span className="block text-sm font-bold text-ink">{m.scope === 'especifica' ? 'Assuntos da mentoria específica' : 'Escolher assuntos manualmente'}</span>
               <span className="block text-xs text-muted">{list.length} assuntos no cronograma · adicione ou tire qualquer um</span>
             </span>
             <span className="text-xs font-semibold text-brand group-open:hidden">Abrir</span>

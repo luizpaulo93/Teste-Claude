@@ -36,7 +36,7 @@ export default async function GroupLayout({ children, params }: { children: Reac
         <PageHeader
           eyebrow="Mentoria em grupo"
           title={g.name}
-          subtitle={[`${members.length} aluno${members.length === 1 ? '' : 's'}`, g.exam_target, left !== null && left >= 0 ? `${left} dias para a prova` : ''].filter(Boolean).join(' · ')}
+          subtitle={[g.scope === 'especifica' ? 'Mentoria específica' : 'Mentoria completa', `${members.length} aluno${members.length === 1 ? '' : 's'}`, g.exam_target, left !== null && left >= 0 ? `${left} dias para a prova` : ''].filter(Boolean).join(' · ')}
           actions={
             <div className="flex flex-wrap gap-2">
               <ReportDownload target={`g:${g.id}`} />

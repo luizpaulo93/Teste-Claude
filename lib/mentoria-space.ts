@@ -26,12 +26,13 @@ export interface MentoriaGroup {
   plan_disciplines: string[];
   plan_order: string;
   plan_keys: string[];
+  scope: 'completa' | 'especifica';
 }
 
 export const getGroup = (id: string) =>
   sql.one<MentoriaGroup>(
     `select id, name, description, student_emails, class_ids, exam_target, exam_date::text as exam_date, start_date::text as start_date,
-            end_date::text as end_date, plan_disciplines, plan_order, plan_keys from mentoria_groups where id = $1`,
+            end_date::text as end_date, plan_disciplines, plan_order, plan_keys, scope from mentoria_groups where id = $1`,
     [id],
   );
 
@@ -81,12 +82,12 @@ export async function syncGroup(groupId: string, onlyEmail?: string, delta?: { a
   for (const m of members) {
     const id = emailKey(m.email);
     await sql.exec(
-      `insert into mentorias (id, student_email, student_name, status, exam_target, exam_date, start_date, end_date, group_id)
-       values ($1, $2, $3, 'active', $4, $5, $6, $7, $8)
+      `insert into mentorias (id, student_email, student_name, status, exam_target, exam_date, start_date, end_date, group_id, scope)
+       values ($1, $2, $3, 'active', $4, $5, $6, $7, $8, $9)
        on conflict (id) do update set exam_target = excluded.exam_target, exam_date = excluded.exam_date, start_date = excluded.start_date,
-         end_date = excluded.end_date, updated_at = now()
+         end_date = excluded.end_date, scope = excluded.scope, updated_at = now()
        where mentorias.group_id = $8`,
-      [id, m.email, m.name, g.exam_target, g.exam_date, g.start_date, g.end_date, g.id],
+      [id, m.email, m.name, g.exam_target, g.exam_date, g.start_date, g.end_date, g.id, g.scope],
     );
     const own = await sql.one<{ group_id: string | null }>(`select group_id from mentorias where id = $1`, [id]);
     if (own?.group_id !== g.id) continue;

@@ -548,3 +548,27 @@ create index if not exists lives_paths_idx on live_sessions using gin (material_
 -- O aluno informa o CPF uma vez; depois só o mentor muda.
 -- ============================================================================
 alter table users add column if not exists cpf text not null default '';
+
+-- ============================================================================
+-- Versão 13: mentoria completa (todos os assuntos) ou específica (só os escolhidos pelo mentor)
+-- ============================================================================
+alter table mentorias add column if not exists scope text not null default 'completa';
+alter table mentoria_groups add column if not exists scope text not null default 'completa';
+
+-- Ciclos anteriores da mentoria (ex.: "1ª avaliação"): tudo o que foi feito fica salvo
+-- (assuntos, histórico dia a dia e apostilas) quando o mentor começa um ciclo novo.
+create table if not exists mentoria_cycles (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  title text not null default '',
+  scope text not null default 'completa',
+  start_date date,
+  end_date date,
+  exam_date date,
+  cards jsonb not null default '[]'::jsonb,
+  blocks jsonb not null default '[]'::jsonb,
+  file_paths text[] not null default '{}',
+  created_at timestamptz not null default now()
+);
+create index if not exists mcycles_idx on mentoria_cycles (mentoria_id, created_at desc);
+create index if not exists mcycles_paths_idx on mentoria_cycles using gin (file_paths);

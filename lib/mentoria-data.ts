@@ -27,7 +27,7 @@ export interface Card {
 }
 
 export async function getMentoria(id: string) {
-  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null }>(`select * from mentorias where id = $1`, [id]);
+  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null; scope: 'completa' | 'especifica' }>(`select * from mentorias where id = $1`, [id]);
   if (!m) return null;
   return { ...m, availability: Array.isArray(m.availability) ? m.availability.map(Number) : [0, 0, 0, 0, 0, 0, 0], plan_disciplines: m.plan_disciplines ?? [] };
 }
@@ -146,14 +146,18 @@ export const nextMeeting = async (id: string) =>
     [id, new Date(Date.now() - 2 * 3600_000).toISOString()],
   );
 
-/** Todos os assuntos das disciplinas (plano + matriz) com a situação do aluno em cada um. */
-export async function assuntoRows(id: string, list?: Card[]) {
+/**
+ * Assuntos com a situação do aluno em cada um.
+ * Mentoria completa: todos os assuntos de todas as disciplinas. Específica: só os que o mentor escolheu.
+ */
+export async function assuntoRows(id: string, list?: Card[], scope: 'completa' | 'especifica' = 'completa') {
   const { DISCIPLINES } = await import('@/lib/enem-matriz');
   const cs = list ?? (await cards(id));
   const by = new Map(cs.map((c) => [c.item_key, c]));
+  const specific = scope === 'especifica';
   const inPlan = new Set(cs.map((c) => c.discipline));
-  const disciplines = DISCIPLINES.filter((d) => inPlan.has(d.key)).map((d) => ({ key: d.key, name: d.name }));
-  const rows = ASSUNTOS.filter((a) => inPlan.has(a.discipline)).map((a) => {
+  const disciplines = DISCIPLINES.filter((d) => !specific || inPlan.has(d.key)).map((d) => ({ key: d.key, name: d.name }));
+  const rows = ASSUNTOS.filter((a) => (specific ? by.has(a.key) : true)).map((a) => {
     const c = by.get(a.key);
     return {
       key: a.key,

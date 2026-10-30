@@ -1,15 +1,20 @@
 'use client';
 
+import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
+import { ScopePicker, type MentoriaScope } from '@/components/mentoria/scope-picker';
 import { Field, Input, Select, Textarea } from '@/components/ui';
 import { SubmitButton } from '@/components/ui-client';
 import type { Mentoria } from '@/lib/types';
 import { saveMentoria } from '../misc-actions';
 
 export function MentoriaForm({ mentoria, onSaved }: { mentoria?: Mentoria; onSaved: (id?: string) => void }) {
+  const [scope, setScope] = useState<MentoriaScope>(mentoria?.scope === 'especifica' ? 'especifica' : 'completa');
   return (
     <ActionForm action={saveMentoria} success="Mentoria salva" onSuccess={(r) => onSaved(r.id)} className="space-y-4">
       {mentoria && <input type="hidden" name="id" value={mentoria.id} />}
+      <input type="hidden" name="scope" value={scope} />
+      <ScopePicker value={scope} onChange={setScope} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="E-mail do aluno">
           <Input name="student_email" type="email" required defaultValue={mentoria?.student_email} />
