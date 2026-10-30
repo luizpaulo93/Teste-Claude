@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
-import { buttonClass, Field, Input } from '@/components/ui';
+import { buttonClass } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { saveSchedule } from '@/app/(app)/mentoria/actions';
 import { WEEKDAYS } from '@/lib/mentoria';
@@ -12,17 +12,16 @@ const OPTIONS = [0, 30, 60, 90, 120, 150, 180, 240, 300, 360, 420, 480];
 const fmt = (m: number) => (m ? (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? '30' : ''}` : `${m} min`) : '—');
 
 /** Horários livres para estudar em cada dia da semana (base do cronograma). */
-export function ScheduleForm({ availability, examDate, mentoriaId, next }: { availability: number[]; examDate: string | null; mentoriaId?: string; next?: string }) {
+export function ScheduleForm({ availability, mentoriaId, next }: { availability: number[]; mentoriaId?: string; next?: string }) {
   const router = useRouter();
   const [avail, setAvail] = useState<number[]>(availability.length === 7 ? availability : [120, 120, 120, 120, 120, 60, 0]);
-  const [exam, setExam] = useState(examDate ?? '');
   const [busy, setBusy] = useState(false);
   const total = avail.reduce((a, b) => a + b, 0);
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
-    const r = await saveSchedule({ availability: avail, exam_date: exam }, mentoriaId);
+    const r = await saveSchedule({ availability: avail }, mentoriaId);
     setBusy(false);
     if (r.error) return toast.error(r.error);
     toast('Horários salvos. O cronograma foi ajustado.');
@@ -58,9 +57,6 @@ export function ScheduleForm({ availability, examDate, mentoriaId, next }: { ava
         </div>
         <p className="text-[11px] text-muted">Cada assunto novo ocupa 1h (estudar + questões) e cada revisão, 30 min.</p>
       </div>
-      <Field label="Data da prova (opcional)">
-        <Input type="date" value={exam} onChange={(e) => setExam(e.target.value)} className="sm:max-w-xs" />
-      </Field>
       <button type="submit" disabled={busy} className={buttonClass('primary', 'lg', 'w-full sm:w-auto')}>
         {busy && <Spinner />} Salvar horários
       </button>

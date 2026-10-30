@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
-import { DISCIPLINES } from '@/lib/enem-matriz';
+import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/enem-matriz';
 import { afterScore, todayBR } from '@/lib/mentoria';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
@@ -87,16 +87,15 @@ export async function scoreCard(
 }
 
 // ---------------- Horários do aluno
-export async function saveSchedule(data: { availability: number[]; exam_date: string }, mentoriaId?: string): Promise<Result> {
+export async function saveSchedule(data: { availability: number[] }, mentoriaId?: string): Promise<Result> {
   const a = await access(mentoriaId);
   if (!a) return { error: 'Sem acesso.' };
   const availability = Array.from({ length: 7 }, (_, i) => clampInt(data.availability?.[i], 0, 720));
   if (!availability.some(Boolean)) return { error: 'Informe pelo menos um dia com tempo livre.' };
-  const exam = /^\d{4}-\d{2}-\d{2}$/.test(data.exam_date ?? '') ? data.exam_date : null;
   await sql.exec(
-    `update mentorias set availability = $2, exam_date = $3, weekly_hours_target = greatest(1, round($4 / 60.0)),
+    `update mentorias set availability = $2, weekly_hours_target = greatest(1, round($3 / 60.0)),
        diagnosed_at = coalesce(diagnosed_at, now()), updated_at = now() where id = $1`,
-    [a.id, JSON.stringify(availability), exam, availability.reduce((x, y) => x + y, 0)],
+    [a.id, JSON.stringify(availability), availability.reduce((x, y) => x + y, 0)],
   );
   await reschedule(a.id);
   refresh(a.id);
@@ -120,4 +119,35 @@ export async function markRead(mentoriaId?: string): Promise<Result> {
   if (!a) return { error: 'Sem acesso.' };
   await sql.exec(`update mentoria_messages set read_at = now() where mentoria_id = $1 and from_mentor = $2 and read_at is null`, [a.id, !a.mentor]);
   return { ok: true };
+}
+
+/**
+ * Mentor escolhe à mão os assuntos do cronograma (vale também para editar o que foi gerado):
+ * os desmarcados saem; os novos entram no fim da fila, mais cobrados primeiro.
+ */
+export async function setPlanAssuntos(keys: string[], mentoriaId: string): Promise<Result & { added?: number; removed?: number }> {
+  const a = await access(mentoriaId);
+  if (!a?.mentor) return { error: 'Só o mentor edita os assuntos.' };
+  const wanted = new Set((keys ?? []).filter((k) => ASSUNTO_BY_KEY.has(k)));
+  const current = await sql.query<{ item_key: string; ord: number }>(`select item_key, ord from mentoria_cards where mentoria_id = $1`, [a.id]);
+  const have = new Set(current.map((c) => c.item_key));
+  const remove = [...have].filter((k) => !wanted.has(k));
+  const add = [...wanted]
+    .filter((k) => !have.has(k))
+    .map((k) => ASSUNTO_BY_KEY.get(k)!)
+    .sort((x, y) => y.priority - x.priority || x.index - y.index);
+  let ord = current.reduce((m, c) => Math.max(m, c.ord), -1) + 1;
+  if (remove.length) await sql.exec(`delete from mentoria_cards where mentoria_id = $1 and item_key = any($2)`, [a.id, remove]);
+  if (add.length)
+    await sql.exec(
+      `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
+       select v.id, $1, v.k, v.d, v.t, v.p, v.o from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
+       on conflict (mentoria_id, item_key) do nothing`,
+      [a.id, add.map(() => newId()), add.map((x) => x.key), add.map((x) => x.discipline), add.map((x) => x.title), add.map((x) => x.priority), add.map(() => ord++)],
+    );
+  const discs = [...new Set([...wanted].map((k) => ASSUNTO_BY_KEY.get(k)!.discipline))];
+  await sql.exec(`update mentorias set plan_disciplines = $2, updated_at = now() where id = $1`, [a.id, discs]);
+  await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true, added: add.length, removed: remove.length };
 }

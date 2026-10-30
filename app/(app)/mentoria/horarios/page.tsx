@@ -20,7 +20,7 @@ export default async function MentoriaHours({ searchParams }: { searchParams: Pr
           <p className="mt-1 text-ink-2">Diga quanto tempo você tem em cada dia. Seu cronograma é montado nesses horários.</p>
         </div>
       )}
-      <ScheduleForm availability={m.availability} examDate={m.exam_date} next={first ? '/mentoria' : undefined} />
+      <ScheduleForm availability={m.availability} next={first ? '/mentoria' : undefined} />
     </Card>
   );
 }

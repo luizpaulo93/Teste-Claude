@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { PlanBuilder } from '@/components/mentoria/plan-builder';
+import { AssuntoPicker } from '@/components/mentoria/assunto-picker';
 import { DayList } from '@/components/mentoria/day-list';
 import { Card } from '@/components/ui';
 import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
@@ -34,6 +35,20 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
             {out > 0 && <span className="text-warning"> · {out} menos cobrados ficaram de fora — aumente os horários ou o período</span>}.
           </p>
         )}
+      </Card>
+      <Card className="p-4 sm:p-5">
+        <details className="group">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden">
+            <span>
+              <span className="block text-sm font-bold text-ink">Escolher assuntos manualmente</span>
+              <span className="block text-xs text-muted">{list.length} assuntos no cronograma · adicione ou tire qualquer um</span>
+            </span>
+            <span className="text-xs font-semibold text-brand group-open:hidden">Abrir</span>
+          </summary>
+          <div className="mt-4">
+            <AssuntoPicker key={list.length + list.map((c) => c.item_key).join().length} mentoriaId={m.id} selected={list.map((c) => c.item_key)} />
+          </div>
+        </details>
       </Card>
       {list.length > 0 && (
         <Card className="p-4 sm:p-5">

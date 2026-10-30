@@ -19,12 +19,13 @@ export function MentoriaForm({ mentoria, onSaved }: { mentoria?: Mentoria; onSav
         </Field>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Objetivo / prova">
+        <Field label="Nome da prova / objetivo">
           <Input name="exam_target" defaultValue={mentoria?.exam_target} placeholder="ENEM 2027 — Medicina" maxLength={120} />
         </Field>
-        <Field label="Meta de horas por semana">
-          <Input name="weekly_hours_target" type="number" min={0} max={100} defaultValue={mentoria?.weekly_hours_target ?? 20} />
+        <Field label="Data da prova">
+          <Input name="exam_date" type="date" defaultValue={mentoria?.exam_date ?? ''} />
         </Field>
+        <input type="hidden" name="weekly_hours_target" value={mentoria?.weekly_hours_target ?? 20} />
       </div>
       <Field label="Meta principal">
         <Textarea name="goal" defaultValue={mentoria?.goal} rows={3} maxLength={600} />
@@ -33,7 +34,7 @@ export function MentoriaForm({ mentoria, onSaved }: { mentoria?: Mentoria; onSav
         <Field label="Início">
           <Input name="start_date" type="date" defaultValue={mentoria?.start_date} />
         </Field>
-        <Field label="Fim (opcional)">
+        <Field label="Fim da mentoria">
           <Input name="end_date" type="date" defaultValue={mentoria?.end_date ?? ''} />
         </Field>
         <Field label="Status">
