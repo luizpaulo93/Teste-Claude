@@ -51,7 +51,12 @@ export interface PlannedTask {
  * matéria mais fraca recebe mais blocos; cada bloco alterna teoria e questões;
  * redação toda semana; revisão do caderno de erros; simulado no dia mais livre do fim de semana.
  */
-export function planWeek(m: Pick<Mentoria, 'availability' | 'subject_levels'>, reviewsDue: number, fromDay = 0): PlannedTask[] {
+export function planWeek(
+  m: Pick<Mentoria, 'availability' | 'subject_levels'>,
+  reviewsDue: number,
+  fromDay = 0,
+  topicFor: (subject: string) => string = () => '',
+): PlannedTask[] {
   // Dias que já passaram (semana atual) ficam de fora
   const avail = (m.availability ?? []).slice(0, 7).map((v, d) => (d < fromDay ? 0 : Math.max(0, Math.min(720, Number(v) || 0))));
   while (avail.length < 7) avail.push(0);
@@ -118,7 +123,14 @@ export function planWeek(m: Pick<Mentoria, 'availability' | 'subject_levels'>, r
     const t = turn.get(pick)!;
     turn.set(pick, t + 1);
     const kind = t % 2 === 0 ? 'aula' : 'questoes';
-    out.push({ day: slot.day, subject: pick, kind, title: kind === 'aula' ? `${pick}: teoria + resumo` : `${pick}: bloco de questões`, minutes: slot.min });
+    const topic = topicFor(pick);
+    out.push({
+      day: slot.day,
+      subject: pick,
+      kind,
+      title: topic ? `${pick}: ${topic} — ${kind === 'aula' ? 'teoria + resumo' : 'questões'}` : kind === 'aula' ? `${pick}: teoria + resumo` : `${pick}: bloco de questões`,
+      minutes: slot.min,
+    });
   }
   return out.sort((a, b) => a.day - b.day);
 }

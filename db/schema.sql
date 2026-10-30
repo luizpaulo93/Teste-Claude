@@ -436,3 +436,15 @@ create table if not exists mentoria_messages (
   created_at timestamptz not null default now()
 );
 create index if not exists mmessages_idx on mentoria_messages (mentoria_id, created_at desc);
+
+-- ============================================================================
+-- Versão 6: conteúdos da Matriz de Referência do ENEM marcados pelo aluno
+-- status: 1 = estudado, 2 = dominado (sem linha = ainda não estudado)
+-- ============================================================================
+create table if not exists mentoria_topics (
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  item_key text not null,
+  status smallint not null default 1,
+  updated_at timestamptz not null default now(),
+  primary key (mentoria_id, item_key)
+);

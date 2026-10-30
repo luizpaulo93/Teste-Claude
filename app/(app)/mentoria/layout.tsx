@@ -45,6 +45,7 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
         tabs={[
           { href: '', label: 'Hoje' },
           { href: '/plano', label: 'Plano' },
+          { href: '/conteudos', label: 'Conteúdos' },
           { href: '/desempenho', label: 'Desempenho' },
           { href: '/erros', label: 'Caderno de erros', badge: due?.n ?? 0 },
           { href: '/mensagens', label: 'Mentor', badge: unread },

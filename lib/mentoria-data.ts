@@ -46,3 +46,9 @@ export const simuladoScores = (email: string) =>
       order by s.created_at`,
     [email],
   );
+
+/** Conteúdos da matriz já marcados pelo aluno (chave → 1 estudado, 2 dominado). */
+export async function topicStatus(id: string): Promise<Record<string, number>> {
+  const rows = await sql.query<{ item_key: string; status: number }>(`select item_key, status from mentoria_topics where mentoria_id = $1`, [id]);
+  return Object.fromEntries(rows.map((r) => [r.item_key, Number(r.status)]));
+}

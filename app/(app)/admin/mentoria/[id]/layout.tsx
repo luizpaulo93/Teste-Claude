@@ -34,6 +34,7 @@ export default async function AdminMentoradoLayout({ children, params }: { child
         base={base}
         tabs={[
           { href: '', label: 'Plano e check-ins' },
+          { href: '/conteudos', label: 'Conteúdos' },
           { href: '/desempenho', label: 'Desempenho' },
           { href: '/erros', label: 'Caderno de erros', badge: due?.n ?? 0 },
           { href: '/mensagens', label: 'Mensagens', badge: unread },

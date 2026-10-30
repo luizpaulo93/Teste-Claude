@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { emailKey, newId, sql, tx } from '@/lib/db';
+import { ALL_ITEM_KEYS, nextTopic } from '@/lib/enem-matriz';
 import { planWeek, REVIEW_STEPS, SUBJECTS, todayBR } from '@/lib/mentoria';
 import { getViewer } from '@/lib/session';
 import { addDays, isDocId, weekStart } from '@/lib/utils';
@@ -55,7 +56,9 @@ export async function generateWeek(week: string, mentoriaId?: string): Promise<R
   const due = await sql.one<{ n: number }>(`select count(*)::int as n from mentoria_errors where mentoria_id = $1 and not mastered and next_review <= $2`, [a.id, addDays(start, 6)]);
   const today = todayBR();
   const fromDay = start <= today && today <= addDays(start, 6) ? Math.round((new Date(`${today}T12:00:00Z`).getTime() - new Date(`${start}T12:00:00Z`).getTime()) / 86400000) : start < today ? 7 : 0;
-  const plan = planWeek(m, due?.n ?? 0, fromDay);
+  const marks = await sql.query<{ item_key: string; status: number }>(`select item_key, status from mentoria_topics where mentoria_id = $1`, [a.id]);
+  const status = Object.fromEntries(marks.map((r) => [r.item_key, Number(r.status)]));
+  const plan = planWeek(m, due?.n ?? 0, fromDay, (s) => nextTopic(s, status));
   if (!plan.length) return { error: fromDay >= 7 ? 'Essa semana já passou.' : 'Preencha os horários disponíveis no diagnóstico.' };
   await tx(async (t) => {
     await t.exec(`delete from mentoria_tasks where mentoria_id = $1 and week_start = $2 and auto and not done`, [a.id, start]);
@@ -204,6 +207,26 @@ export async function saveCheckin(week: string, data: { hours_studied: number; q
       String(data.difficulties ?? '').slice(0, 1500),
     ],
   );
+  refresh(a.id);
+  return { ok: true };
+}
+
+// ---------------- Conteúdos da Matriz de Referência do ENEM
+const VALID_KEYS = new Set(ALL_ITEM_KEYS);
+
+/** Marca conteúdos como não estudado (0), estudado (1) ou dominado (2). */
+export async function setTopicStatus(keys: string[], status: 0 | 1 | 2, mentoriaId?: string): Promise<Result> {
+  const a = await access(mentoriaId);
+  if (!a) return { error: 'Sem acesso.' };
+  const list = [...new Set((keys ?? []).filter((k) => VALID_KEYS.has(k)))].slice(0, 400);
+  if (!list.length) return { error: 'Conteúdo inválido.' };
+  if (status === 0) await sql.exec(`delete from mentoria_topics where mentoria_id = $1 and item_key = any($2)`, [a.id, list]);
+  else
+    await sql.exec(
+      `insert into mentoria_topics (mentoria_id, item_key, status) select $1, k, $3 from unnest($2::text[]) as k
+       on conflict (mentoria_id, item_key) do update set status = greatest(mentoria_topics.status, excluded.status), updated_at = now()`,
+      [a.id, list, status === 2 ? 2 : 1],
+    );
   refresh(a.id);
   return { ok: true };
 }
