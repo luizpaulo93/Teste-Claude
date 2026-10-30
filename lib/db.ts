@@ -4,7 +4,7 @@ import { unstable_cache } from 'next/cache';
 import { Pool, types, type PoolClient } from 'pg';
 import { databaseConfigProblem, databaseUrl } from './db-config';
 import { SCHEMA_SQL, SCHEMA_VERSION } from './schema-sql';
-import type { ClassGroup, Course, Lesson, Module, PlatformSettings } from './types';
+import type { ClassGroup, Course, CourseTag, Lesson, Module, PlatformSettings } from './types';
 
 // Datas sempre como texto ISO (igual ao que as telas esperam)
 const toIso = (v: string) => new Date(v.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00')).toISOString();
@@ -183,14 +183,15 @@ export async function getSettings(): Promise<PlatformSettings> {
 
 export const getCatalogData = unstable_cache(
   async () => {
-    const [courses, modules, lessons, classes] = await Promise.all([
+    const [courses, modules, lessons, classes, tags] = await Promise.all([
       sql.query<Course>(`select * from courses order by position, created_at`),
       sql.query<Module>(`select * from modules order by position, created_at`),
       sql.query<LessonSummary>(`${LESSON_PLACEMENT_SQL} order by ml.position, l.created_at`),
       sql.query<ClassGroup>(`select id, name, description, access_all, course_ids from classes order by name`),
+      sql.query<CourseTag>(`select id, name, position from course_tags order by position, lower(name)`),
     ]);
-    return { courses, modules, lessons, classes };
+    return { courses, modules, lessons, classes, tags };
   },
-  ['catalog-pg-v2'],
+  ['catalog-pg-v3'],
   { tags: ['catalog'], revalidate: 3600 },
 );

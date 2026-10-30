@@ -572,3 +572,19 @@ create table if not exists mentoria_cycles (
 );
 create index if not exists mcycles_idx on mentoria_cycles (mentoria_id, created_at desc);
 create index if not exists mcycles_paths_idx on mentoria_cycles using gin (file_paths);
+
+-- ============================================================================
+-- Versão 14: tags de disciplina dos cursos (criadas pelo admin) para o filtro do catálogo.
+-- As categorias digitadas antes viram tags.
+-- ============================================================================
+create table if not exists course_tags (
+  id text primary key,
+  name text not null,
+  position int not null default 0,
+  created_at timestamptz not null default now()
+);
+alter table courses add column if not exists tag_ids text[] not null default '{}';
+insert into course_tags (id, name, position)
+  select 'tag-' || md5(lower(trim(category))), min(trim(category)), 0 from courses where trim(category) <> '' group by lower(trim(category))
+  on conflict (id) do nothing;
+update courses set tag_ids = array['tag-' || md5(lower(trim(category)))], category = '' where trim(category) <> '' and cardinality(tag_ids) = 0;

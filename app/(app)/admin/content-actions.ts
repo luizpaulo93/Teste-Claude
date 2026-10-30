@@ -40,31 +40,83 @@ export async function saveCourse(fd: FormData): Promise<ActionResult> {
       title,
       str(fd, 'subtitle', 240),
       str(fd, 'description', 3000),
-      str(fd, 'category', 80),
+      '',
       str(fd, 'cover_url', 2000),
       str(fd, 'banner_url', 2000),
       bool(fd, 'featured'),
       bool(fd, 'is_free'),
       bool(fd, 'is_published'),
     ];
+    // Só tags que o admin criou
+    const wanted = fd.getAll('tag_ids').map(String).slice(0, 30);
+    const tagIds = wanted.length ? (await sql.query<{ id: string }>(`select id from course_tags where id = any($1)`, [wanted])).map((t) => t.id) : [];
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
       await sql.exec(
         `update courses set title = $2, subtitle = $3, description = $4, category = $5, cover_url = $6, banner_url = $7,
-           featured = $8, is_free = $9, is_published = $10, updated_at = now() where id = $1`,
-        [id, ...values],
+           featured = $8, is_free = $9, is_published = $10, tag_ids = $11, updated_at = now() where id = $1`,
+        [id, ...values, tagIds],
       );
       revalidateContent(id);
       return { ok: true, id };
     }
     const newCourse = newId();
     await sql.exec(
-      `insert into courses (id, title, subtitle, description, category, cover_url, banner_url, featured, is_free, is_published, position)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [newCourse, ...values, await nextPosition('courses')],
+      `insert into courses (id, title, subtitle, description, category, cover_url, banner_url, featured, is_free, is_published, position, tag_ids)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [newCourse, ...values, await nextPosition('courses'), tagIds],
     );
     revalidateContent();
     return { ok: true, id: newCourse };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+// ---------------- Tags de disciplina (filtro do catálogo)
+export async function saveTag(id: string | null, name: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    const n = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    if (!n) return { error: 'Dê um nome à tag.' };
+    const dup = await sql.one(`select 1 from course_tags where lower(name) = lower($1) and id <> coalesce($2, '')`, [n, id]);
+    if (dup) return { error: 'Já existe uma tag com esse nome.' };
+    if (id) await sql.exec(`update course_tags set name = $2 where id = $1`, [id, n]);
+    else await sql.exec(`insert into course_tags (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from course_tags`, [newId(), n]);
+    revalidateContent();
+    revalidatePath('/admin/cursos');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+export async function deleteTag(id: string): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    await sql.exec(`update courses set tag_ids = array_remove(tag_ids, $1) where $1 = any(tag_ids)`, [id]);
+    await sql.exec(`delete from course_tags where id = $1`, [id]);
+    revalidateContent();
+    revalidatePath('/admin/cursos');
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Muda a ordem das tags no filtro (sobe ou desce uma posição). */
+export async function moveTag(id: string, dir: -1 | 1): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    const list = await sql.query<{ id: string }>(`select id from course_tags order by position, lower(name)`);
+    const i = list.findIndex((t) => t.id === id);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= list.length) return { ok: true };
+    [list[i], list[j]] = [list[j], list[i]];
+    await sql.exec(`update course_tags t set position = v.p from unnest($1::text[], $2::int[]) as v(id, p) where t.id = v.id`, [list.map((t) => t.id), list.map((_, k) => k)]);
+    revalidateContent();
+    revalidatePath('/admin/cursos');
+    return { ok: true };
   } catch (e) {
     return fail(e);
   }

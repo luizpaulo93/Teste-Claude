@@ -75,7 +75,13 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             </div>
             <div className="flex flex-col justify-end text-white">
               <div className="mb-3 flex flex-wrap gap-2">
-                {course.category && <Badge className="bg-white/10 text-white">{course.category}</Badge>}
+                {catalog.tags
+                  .filter((t) => (course.tag_ids ?? []).includes(t.id))
+                  .map((t) => (
+                    <Badge key={t.id} className="bg-white/10 text-white">
+                      {t.name}
+                    </Badge>
+                  ))}
                 {course.is_free && <Badge tone="success">Gratuito</Badge>}
                 {locked && (
                   <Badge className="bg-white/10 text-white">

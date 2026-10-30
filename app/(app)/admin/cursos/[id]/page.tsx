@@ -6,6 +6,7 @@ import { notFound } from 'next/navigation';
 import { buttonClass, Card, PageHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import type { Course, Lesson, LessonFolder, Module } from '@/lib/types';
+import { getCatalogData } from '@/lib/db';
 import { CourseForm } from '../course-form';
 import { ModulesManager, type PickerLesson } from './modules-manager';
 
@@ -54,7 +55,7 @@ export default async function AdminCourseEdit({ params }: { params: Promise<{ id
         />
         <Card className="p-5 xl:sticky xl:top-6 xl:self-start">
           <p className="mb-4 text-sm font-bold text-ink">Dados do curso</p>
-          <CourseForm course={course} />
+          <CourseForm course={course} tags={(await getCatalogData()).tags} />
         </Card>
       </div>
     </>

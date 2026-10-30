@@ -37,6 +37,8 @@ export interface Course {
   subtitle: string;
   description: string;
   category: string;
+  /** tags de disciplina (criadas pelo admin) — usadas no filtro do catálogo */
+  tag_ids?: string[];
   cover_url: string;
   banner_url: string;
   position: number;
@@ -371,4 +373,10 @@ export interface LiveMessage extends AuthorInfo {
   author_id: string;
   text: string;
   created_at: string;
+}
+
+export interface CourseTag {
+  id: string;
+  name: string;
+  position: number;
 }

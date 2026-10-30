@@ -3,6 +3,7 @@ import { Compass } from 'lucide-react';
 import { CourseCard } from '@/components/course/course-card';
 import { EmptyState, PageHeader } from '@/components/ui';
 import { courseProgress, getCatalog, getMyProgress } from '@/lib/data';
+import { getCatalogData } from '@/lib/db';
 import { canAccessCourse, getSettings, requireViewer } from '@/lib/session';
 import { CategoryFilter } from './category-filter';
 
@@ -18,13 +19,16 @@ export default async function CoursesPage({ searchParams }: { searchParams: Prom
   ]);
   // Curso gratuito só aparece para quem não está em nenhuma turma
   const visible = courses.filter((x) => !(x.is_free && viewer.classGroup && !viewer.isAdmin));
-  const categories = [...new Set(visible.map((x) => x.category).filter(Boolean))];
-  const list = c ? visible.filter((x) => x.category === c) : visible;
+  // Filtro: as tags que o admin criou (na ordem dele), só as que têm curso
+  const { tags } = await getCatalogData();
+  const used = new Set(visible.flatMap((x) => x.tag_ids ?? []));
+  const categories = tags.filter((t) => used.has(t.id)).map((t) => ({ id: t.id, name: t.name }));
+  const list = c ? visible.filter((x) => (x.tag_ids ?? []).includes(c)) : visible;
 
   return (
     <>
       <PageHeader eyebrow="Catálogo" title="Cursos" />
-      {categories.length > 1 && <CategoryFilter categories={categories} active={c} />}
+      {categories.length > 0 && <CategoryFilter categories={categories} active={c} />}
       {list.length ? (
         <div className="grid grid-cols-2 gap-x-3 gap-y-6 sm:grid-cols-3 sm:gap-x-4 md:grid-cols-4 xl:grid-cols-5">
           {list.map((course, i) => {

@@ -7,11 +7,11 @@ import { useState } from 'react';
 import { CoverFallback, coverColor, coverImage } from '@/components/course/course-card';
 import { Badge, Button, Card, Img, buttonClass } from '@/components/ui';
 import { ActionButton, Modal } from '@/components/ui-client';
-import type { Course } from '@/lib/types';
+import type { Course, CourseTag } from '@/lib/types';
 import { deleteCourse, moveItem } from '../content-actions';
 import { CourseForm } from './course-form';
 
-export function NewCourseButton() {
+export function NewCourseButton({ tags }: { tags: CourseTag[] }) {
   const [open, setOpen] = useState(false);
   const router = useRouter();
   return (
@@ -21,6 +21,7 @@ export function NewCourseButton() {
       </Button>
       <Modal open={open} onClose={() => setOpen(false)} title="Novo curso" size="lg">
         <CourseForm
+          tags={tags}
           onSaved={(id) => {
             setOpen(false);
             router.push(`/admin/cursos/${id}`);

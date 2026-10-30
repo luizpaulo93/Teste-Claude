@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 
-export function CategoryFilter({ categories, active }: { categories: string[]; active?: string }) {
+export function CategoryFilter({ categories, active }: { categories: { id: string; name: string }[]; active?: string }) {
   const chip = (label: string, href: string, on: boolean) => (
     <Link
       key={href}
@@ -18,7 +18,7 @@ export function CategoryFilter({ categories, active }: { categories: string[]; a
   return (
     <div className="rail -mx-4 mb-6 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
       {chip('Todos', '/cursos', !active)}
-      {categories.map((c) => chip(c, `/cursos?c=${encodeURIComponent(c)}`, active === c))}
+      {categories.map((c) => chip(c.name, `/cursos?c=${encodeURIComponent(c.id)}`, active === c.id))}
     </div>
   );
 }

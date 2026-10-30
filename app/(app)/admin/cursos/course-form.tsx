@@ -4,10 +4,11 @@ import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
 import { Field, Input, Textarea } from '@/components/ui';
 import { SubmitButton, Switch } from '@/components/ui-client';
-import type { Course } from '@/lib/types';
+import type { Course, CourseTag } from '@/lib/types';
+import { TagPicker } from './course-tags';
 import { saveCourse } from '../content-actions';
 
-export function CourseForm({ course, onSaved }: { course?: Course; onSaved?: (id: string) => void }) {
+export function CourseForm({ course, tags, onSaved }: { course?: Course; tags: CourseTag[]; onSaved?: (id: string) => void }) {
   return (
     <ActionForm action={saveCourse} success={course ? 'Curso atualizado' : 'Curso criado'} onSuccess={(r) => r.id && onSaved?.(r.id)} className="space-y-5">
       {course && <input type="hidden" name="id" value={course.id} />}
@@ -23,9 +24,7 @@ export function CourseForm({ course, onSaved }: { course?: Course; onSaved?: (id
           <Field label="Subtítulo">
             <Input name="subtitle" defaultValue={course?.subtitle} maxLength={240} />
           </Field>
-          <Field label="Categoria">
-            <Input name="category" defaultValue={course?.category} maxLength={80} placeholder="Ex.: Física" />
-          </Field>
+          <TagPicker tags={tags} selected={course?.tag_ids ?? []} />
         </div>
       </div>
       <Field label="Descrição">
