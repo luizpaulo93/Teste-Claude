@@ -1,8 +1,13 @@
 'use client';
 
-import { Flame } from 'lucide-react';
+import { CalendarPlus, Flame, Plus } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { LEVELS } from '@/lib/mentoria';
+import { addToDay } from '@/app/(app)/mentoria/actions';
+import { toast } from '@/components/toast';
+import { buttonClass } from '@/components/ui';
+import { Modal, Spinner } from '@/components/ui-client';
+import { LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
 
 export interface AssuntoRow {
@@ -16,11 +21,26 @@ export interface AssuntoRow {
   due_on: string | null;
   attempts: number;
   scheduled: string | null;
+  /** dia em que o aluno acrescentou o assunto */
+  extra: string | null;
+  byStudent: boolean;
 }
 
 /** Todos os assuntos de cada disciplina e em que parte do estudo o aluno está (cores por situação). */
-export function AssuntosView({ rows, disciplines }: { rows: AssuntoRow[]; disciplines: { key: string; name: string }[] }) {
+export function AssuntosView({
+  rows,
+  disciplines,
+  today,
+  student = false,
+}: {
+  rows: AssuntoRow[];
+  disciplines: { key: string; name: string }[];
+  /** hoje (AAAA-MM-DD): o aluno pode acrescentar o assunto a hoje ou aos próximos 6 dias */
+  today?: string;
+  student?: boolean;
+}) {
   const [disc, setDisc] = useState(disciplines[0]?.key ?? '');
+  const [open, setOpen] = useState<AssuntoRow | null>(null);
   const list = rows.filter((r) => r.discipline === disc);
   const count = (l: number) => list.filter((r) => (r.level ?? 0) === l).length;
   const blocks = [...new Set(list.map((r) => r.block))];
@@ -72,7 +92,11 @@ export function AssuntosView({ rows, disciplines }: { rows: AssuntoRow[]; discip
               .map((r) => {
                 const lv = LEVELS[r.level ?? 0];
                 return (
-                  <li key={r.key} className="flex items-start gap-3 px-4 py-2.5">
+                  <li
+                    key={r.key}
+                    className={cn('flex items-start gap-3 px-4 py-2.5', student && today && 'cursor-pointer transition hover:bg-surface-2/60 active:bg-surface-2')}
+                    onClick={student && today ? () => setOpen(r) : undefined}
+                  >
                     <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', lv.dot)} />
                     <span className="min-w-0 flex-1">
                       <span className="block text-[13px] leading-snug text-ink">
@@ -86,14 +110,87 @@ export function AssuntosView({ rows, disciplines }: { rows: AssuntoRow[]; discip
                         {r.level === 0 && r.scheduled && <span>· estudar em {formatDate(r.scheduled)}</span>}
                         {r.level === 0 && !r.scheduled && <span>· não cabe no período da mentoria</span>}
                         {r.level === null && <span>fora do cronograma</span>}
+                        {r.extra && (
+                          <span className="flex items-center gap-0.5 rounded bg-violet-500/15 px-1.5 py-0.5 font-bold text-violet-500">
+                            <Plus className="size-2.5" /> {student ? 'você acrescentou' : 'aluno acrescentou'} · {formatDate(r.extra)}
+                          </span>
+                        )}
+                        {!r.extra && r.byStudent && !student && <span className="font-semibold text-violet-500">· escolhido pelo aluno</span>}
                       </span>
                     </span>
+                    {student && today && <CalendarPlus className="mt-1 size-4 shrink-0 text-muted" />}
                   </li>
                 );
               })}
           </ul>
         </section>
       ))}
+      {open && today && <AddDialog row={open} today={today} onClose={() => setOpen(null)} />}
     </div>
+  );
+}
+
+const shiftISO = (date: string, days: number) => {
+  const t = new Date(`${date}T12:00:00Z`);
+  t.setUTCDate(t.getUTCDate() + days);
+  return t.toISOString().slice(0, 10);
+};
+const weekday = (d: string) => WEEKDAYS[(new Date(`${d}T12:00:00Z`).getUTCDay() + 6) % 7];
+
+/** Popup do assunto: acrescentar hoje ou em outro dia da semana. */
+function AddDialog({ row, today, onClose }: { row: AssuntoRow; today: string; onClose: () => void }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState('');
+  const days = Array.from({ length: 6 }, (_, i) => shiftISO(today, i + 1));
+  const lv = LEVELS[row.level ?? 0];
+  async function add(day: string) {
+    setBusy(day);
+    const r = await addToDay(row.key, day).catch(() => ({ error: 'Não foi possível salvar.' }));
+    setBusy('');
+    if (r.error) return toast.error(r.error);
+    toast(day === today ? 'Acrescentado ao cronograma de hoje.' : `Acrescentado para ${weekday(day).toLowerCase()}, ${formatDate(day)}.`);
+    onClose();
+    router.refresh();
+  }
+  return (
+    <Modal open onClose={onClose} title="Acrescentar ao cronograma" size="sm">
+      <div className="space-y-4">
+        <div>
+          <p className="text-[15px] leading-snug font-semibold text-ink">{row.title}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+            <span className={cn('rounded px-1.5 py-0.5 font-bold', lv.chip)}>{lv.label}</span>
+            {row.level !== null && <span>vai como {TASK_KIND[Math.min(4, row.level)].toLowerCase()}</span>}
+            {row.extra && <span>· já acrescentado para {formatDate(row.extra)}</span>}
+          </p>
+        </div>
+        <button type="button" disabled={!!busy} onClick={() => add(today)} className={buttonClass('primary', 'lg', 'w-full')}>
+          {busy === today ? <Spinner /> : <CalendarPlus className="size-4" />} Adicionar hoje
+        </button>
+        <div>
+          <p className="mb-2 text-xs font-semibold text-ink-2">Ou em outro dia da semana</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {days.map((d) => (
+              <button
+                key={d}
+                type="button"
+                disabled={!!busy}
+                onClick={() => add(d)}
+                className="flex flex-col items-center rounded-xl border border-line py-2 text-ink-2 transition hover:border-brand hover:text-ink"
+              >
+                {busy === d ? (
+                  <Spinner />
+                ) : (
+                  <>
+                    <span className="text-[10px] font-bold uppercase">{weekday(d)}</span>
+                    <span className="text-sm font-extrabold tabular-nums">{`${d.slice(8)}/${d.slice(5, 7)}`}</span>
+                  </>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="text-[11px] text-muted">Ele entra além do que o mentor montou para o dia. Seu mentor vê o que você acrescentou.</p>
+      </div>
+    </Modal>
   );
 }

@@ -508,3 +508,9 @@ alter table live_sessions add column if not exists space text;
 -- Versão 9: como o aluno achou o assunto (1 de boas, 2 mais ou menos, 3 ladeira abaixo)
 -- ============================================================================
 alter table mentoria_cards add column if not exists last_feel int;
+
+-- ============================================================================
+-- Versão 10: o aluno acrescenta assuntos a um dia (além do que o mentor montou)
+-- ============================================================================
+alter table mentoria_cards add column if not exists pinned_on date;
+alter table mentoria_cards add column if not exists added_by_student boolean not null default false;

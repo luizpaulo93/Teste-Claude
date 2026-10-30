@@ -18,7 +18,9 @@ export interface Card {
   last_acc: number | null;
   attempts: number;
   last_day: string | null;
-  history: { d: string; q: number; c: number; l: number; f?: number }[];
+  history: { d: string; q: number; c: number; l: number; f?: number; x?: number }[];
+  pinned_on: string | null;
+  added_by_student: boolean;
 }
 
 export async function getMentoria(id: string) {
@@ -30,7 +32,7 @@ export async function getMentoria(id: string) {
 export const cards = (id: string) =>
   sql.query<Card>(
     `select id, item_key, discipline, title, priority, ord, level, step, due_on::text as due_on, scheduled_on::text as scheduled_on, last_acc, attempts,
-            history -> -1 ->> 'd' as last_day, history
+            history -> -1 ->> 'd' as last_day, history, pinned_on::text as pinned_on, added_by_student
        from mentoria_cards where mentoria_id = $1 order by ord`,
     [id],
   );
@@ -50,7 +52,7 @@ export async function reschedule(mentoriaId: string) {
   const now = todayBR();
   const from = m.start_date && m.start_date > now ? m.start_date : now;
   const list = await sql.query<PlanCard & { last_day: string | null; last_level: number | null }>(
-    `select id, level, step, ord, due_on::text as due_on, history -> -1 ->> 'd' as last_day, (history -> -1 ->> 'l')::int as last_level
+    `select id, level, step, ord, due_on::text as due_on, pinned_on::text as pinned_on, history -> -1 ->> 'd' as last_day, (history -> -1 ->> 'l')::int as last_level
        from mentoria_cards where mentoria_id = $1`,
     [mentoriaId],
   );
@@ -161,6 +163,8 @@ export async function assuntoRows(id: string, list?: Card[]) {
       due_on: c?.due_on ?? null,
       attempts: c?.attempts ?? 0,
       scheduled: c?.scheduled_on ?? null,
+      extra: c?.pinned_on ?? null,
+      byStudent: c?.added_by_student ?? false,
     };
   });
   return { rows, disciplines };
@@ -176,14 +180,14 @@ export async function dayData(m: { id: string; availability: number[] }, request
   const monday = shift(day, -weekdayIndex(day));
   const week = Array.from({ length: 7 }, (_, i) => shift(monday, i));
   const list = await cards(m.id);
-  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority });
+  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority, extra: false });
   const done = list.flatMap((c) =>
     (c.history ?? [])
       .filter((h) => h.d === day)
       .map((h) => {
         const acc = h.q ? Math.round((h.c / h.q) * 100) : 0;
         const goal = h.l ? GOAL[Math.min(4, h.l)] : 0;
-        return { ...base(c), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f } };
+        return { ...base(c), extra: Boolean(h.x), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f } };
       }),
   );
   const pending =
@@ -191,7 +195,7 @@ export async function dayData(m: { id: string; availability: number[] }, request
       ? []
       : list
           .filter((c) => (day === today ? c.scheduled_on !== null && c.scheduled_on <= today : c.scheduled_on === day) && !(c.last_day === today && day === today && c.step === 'study'))
-          .map((c) => ({ ...base(c), level: c.level, step: c.step === 'questions' ? ('questions' as const) : ('study' as const), result: null }));
+          .map((c) => ({ ...base(c), extra: Boolean(c.pinned_on), level: c.level, step: c.step === 'questions' ? ('questions' as const) : ('study' as const), result: null }));
   const items = [...pending, ...done];
   const minutes = items.reduce((a, i) => a + (i.level ? COST.revisao : COST.novo), 0);
   return { today, day, week, items, minutes, free: Number(m.availability[weekdayIndex(day)]) || 0 };

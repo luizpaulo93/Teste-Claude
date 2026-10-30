@@ -77,6 +77,8 @@ export interface PlanCard {
   step: string;
   ord: number;
   due_on: string | null;
+  /** dia escolhido pelo aluno (entra além do tempo livre) */
+  pinned_on?: string | null;
 }
 
 /**
@@ -92,9 +94,13 @@ export function schedule(cards: PlanCard[], availability: number[], today: strin
   for (let d = today; d <= last && days.length < 500; d = shift(d, 1)) days.push(d);
   const free = (d: string) => Math.max(0, Number(availability[weekdayIndex(d)]) || 0) - (d === today ? doneToday.minutes : 0);
 
-  const active = cards.filter((c) => c.step !== 'study');
-  const reviews = cards.filter((c) => c.step === 'study' && c.level > 0).sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord);
-  const news = cards.filter((c) => c.step === 'study' && c.level === 0).sort((a, b) => a.ord - b.ord);
+  // Acrescentados pelo aluno: ficam no dia escolhido, sem tirar nada do que o mentor montou
+  const pinned = cards.filter((c) => c.step === 'study' && c.pinned_on);
+  for (const c of pinned) out.set(c.id, c.pinned_on! < today ? today : c.pinned_on!);
+  const rest = cards.filter((c) => !(c.step === 'study' && c.pinned_on));
+  const active = rest.filter((c) => c.step !== 'study');
+  const reviews = rest.filter((c) => c.step === 'study' && c.level > 0).sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord);
+  const news = rest.filter((c) => c.step === 'study' && c.level === 0).sort((a, b) => a.ord - b.ord);
   const projected: string[] = []; // datas de revisões futuras reservadas
   let r = 0;
   let n = 0;

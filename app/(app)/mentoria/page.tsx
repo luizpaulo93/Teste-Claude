@@ -1,6 +1,6 @@
 import { CalendarClock, Video } from 'lucide-react';
 import type { Metadata } from 'next';
-import { redirect } from 'next/navigation';
+import Link from 'next/link';
 import { DayList } from '@/components/mentoria/day-list';
 import { buttonClass, Card } from '@/components/ui';
 import { emailKey, sql } from '@/lib/db';
@@ -15,7 +15,6 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  if (!m.diagnosed_at) redirect('/mentoria/horarios?primeira=1');
   const has = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]);
   if (!has) {
     return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu mentor está montando seu cronograma. Assim que ficar pronto, os assuntos de cada dia aparecem aqui.</p>;
@@ -24,6 +23,11 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   const [data, meeting] = await Promise.all([dayData(m, (await searchParams).d), nextMeeting(m.id)]);
   return (
     <div className="space-y-4">
+      {!m.availability.some(Boolean) && (
+        <Link href="/mentoria/horarios" className="block rounded-2xl border border-brand/40 bg-brand/10 p-3.5 text-sm text-ink">
+          <strong>Informe seus horários</strong> para os assuntos se distribuírem nos seus dias de estudo →
+        </Link>
+      )}
       {meeting && data.day === data.today && (
         <Card className="flex items-center gap-3 p-3.5">
           <CalendarClock className="size-5 shrink-0 text-brand" />

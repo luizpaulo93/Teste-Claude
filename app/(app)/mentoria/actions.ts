@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
 import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/enem-matriz';
-import { afterScore, todayBR } from '@/lib/mentoria';
+import { afterScore, shift, todayBR } from '@/lib/mentoria';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
@@ -74,13 +74,13 @@ export async function scoreCard(
   if (!q) return { error: 'Informe quantas questões você fez e quantas acertou.' };
   const f = [1, 2, 3].includes(Number(feel)) ? Number(feel) : 0;
   if (!f) return { error: 'Diga como foi o assunto: de boas, mais ou menos ou ladeira abaixo.' };
-  const card = await sql.one<{ level: number; history: unknown[] }>(`select level, history from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
+  const card = await sql.one<{ level: number; history: unknown[]; pinned_on: string | null }>(`select level, history, pinned_on::text as pinned_on from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
   if (!card) return { error: 'Card não encontrado.' };
   const today = todayBR();
   const r = afterScore(card.level, q, c, today, f);
-  const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level, f }].slice(-30);
+  const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level, f, ...(card.pinned_on ? { x: 1 } : {}) }].slice(-30);
   await sql.exec(
-    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, updated_at = now()
+    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, pinned_on = null, updated_at = now()
      where id = $1 and mentoria_id = $2`,
     [id, a.id, r.level, r.due, r.acc, JSON.stringify(history), f],
   );
@@ -134,4 +134,43 @@ export async function setPlanAssuntos(keys: string[], mentoriaId: string): Promi
   await reschedule(a.id);
   refresh(a.id);
   return { ok: true, added: add.length, removed: remove.length };
+}
+
+// ---------------- Aluno acrescenta assuntos ao dia
+/**
+ * O aluno escolhe um assunto e um dia (hoje ou um dos próximos 6): ele entra nesse dia além do
+ * que o mentor montou. Se o assunto ainda não estava no cronograma, passa a fazer parte dele.
+ */
+export async function addToDay(itemKey: string, day: string, mentoriaId?: string): Promise<Result & { day?: string }> {
+  const a = await access(mentoriaId);
+  if (!a) return { error: 'Sem acesso.' };
+  const item = ASSUNTO_BY_KEY.get(itemKey);
+  if (!item) return { error: 'Assunto não encontrado.' };
+  const today = todayBR();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today || day > shift(today, 6)) return { error: 'Escolha hoje ou um dos próximos dias.' };
+  const card = await sql.one<{ id: string; step: string }>(`select id, step from mentoria_cards where mentoria_id = $1 and item_key = $2`, [a.id, itemKey]);
+  if (card?.step === 'questions') return { error: 'Esse assunto já está em andamento hoje.' };
+  if (card) await sql.exec(`update mentoria_cards set pinned_on = $3, updated_at = now() where id = $1 and mentoria_id = $2`, [card.id, a.id, day]);
+  else {
+    const max = await sql.one<{ m: number }>(`select coalesce(max(ord), -1)::int as m from mentoria_cards where mentoria_id = $1`, [a.id]);
+    await sql.exec(
+      `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord, pinned_on, added_by_student)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (mentoria_id, item_key) do update set pinned_on = excluded.pinned_on`,
+      [newId(), a.id, item.key, item.discipline, item.title, item.priority, (max?.m ?? -1) + 1, day, !a.mentor],
+    );
+  }
+  await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true, day };
+}
+
+/** Tira do dia um assunto acrescentado (se nunca foi feito e entrou pelo aluno, sai do cronograma). */
+export async function removeFromDay(id: string, mentoriaId?: string): Promise<Result> {
+  const a = await access(mentoriaId);
+  if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
+  const del = await sql.exec(`delete from mentoria_cards where id = $1 and mentoria_id = $2 and added_by_student and attempts = 0 and step = 'study'`, [id, a.id]);
+  if (!del) await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2`, [id, a.id]);
+  await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true };
 }

@@ -19,6 +19,7 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
   const [list, data] = await Promise.all([cards(m.id), dayData(m, (await searchParams).d)]);
   const end = planEnd(m, todayBR());
   const out = list.filter((c) => c.scheduled_on === null).length;
+  const extras = list.filter((c) => c.pinned_on).sort((a, b) => a.pinned_on!.localeCompare(b.pinned_on!));
   const disciplines = DISCIPLINES.map((d) => {
     const all = ASSUNTOS.filter((a) => a.discipline === d.key);
     return { key: d.key, name: d.name, count: all.length, top: all.filter((a) => a.priority >= 3).length };
@@ -36,6 +37,18 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
           </p>
         )}
       </Card>
+      {extras.length > 0 && (
+        <Card className="border-violet-500/40 p-4 sm:p-5">
+          <p className="text-sm font-bold text-ink">O aluno acrescentou {extras.length} assunto{extras.length > 1 ? 's' : ''}</p>
+          <ul className="mt-2 space-y-1 text-xs text-ink-2">
+            {extras.map((c) => (
+              <li key={c.id}>
+                <span className="font-semibold text-violet-500">{formatDate(c.pinned_on!)}</span> · {c.title}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
       <Card className="p-4 sm:p-5">
         <details className="group">
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden">

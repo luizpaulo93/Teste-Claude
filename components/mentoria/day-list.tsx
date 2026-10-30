@@ -1,13 +1,13 @@
 'use client';
 
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Flame, X } from 'lucide-react';
+import { ArrowRight, Check, ChevronLeft, ChevronRight, Flame, Plus, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import { moveCard, scoreCard } from '@/app/(app)/mentoria/actions';
+import { moveCard, removeFromDay, scoreCard } from '@/app/(app)/mentoria/actions';
 import { FEELS, GOAL, LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -19,6 +19,8 @@ export interface DayItem {
   /** nível no momento (0 novo … 4 manutenção) */
   level: number;
   step: 'study' | 'questions';
+  /** acrescentado pelo aluno (além do que o mentor montou) */
+  extra?: boolean;
   /** já feito neste dia: resultado */
   result?: { q: number; c: number; acc: number; passed: boolean; goal: number; f?: number } | null;
 }
@@ -84,7 +86,7 @@ export function DayList({
       {items.length ? (
         <ul className="space-y-2">
           {items.map((it) => (
-            <Row key={it.id} it={it} editable={editable && !it.result} mentoriaId={mentoriaId} />
+            <Row key={it.id} it={it} editable={editable && !it.result} removable={day >= today && !it.result} mentoriaId={mentoriaId} />
           ))}
         </ul>
       ) : (
@@ -96,7 +98,7 @@ export function DayList({
   );
 }
 
-function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; mentoriaId?: string }) {
+function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: boolean; removable: boolean; mentoriaId?: string }) {
   const router = useRouter();
   const [step, setStep] = useState(it.step);
   const [q, setQ] = useState('');
@@ -107,6 +109,14 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
   const total = Number(q) || 0;
   const right = Math.min(total, Number(c) || 0);
 
+  async function remove() {
+    setBusy(true);
+    const r = await removeFromDay(it.id, mentoriaId).catch(() => ({ error: 'rede' }));
+    setBusy(false);
+    if (r.error) return toast.error('Não foi possível tirar.');
+    toast('Assunto tirado do dia.');
+    router.refresh();
+  }
   async function studied() {
     setStep('questions');
     const r = await moveCard(it.id, 'questions', mentoriaId).catch(() => ({ error: 'rede' }));
@@ -140,6 +150,11 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
                 <Flame className="size-3" /> mais cobrado
               </span>
             )}
+            {it.extra && (
+              <span className="flex items-center gap-0.5 rounded-md bg-violet-500/15 px-1.5 py-0.5 normal-case text-violet-500">
+                <Plus className="size-3" /> {mentoriaId ? 'acrescentado pelo aluno' : 'você acrescentou'}
+              </span>
+            )}
           </p>
           <p className="mt-0.5 text-[15px] leading-snug font-semibold text-ink">{it.title}</p>
           {it.result ? (
@@ -157,6 +172,11 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
             </p>
           )}
         </div>
+        {it.extra && removable && step === 'study' && (
+          <button type="button" onClick={remove} disabled={busy} aria-label="Tirar do dia" title="Tirar do dia" className={buttonClass('ghost', 'icon', 'size-10 shrink-0 text-muted')}>
+            <X className="size-4" />
+          </button>
+        )}
         {editable && step === 'study' && (
           <button
             type="button"

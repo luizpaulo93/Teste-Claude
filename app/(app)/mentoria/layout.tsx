@@ -36,6 +36,11 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
               <CalendarClock className="size-3.5 text-brand" /> {left === 0 ? 'A prova é hoje!' : `${left} dias para a prova`}
             </span>
           )}
+          {viewer.isAdmin && (
+            <LinkButton href={`/admin/mentoria/${encodeURIComponent(m.id)}`} variant="secondary" size="sm">
+              Área do mentor
+            </LinkButton>
+          )}
           {m.status !== 'active' && <Badge tone="warning">{m.status === 'paused' ? 'Pausada' : 'Encerrada'}</Badge>}
         </div>
       </div>
