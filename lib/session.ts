@@ -26,6 +26,34 @@ export interface Viewer {
   hasMentoria: boolean;
   /** Grupos de mentoria de que participa */
   mentoriaGroups: string[];
+  /** Dados carimbados em cada página dos PDFs (null para o admin) */
+  pdfOwner: { name: string; email: string; cpf: string; phone: string } | null;
+  /** Passaram 2 dias e o perfil está incompleto: precisa completar para continuar */
+  needsProfile: boolean;
+}
+
+/** Dias de acesso livre antes de pedir o perfil completo. */
+export const PROFILE_GRACE_DAYS = 2;
+
+export const validCpf = (raw: string) => {
+  const d = raw.replace(/\D/g, '');
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const check = (n: number) => {
+    let s = 0;
+    for (let i = 0; i < n; i++) s += Number(d[i]) * (n + 1 - i);
+    const r = (s * 10) % 11;
+    return (r === 10 ? 0 : r) === Number(d[n]);
+  };
+  return check(9) && check(10);
+};
+
+/** O que falta no perfil: nome completo (nome e sobrenome), nascimento e CPF. */
+export function missingProfile(p: Pick<Profile, 'full_name' | 'birth_date'>, cpf: string) {
+  const out: string[] = [];
+  if ((p.full_name ?? '').trim().split(/\s+/).length < 2) out.push('nome');
+  if (!p.birth_date) out.push('nascimento');
+  if (!validCpf(cpf)) out.push('cpf');
+  return out;
 }
 
 type UserRow = { profile: Partial<Profile> | null; student: Student | null; mentoria: boolean; groups: string[] } | null;
@@ -99,6 +127,19 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     isMember,
     hasMentoria: isAdmin || Boolean(row?.mentoria) || Boolean(row?.groups?.length),
     mentoriaGroups: row?.groups ?? [],
+    pdfOwner: isAdmin
+      ? null
+      : {
+          name: profile.full_name || student?.name || email,
+          email,
+          cpf: student?.cpf || profile.cpf || '',
+          phone: student?.phone || profile.phone || '',
+        },
+    needsProfile:
+      !isAdmin &&
+      Boolean(profile.created_at) &&
+      Date.now() - new Date(profile.created_at!).getTime() >= PROFILE_GRACE_DAYS * 86400_000 &&
+      missingProfile(profile, student?.cpf || profile.cpf || '').length > 0,
   };
 });
 

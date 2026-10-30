@@ -16,6 +16,9 @@ export interface Profile {
   phone: string;
   birth_date: string | null;
   role: Role;
+  /** CPF (o aluno informa uma vez; depois só o mentor muda) */
+  cpf?: string;
+  created_at?: string;
 }
 
 export interface PlatformSettings {

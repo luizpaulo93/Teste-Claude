@@ -30,7 +30,7 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
     pdfUrl = await createDownloadUrl(simulado.pdf_path, 60 * 60 * 6);
   }
 
-  const owner = viewer.isAdmin ? null : { name: viewer.student?.name || viewer.profile.full_name || viewer.email, cpf: viewer.student?.cpf ?? '' };
+  const owner = viewer.pdfOwner;
   let body: React.ReactNode;
   if (result && simulado.results_released) {
     body = <ResultView simulado={simulado} result={result} stats={simulado.stats as SimuladoStats} pdfUrl={pdfUrl} pdfOwner={owner} />;

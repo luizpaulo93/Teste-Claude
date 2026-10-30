@@ -1,5 +1,7 @@
 import { redirect } from 'next/navigation';
+import { PdfOwnerProvider } from '@/components/pdf-owner';
 import { AppShell } from '@/components/shell/app-shell';
+import { CompleteProfile } from './perfil/complete-profile';
 import { visibleLives } from '@/lib/live';
 import { pendingDoubts } from '@/lib/mentoria-space';
 import { getSettings, getViewer } from '@/lib/session';
@@ -23,7 +25,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       liveNow={liveNow}
       mentoriaAlert={mentoriaAlert}
     >
-      {children}
+      <PdfOwnerProvider owner={viewer.pdfOwner}>
+        {viewer.needsProfile ? (
+          <CompleteProfile
+            profile={{ full_name: viewer.profile.full_name, birth_date: viewer.profile.birth_date }}
+            email={viewer.email}
+            cpfLocked={viewer.student?.cpf || viewer.profile.cpf || ''}
+          />
+        ) : (
+          children
+        )}
+      </PdfOwnerProvider>
     </AppShell>
   );
 }

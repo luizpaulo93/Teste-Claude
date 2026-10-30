@@ -4,6 +4,8 @@ import { FileText, Folder, FolderOpen } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { Spinner } from '@/components/ui-client';
+import { usePdfOwner } from '@/components/pdf-owner';
+import { stampedPdfUrl } from '@/lib/pdf-stamp';
 import { getFileUrl } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 
@@ -21,12 +23,14 @@ export const periodLabel = (from: string, to: string) => (from === to ? dm(from)
 /** Abre um PDF privado (link temporário do R2). */
 export function FileRow({ f }: { f: ApostilaGroup['files'][number] }) {
   const [busy, setBusy] = useState(false);
+  const owner = usePdfOwner();
   async function open() {
     setBusy(true);
     // Abre a aba antes (no celular o popup só abre no toque)
     const w = window.open('', '_blank');
     try {
-      const url = await getFileUrl(f.file_path, f.title);
+      // Cada página sai com nome, e-mail, CPF e telefone de quem abriu
+      const url = await stampedPdfUrl(await getFileUrl(f.file_path, f.title), owner);
       if (w) w.location.href = url;
       else window.location.href = url;
     } catch (e) {

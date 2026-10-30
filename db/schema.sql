@@ -542,3 +542,9 @@ alter table live_sessions add column if not exists materials jsonb not null defa
 alter table live_sessions add column if not exists material_paths text[] not null default '{}';
 alter table live_sessions add column if not exists lesson_id text;
 create index if not exists lives_paths_idx on live_sessions using gin (material_paths);
+
+-- ============================================================================
+-- Versão 12: perfil completo (antipirataria): CPF do aluno.
+-- O aluno informa o CPF uma vez; depois só o mentor muda.
+-- ============================================================================
+alter table users add column if not exists cpf text not null default '';

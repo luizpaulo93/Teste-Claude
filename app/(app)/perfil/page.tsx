@@ -24,7 +24,7 @@ export default async function ProfilePage() {
         </div>
       </Card>
       <Card className="p-5">
-        <ProfileForm profile={p} />
+        <ProfileForm profile={p} email={viewer.email} cpf={viewer.student?.cpf || p.cpf || ''} />
       </Card>
     </div>
   );
