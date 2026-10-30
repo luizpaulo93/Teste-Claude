@@ -22,11 +22,13 @@ export interface Viewer {
   classCourseIds: string[];
   /** Aluno liberado (ativo e com turma) ou admin, ou plataforma aberta. */
   isMember: boolean;
-  /** Tem mentoria individual ativa. */
+  /** Participa da mentoria (individual, em grupo ou pela turma). */
   hasMentoria: boolean;
+  /** Grupos de mentoria de que participa */
+  mentoriaGroups: string[];
 }
 
-type UserRow = { profile: Partial<Profile> | null; student: Student | null; mentoria: boolean } | null;
+type UserRow = { profile: Partial<Profile> | null; student: Student | null; mentoria: boolean; groups: string[] } | null;
 
 /**
  * Dados do usuário guardados por 5 min. São renovados na hora quando o admin muda alunos,
@@ -38,10 +40,13 @@ function userRow(uid: string, key: string): Promise<UserRow> {
       sql.one<NonNullable<UserRow>>(
         `select (select to_jsonb(u) from users u where u.id = $1) as profile,
                 (select to_jsonb(s) from students s where s.id = $2) as student,
-                exists(select 1 from mentorias m where m.id = $2 and m.status = 'active') as mentoria`,
+                exists(select 1 from mentorias m where m.id = $2 and m.status = 'active') as mentoria,
+                coalesce((select array_agg(g.id) from mentoria_groups g
+                           where $2 = any(g.student_emails)
+                              or (select s.class_id from students s where s.id = $2 and s.status = 'active') = any(g.class_ids)), '{}') as groups`,
         [uid, key],
       ),
-    ['viewer-v1', uid, key],
+    ['viewer-v2', uid, key],
     { tags: ['viewers', `viewer-${uid}`], revalidate: 300 },
   )();
 }
@@ -92,7 +97,8 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     classGroup,
     classCourseIds: classGroup?.course_ids ?? [],
     isMember,
-    hasMentoria: isAdmin || Boolean(row?.mentoria),
+    hasMentoria: isAdmin || Boolean(row?.mentoria) || Boolean(row?.groups?.length),
+    mentoriaGroups: row?.groups ?? [],
   };
 });
 

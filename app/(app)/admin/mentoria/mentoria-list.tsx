@@ -10,6 +10,7 @@ import { ActionButton, Modal } from "@/components/ui-client";
 import type { Mentoria, MentoriaMeeting } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
 import { deleteMeeting } from "../misc-actions";
+import { GroupForm } from "./group-form";
 import { MentoriaForm } from "./mentoria-form";
 
 export interface MentoriaSignals {
@@ -23,26 +24,59 @@ export function MentoriaList({
   mentorias,
   groupMeetings,
   signals,
+  groups,
+  students,
+  classes,
 }: {
   mentorias: Mentoria[];
   groupMeetings: MentoriaMeeting[];
   signals: Record<string, MentoriaSignals>;
+  groups: { id: string; name: string; exam_target: string; members: number; pending: number }[];
+  students: { email: string; name: string; class_id: string | null }[];
+  classes: { id: string; name: string; count: number }[];
 }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const [meeting, setMeeting] = useState<{ m?: MentoriaMeeting } | null>(null);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
       <div>
-        <div className="mb-4 flex items-center justify-between">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold text-ink">
-            {mentorias.length} alunos
+            {mentorias.length} mentorados · {groups.length} grupos
           </p>
-          <Button onClick={() => setCreating(true)}>
-            <Plus className="size-4" /> Novo mentorado
-          </Button>
+          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+            <Button size="sm" className="h-10 whitespace-nowrap" onClick={() => setCreating(true)}>
+              <Plus className="size-4" /> Novo mentorado
+            </Button>
+            <Button size="sm" variant="secondary" className="h-10 whitespace-nowrap" onClick={() => setCreatingGroup(true)}>
+              <Users className="size-4" /> Mentoria em grupo
+            </Button>
+          </div>
         </div>
+        {groups.length > 0 && (
+          <div className="mb-5 grid gap-3 sm:grid-cols-2">
+            {groups.map((g) => (
+              <Link key={g.id} href={`/admin/mentoria/grupo/${g.id}`}>
+                <Card className="flex items-center gap-3 p-4 transition hover:border-brand/40">
+                  <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand">
+                    <Users className="size-5" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-semibold text-ink">{g.name}</p>
+                    <p className="truncate text-xs text-muted">
+                      Grupo · {g.members} aluno{g.members === 1 ? "" : "s"}
+                      {g.exam_target ? ` · ${g.exam_target}` : ""}
+                    </p>
+                  </div>
+                  {g.pending > 0 && <Badge tone="danger">{g.pending} dúvida{g.pending === 1 ? "" : "s"}</Badge>}
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
         {mentorias.length ? (
           <div className="grid gap-3 sm:grid-cols-2">
             {mentorias.map((m) => (
@@ -72,8 +106,8 @@ export function MentoriaList({
                             : "Encerrada"}
                       </Badge>
                       {(signals[m.id]?.unread ?? 0) > 0 && (
-                        <Badge tone="brand">
-                          {signals[m.id].unread} mensagem(ns)
+                        <Badge tone="danger">
+                          {signals[m.id].unread} dúvida(s)
                         </Badge>
                       )}
                     </div>
@@ -173,6 +207,9 @@ export function MentoriaList({
             if (id) router.push(`/admin/mentoria/${id}`);
           }}
         />
+      </Modal>
+      <Modal open={creatingGroup} onClose={() => setCreatingGroup(false)} title="Mentoria em grupo" size="lg">
+        {creatingGroup && <GroupForm students={students} classes={classes} onDone={() => setCreatingGroup(false)} />}
       </Modal>
       <Modal
         open={Boolean(meeting)}

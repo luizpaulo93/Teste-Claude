@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { authorOf } from '@/lib/author';
 import { newId, sql, tx } from '@/lib/db';
+import { canUseSpace } from '@/lib/mentoria-space';
 import { getViewer } from '@/lib/session';
 import type { DoubtReply } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -15,21 +16,38 @@ async function member() {
   return viewer && viewer.isMember ? viewer : null;
 }
 
-export async function createDoubt(text: string, imageUrl = '') {
-  const viewer = await member();
+/** Pode ver esta dúvida? (plataforma: aluno liberado; mentoria: quem participa daquele espaço) */
+async function viewerFor(doubtId: string) {
+  const viewer = await getViewer();
+  if (!viewer || !isDocId(doubtId)) return null;
+  const row = await sql.one<{ space: string | null }>(`select space from doubts where id = $1`, [doubtId]);
+  if (!row) return viewer.isMember || viewer.hasMentoria ? viewer : null;
+  if (!row.space) return viewer.isMember ? viewer : null;
+  return (await canUseSpace(viewer, row.space)) ? viewer : null;
+}
+
+function refreshSpace(space?: string | null) {
+  if (!space) return revalidatePath('/duvidas');
+  revalidatePath('/mentoria', 'layout');
+  revalidatePath('/admin/mentoria', 'layout');
+}
+
+export async function createDoubt(text: string, imageUrl = '', space = '') {
+  const viewer = space ? await getViewer() : await member();
   const body = text.trim().slice(0, 4000);
   if (!viewer || !body) return { error: 'Não foi possível publicar.' };
+  if (space && !(await canUseSpace(viewer, space))) return { error: 'Sem acesso.' };
   const a = authorOf(viewer);
   await sql.exec(
-    `insert into doubts (id, author_id, author_name, author_avatar, author_role, text, image_url) values ($1, $2, $3, $4, $5, $6, $7)`,
-    [newId(), viewer.userId, a.author_name, a.author_avatar, a.author_role, body, safeImage(imageUrl)],
+    `insert into doubts (id, author_id, author_name, author_avatar, author_role, text, image_url, space) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [newId(), viewer.userId, a.author_name, a.author_avatar, a.author_role, body, safeImage(imageUrl), space || null],
   );
-  revalidatePath('/duvidas');
+  refreshSpace(space);
   return { ok: true };
 }
 
 export async function addReply(doubtId: string, text: string, imageUrl = '') {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   const body = text.trim().slice(0, 4000);
   if (!viewer || !body || !isDocId(doubtId)) return { error: 'Não foi possível responder.' };
   const a = authorOf(viewer);
@@ -46,13 +64,13 @@ export async function addReply(doubtId: string, text: string, imageUrl = '') {
 }
 
 export async function listReplies(doubtId: string): Promise<DoubtReply[]> {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   if (!viewer || !isDocId(doubtId)) return [];
   return sql.query<DoubtReply>(`select * from doubt_replies where doubt_id = $1 order by created_at limit 200`, [doubtId]);
 }
 
 export async function toggleLike(doubtId: string, value: boolean) {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
   await tx(async (t) => {
     const changed = value
@@ -70,7 +88,7 @@ async function ownDoubt(doubtId: string, viewer: { userId: string; isAdmin: bool
 }
 
 export async function setResolved(doubtId: string, value: boolean) {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
   const own = await ownDoubt(doubtId, viewer);
   if (own === 'missing') return { error: 'Dúvida não encontrada.' };
@@ -80,18 +98,18 @@ export async function setResolved(doubtId: string, value: boolean) {
 }
 
 export async function deleteDoubt(doubtId: string) {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
   const own = await ownDoubt(doubtId, viewer);
   if (own === 'missing') return { ok: true };
   if (own === 'denied') return { error: 'Sem permissão.' };
-  await sql.exec(`delete from doubts where id = $1`, [doubtId]); // respostas e curtidas vão junto
-  revalidatePath('/duvidas');
+  const gone = await sql.one<{ space: string | null }>(`delete from doubts where id = $1 returning space`, [doubtId]); // respostas e curtidas vão junto
+  refreshSpace(gone?.space);
   return { ok: true };
 }
 
 export async function deleteReply(doubtId: string, replyId: string) {
-  const viewer = await member();
+  const viewer = await viewerFor(doubtId);
   if (!viewer || !isDocId(doubtId) || !isDocId(replyId)) return { error: 'Sem acesso.' };
   return tx(async (t) => {
     const row = await t.one<{ author_id: string }>(`select author_id from doubt_replies where id = $1 and doubt_id = $2 for update`, [replyId, doubtId]);

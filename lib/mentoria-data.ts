@@ -2,7 +2,7 @@ import 'server-only';
 import { newId, sql, tx } from '@/lib/db';
 import { ASSUNTO_BY_KEY, ASSUNTOS } from '@/lib/enem-matriz';
 import { COST, schedule, shift, todayBR, type PlanCard } from '@/lib/mentoria';
-import type { Mentoria, MentoriaMessage } from '@/lib/types';
+import type { Mentoria } from '@/lib/types';
 
 export interface Card {
   id: string;
@@ -68,42 +68,39 @@ export async function reschedule(mentoriaId: string) {
   );
 }
 
-/**
- * Grava o plano: cada conteúdo das disciplinas escolhidas vira um card (mais cobrados primeiro ou na ordem da lista),
- * intercalando as disciplinas. Conteúdos que saíram da lista são removidos.
- */
-export async function writePlan(mentoriaId: string, chosen: string[], mode: 'prioridade' | 'matriz') {
-  // Mais cobrados primeiro: por faixa de prioridade (3, 2, 1), alternando as disciplinas dentro de cada faixa.
-  // "Do primeiro ao último": só alterna as disciplinas na ordem da lista.
+/** Ordem dos conteúdos: mais cobrados primeiro (faixas 3, 2, 1, alternando disciplinas) ou na ordem da lista. */
+export function orderedKeys(chosen: string[], mode: 'prioridade' | 'matriz') {
   const tiers = mode === 'prioridade' ? [3, 2, 1] : [0];
-  const ordered: (typeof ASSUNTOS)[number][] = [];
+  const ordered: string[] = [];
   for (const tier of tiers) {
     const queues = chosen.map((k) => ASSUNTOS.filter((x) => x.discipline === k && (tier === 0 || x.priority === tier)).sort((x, y) => x.index - y.index));
-    for (let i = 0; queues.some((q) => q.length > i); i++) for (const q of queues) if (q[i]) ordered.push(q[i]);
+    for (let i = 0; queues.some((q) => q.length > i); i++) for (const q of queues) if (q[i]) ordered.push(q[i].key);
   }
+  return ordered;
+}
+
+/** Deixa os cards da mentoria iguais à lista (na ordem dada). Progresso dos que ficam é mantido. */
+export async function syncCards(mentoriaId: string, keys: string[]) {
+  const list = keys.filter((k) => ASSUNTO_BY_KEY.has(k)).map((k) => ASSUNTO_BY_KEY.get(k)!);
   await tx(async (t) => {
-    await t.exec(`delete from mentoria_cards where mentoria_id = $1 and not (item_key = any($2))`, [mentoriaId, ASSUNTOS.map((x) => x.key)]);
-    // Disciplina tirada: some só o que ainda não foi estudado
-    await t.exec(`delete from mentoria_cards where mentoria_id = $1 and level = 0 and step = 'study' and not (discipline = any($2))`, [mentoriaId, chosen]);
-    if (ordered.length)
+    await t.exec(`delete from mentoria_cards where mentoria_id = $1 and not (item_key = any($2))`, [mentoriaId, list.map((x) => x.key)]);
+    if (list.length)
       await t.exec(
         `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
          select v.id, $1, v.k, v.d, v.t, v.p, v.o
            from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
          on conflict (mentoria_id, item_key) do update set ord = excluded.ord, priority = excluded.priority, title = excluded.title, discipline = excluded.discipline`,
-        [
-          mentoriaId,
-          ordered.map(() => newId()),
-          ordered.map((x) => x.key),
-          ordered.map((x) => x.discipline),
-          ordered.map((x) => x.title),
-          ordered.map((x) => x.priority),
-          ordered.map((_, j) => j),
-        ],
+        [mentoriaId, list.map(() => newId()), list.map((x) => x.key), list.map((x) => x.discipline), list.map((x) => x.title), list.map((x) => x.priority), list.map((_, j) => j)],
       );
-    await t.exec(`update mentorias set plan_disciplines = $2, plan_order = $3, updated_at = now() where id = $1`, [mentoriaId, chosen, mode]);
   });
-  return ordered.length;
+  return list.length;
+}
+
+/** Plano automático: todos os conteúdos das disciplinas escolhidas, na ordem escolhida. */
+export async function writePlan(mentoriaId: string, chosen: string[], mode: 'prioridade' | 'matriz') {
+  const n = await syncCards(mentoriaId, orderedKeys(chosen, mode));
+  await sql.exec(`update mentorias set plan_disciplines = $2, plan_order = $3, updated_at = now() where id = $1`, [mentoriaId, chosen, mode]);
+  return n;
 }
 
 /** Cards atrasados (ou ainda sem dia) passam para hoje em diante; plano antigo é trocado pelos conteúdos atuais. */
@@ -123,12 +120,6 @@ export async function ensureFresh(mentoriaId: string) {
   ]);
   if (late) await reschedule(mentoriaId);
 }
-
-export const messages = (id: string) =>
-  sql.query<MentoriaMessage>(`select * from (select * from mentoria_messages where mentoria_id = $1 order by created_at desc limit 150) x order by created_at`, [id]);
-
-export const unreadCount = async (id: string, forMentor: boolean) =>
-  (await sql.one<{ n: number }>(`select count(*)::int as n from mentoria_messages where mentoria_id = $1 and from_mentor = $2 and read_at is null`, [id, !forMentor]))?.n ?? 0;
 
 export const nextMeeting = async (id: string) =>
   sql.one<{ title: string; starts_at: string; link: string }>(

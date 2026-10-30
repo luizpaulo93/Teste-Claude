@@ -6,18 +6,22 @@ import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
+import { buildGroupPlan } from '@/app/(app)/admin/mentoria/group-actions';
 import { buildPlan } from '@/app/(app)/mentoria/actions';
 import { cn } from '@/lib/utils';
 
 /** Mentor: escolhe as disciplinas e a ordem; o app gera os assuntos e monta o cronograma nos horários do aluno. */
 export function PlanBuilder({
   mentoriaId,
+  groupId,
   disciplines,
   chosen,
   order,
   hasSchedule,
 }: {
-  mentoriaId: string;
+  mentoriaId?: string;
+  /** cronograma do grupo (vale para todos os alunos) */
+  groupId?: string;
   disciplines: { key: string; name: string; count: number; top: number }[];
   chosen: string[];
   order: string;
@@ -31,10 +35,10 @@ export function PlanBuilder({
 
   async function build() {
     setBusy(true);
-    const r = await buildPlan(sel, mode, mentoriaId);
+    const r = groupId ? await buildGroupPlan(groupId, sel, mode) : await buildPlan(sel, mode, mentoriaId!);
     setBusy(false);
     if (r.error) return toast.error(r.error);
-    toast(`Cronograma montado com ${r.count} assuntos`);
+    toast(groupId ? `Cronograma do grupo montado com ${r.count} assuntos` : `Cronograma montado com ${r.count} assuntos`);
     router.refresh();
   }
 

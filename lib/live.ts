@@ -1,13 +1,17 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
 import { getCatalogData, getSettings, sql } from './db';
+import { canUseSpace } from './mentoria-space';
 import { canAccessCourse, type Viewer } from './session';
 import type { LiveMessage, LiveSession } from './types';
 
 /** Admin vê tudo; aluno liberado vê as lives do curso dele (ou as abertas a todos). */
-export async function canSeeLive(viewer: Viewer, live: LiveSession) {
+export async function canSeeLive(viewer: Viewer, live: LiveSession & { space?: string | null }) {
   if (viewer.isAdmin) return true;
-  if (!live.is_published || !viewer.isMember) return false;
+  if (!live.is_published) return false;
+  // Live só da mentoria: apenas quem participa daquela mentoria
+  if (live.space) return canUseSpace(viewer, live.space);
+  if (!viewer.isMember) return false;
   if (!live.course_id) return true;
   const [{ courses }, settings] = await Promise.all([getCatalogData(), getSettings()]);
   const course = courses.find((c) => c.id === live.course_id);
@@ -22,7 +26,7 @@ const activeLives = unstable_cache(
 );
 
 export async function visibleLives(viewer: Viewer, statuses?: LiveSession['status'][]) {
-  if (!viewer.isMember) return [];
+  if (!viewer.isMember && !viewer.hasMentoria) return [];
   const onlyActive = statuses?.length && !statuses.includes('ended');
   const list = onlyActive
     ? (await activeLives()).filter((l) => statuses!.includes(l.status))

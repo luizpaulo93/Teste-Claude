@@ -24,7 +24,8 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
   const { f = 'todas', n } = await searchParams;
   const limit = Math.min(200, Math.max(20, Number(n) || 20));
   const where =
-    f === 'minhas' ? 'author_id = $2' : f === 'resolvidas' ? 'is_resolved' : f === 'abertas' ? 'not is_resolved and replies_count = 0' : 'true';
+    (f === 'minhas' ? 'author_id = $2' : f === 'resolvidas' ? 'is_resolved' : f === 'abertas' ? 'not is_resolved and replies_count = 0' : 'true') +
+    ' and space is null';
   const rows = await sql.query<Doubt & { liked: boolean }>(
     `select d.*, exists(select 1 from doubt_likes l where l.doubt_id = d.id and l.user_id = $2) as liked
        from doubts d where ${where} order by created_at desc limit $1`,

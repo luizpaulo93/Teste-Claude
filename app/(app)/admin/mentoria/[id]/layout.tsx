@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/ui';
 import { daysUntil } from '@/lib/mentoria';
-import { getMentoria, unreadCount } from '@/lib/mentoria-data';
+import { getMentoria } from '@/lib/mentoria-data';
+import { pendingDoubts } from '@/lib/mentoria-space';
 import { MentoriaTabs } from '../../../mentoria/tabs';
 
 export default async function AdminMentoradoLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
@@ -12,7 +13,7 @@ export default async function AdminMentoradoLayout({ children, params }: { child
   if (!mid || mid.includes('/') || mid.length > 200) notFound();
   const m = await getMentoria(mid);
   if (!m) notFound();
-  const unread = await unreadCount(m.id, true);
+  const pending = (await pendingDoubts()).get(`m:${m.id}`) ?? 0;
   const left = daysUntil(m.exam_date);
   const base = `/admin/mentoria/${encodeURIComponent(m.id)}`;
   return (
@@ -31,7 +32,7 @@ export default async function AdminMentoradoLayout({ children, params }: { child
         tabs={[
           { href: '', label: 'Cronograma' },
           { href: '/assuntos', label: 'Assuntos' },
-          { href: '/mensagens', label: 'Mensagens', badge: unread },
+          { href: '/duvidas', label: 'Dúvidas', badge: pending },
           { href: '/horarios', label: 'Horários' },
         ]}
       />

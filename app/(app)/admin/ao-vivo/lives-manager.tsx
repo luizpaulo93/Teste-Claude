@@ -28,9 +28,22 @@ export interface YoutubeState {
   notice?: string;
 }
 
-export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; courses: Pick<Course, 'id' | 'title'>[]; yt: YoutubeState }) {
+export function LivesManager({
+  lives,
+  courses,
+  yt,
+  spaces,
+}: {
+  lives: (LiveSession & { space?: string | null })[];
+  courses: Pick<Course, 'id' | 'title'>[];
+  yt: YoutubeState;
+  /** mentorias (grupos e individuais) que podem ter live só para elas */
+  spaces: { key: string; label: string }[];
+}) {
   const [edit, setEdit] = useState<{ live?: LiveSession } | null>(null);
   const courseName = (id: string | null) => (id ? courses.find((c) => c.id === id)?.title ?? 'Curso removido' : 'Todos os alunos liberados');
+  const audience = (l: { course_id: string | null; space?: string | null }) =>
+    l.space ? `Mentoria: ${spaces.find((x) => x.key === l.space)?.label ?? 'removida'}` : courseName(l.course_id);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -59,7 +72,7 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
                     </div>
                     <p className="mt-1.5 font-bold text-ink">{l.title}</p>
                     <p className="text-xs text-muted">
-                      {formatDateTime(l.starts_at)} · {courseName(l.course_id)}
+                      {formatDateTime(l.starts_at)} · {audience(l)}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -120,13 +133,22 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
                 <Input name="starts_at" type="datetime-local" defaultValue={toLocalInput(edit.live?.starts_at)} required />
               </Field>
               <Field label="Quem pode assistir">
-                <Select name="course_id" defaultValue={edit.live?.course_id ?? ''}>
+                <Select name="audience" defaultValue={edit.live?.space ?? edit.live?.course_id ?? ''}>
                   <option value="">Todos os alunos liberados</option>
                   {courses.map((c) => (
                     <option key={c.id} value={c.id}>
                       Turmas com acesso a: {c.title}
                     </option>
                   ))}
+                  {spaces.length > 0 && (
+                    <optgroup label="Só alunos da mentoria">
+                      {spaces.map((x) => (
+                        <option key={x.key} value={x.key}>
+                          Mentoria: {x.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </Select>
               </Field>
             </div>

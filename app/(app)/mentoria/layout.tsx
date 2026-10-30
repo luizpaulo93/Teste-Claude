@@ -2,12 +2,15 @@ import { CalendarClock, Target } from 'lucide-react';
 import { Badge, EmptyState, LinkButton } from '@/components/ui';
 import { emailKey } from '@/lib/db';
 import { daysUntil } from '@/lib/mentoria';
-import { getMentoria, unreadCount } from '@/lib/mentoria-data';
+import { getMentoria } from '@/lib/mentoria-data';
+import { ensureGroupMember } from '@/lib/mentoria-space';
 import { requireViewer } from '@/lib/session';
 import { MentoriaTabs } from './tabs';
 
 export default async function MentoriaLayout({ children }: { children: React.ReactNode }) {
   const viewer = await requireViewer();
+  // Entrou num grupo (ex.: pela turma) e ainda não tem cronograma: cria agora
+  await ensureGroupMember(viewer);
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) {
     return (
@@ -19,7 +22,6 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
       />
     );
   }
-  const unread = await unreadCount(m.id, false);
   const left = daysUntil(m.exam_date);
   return (
     <div className="space-y-4">
@@ -42,7 +44,8 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
         tabs={[
           { href: '', label: 'Cronograma' },
           { href: '/assuntos', label: 'Assuntos' },
-          { href: '/mensagens', label: 'Mentor', badge: unread },
+          { href: '/duvidas', label: 'Dúvidas' },
+          { href: '/lives', label: 'Lives' },
           { href: '/horarios', label: 'Horários' },
         ]}
       />

@@ -102,25 +102,6 @@ export async function saveSchedule(data: { availability: number[] }, mentoriaId?
   return { ok: true };
 }
 
-// ---------------- Mensagens
-export async function sendMessage(text: string, mentoriaId?: string): Promise<Result> {
-  const a = await access(mentoriaId);
-  const body = String(text ?? '').trim().slice(0, 3000);
-  if (!a) return { error: 'Sem acesso.' };
-  if (!body) return { error: 'Escreva a mensagem.' };
-  await sql.exec(`insert into mentoria_messages (id, mentoria_id, from_mentor, author_name, text) values ($1, $2, $3, $4, $5)`, [newId(), a.id, a.mentor, a.name, body]);
-  refresh(a.id);
-  return { ok: true };
-}
-
-/** Marca como lidas as mensagens do outro lado. */
-export async function markRead(mentoriaId?: string): Promise<Result> {
-  const a = await access(mentoriaId);
-  if (!a) return { error: 'Sem acesso.' };
-  await sql.exec(`update mentoria_messages set read_at = now() where mentoria_id = $1 and from_mentor = $2 and read_at is null`, [a.id, !a.mentor]);
-  return { ok: true };
-}
-
 /**
  * Mentor escolhe à mão os assuntos do cronograma (vale também para editar o que foi gerado):
  * os desmarcados saem; os novos entram no fim da fila, mais cobrados primeiro.

@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!/^image\/(jpeg|png|webp|gif|avif)$/.test(contentType)) return NextResponse.json({ error: 'Envie uma imagem.' }, { status: 400 });
     if (!viewer.isAdmin) {
       // Aluno só envia foto de dúvida, dentro da própria pasta
-      if (!viewer.isMember) return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
+      if (!viewer.isMember && !viewer.hasMentoria) return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
       folder = `doubts/${viewer.userId}`;
     }
   }

@@ -350,6 +350,8 @@ export interface LiveSession {
   show_replay: boolean;
   chat_enabled: boolean;
   is_published: boolean;
+  /** live só para uma mentoria (m:… ou g:…) */
+  space?: string | null;
 }
 
 export interface LiveMessage extends AuthorInfo {

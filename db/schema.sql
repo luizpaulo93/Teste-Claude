@@ -477,3 +477,29 @@ create index if not exists mcards_idx on mentoria_cards (mentoria_id, scheduled_
 
 alter table mentorias add column if not exists plan_disciplines text[] not null default '{}';
 alter table mentorias add column if not exists plan_order text not null default 'prioridade';
+
+-- ============================================================================
+-- Versão 8: mentoria em grupo, dúvidas da mentoria e lives só para a mentoria.
+-- "space" separa onde a dúvida/live aparece: vazio = plataforma; m:<mentoria>; g:<grupo>.
+-- ============================================================================
+create table if not exists mentoria_groups (
+  id text primary key,
+  name text not null,
+  description text not null default '',
+  student_emails text[] not null default '{}',
+  class_ids text[] not null default '{}',
+  exam_target text not null default '',
+  exam_date date,
+  start_date date not null default current_date,
+  end_date date,
+  plan_disciplines text[] not null default '{}',
+  plan_order text not null default 'prioridade',
+  plan_keys text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+alter table mentorias add column if not exists group_id text references mentoria_groups (id) on delete set null;
+alter table doubts add column if not exists space text;
+create index if not exists doubts_space_idx on doubts (space, created_at desc);
+alter table live_sessions add column if not exists space text;

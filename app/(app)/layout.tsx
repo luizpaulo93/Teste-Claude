@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/shell/app-shell';
 import { visibleLives } from '@/lib/live';
+import { pendingDoubts } from '@/lib/mentoria-space';
 import { getSettings, getViewer } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -9,6 +10,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // Tudo vem do cache ou da consulta única do usuário: nenhuma consulta extra por página
   const liveNow = viewer.isMember && (await visibleLives(viewer, ['live'])).length > 0;
+  // Mentor: aviso de dúvidas da mentoria sem resposta
+  const mentoriaAlert = viewer.isAdmin ? [...(await pendingDoubts()).values()].reduce((a, b) => a + b, 0) : 0;
 
   return (
     <AppShell
@@ -18,6 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       isMember={viewer.isMember}
       hasMentoria={viewer.hasMentoria}
       liveNow={liveNow}
+      mentoriaAlert={mentoriaAlert}
     >
       {children}
     </AppShell>

@@ -19,7 +19,7 @@ const TABS = [
   { href: '/admin/config', label: 'Configurações', icon: Settings },
 ];
 
-export function AdminNav() {
+export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
   const pathname = usePathname();
   return (
     <div className="rail -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
@@ -35,6 +35,11 @@ export function AdminNav() {
             )}
           >
             <t.icon className="size-4" /> {t.label}
+            {t.href === '/admin/mentoria' && mentoriaAlert > 0 && (
+              <span className="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white" title="Dúvidas da mentoria sem resposta">
+                {mentoriaAlert}
+              </span>
+            )}
           </Link>
         );
       })}

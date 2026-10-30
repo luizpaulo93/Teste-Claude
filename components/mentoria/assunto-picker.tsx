@@ -6,12 +6,13 @@ import { useMemo, useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
+import { setGroupAssuntos } from '@/app/(app)/admin/mentoria/group-actions';
 import { setPlanAssuntos } from '@/app/(app)/mentoria/actions';
 import { DISCIPLINES } from '@/lib/enem-matriz';
 import { cn } from '@/lib/utils';
 
 /** Mentor marca e desmarca os assuntos do cronograma (manual ou ajustando o que foi gerado). */
-export function AssuntoPicker({ mentoriaId, selected }: { mentoriaId: string; selected: string[] }) {
+export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: string; groupId?: string; selected: string[] }) {
   const router = useRouter();
   const [sel, setSel] = useState(() => new Set(selected));
   const [disc, setDisc] = useState(DISCIPLINES[0].key);
@@ -31,7 +32,7 @@ export function AssuntoPicker({ mentoriaId, selected }: { mentoriaId: string; se
 
   async function save() {
     setBusy(true);
-    const r = await setPlanAssuntos([...sel], mentoriaId);
+    const r = groupId ? await setGroupAssuntos(groupId, [...sel]) : await setPlanAssuntos([...sel], mentoriaId!);
     setBusy(false);
     if (r.error) return toast.error(r.error);
     toast(`Assuntos salvos (+${r.added} / −${r.removed}). Cronograma refeito.`);

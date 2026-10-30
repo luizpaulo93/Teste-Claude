@@ -16,7 +16,24 @@ export async function uploadDoubtImage(userId: string, file: File) {
   return publicUrl;
 }
 
-export function DoubtComposer({ userId, name, avatar, doubtId, onDone, compact }: { userId: string; name: string; avatar: string; doubtId?: string; onDone?: () => void; compact?: boolean }) {
+export function DoubtComposer({
+  userId,
+  name,
+  avatar,
+  doubtId,
+  onDone,
+  compact,
+  space,
+}: {
+  userId: string;
+  name: string;
+  avatar: string;
+  doubtId?: string;
+  onDone?: () => void;
+  compact?: boolean;
+  /** espaço da mentoria (m:… ou g:…) */
+  space?: string;
+}) {
   const router = useRouter();
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -36,7 +53,7 @@ export function DoubtComposer({ userId, name, avatar, doubtId, onDone, compact }
     setSending(true);
     try {
       const image_url = file ? await uploadDoubtImage(userId, file) : '';
-      const r = doubtId ? await addReply(doubtId, text.trim(), image_url) : await createDoubt(text.trim(), image_url);
+      const r = doubtId ? await addReply(doubtId, text.trim(), image_url) : await createDoubt(text.trim(), image_url, space ?? '');
       if (r.error) throw new Error(r.error);
       setText('');
       pick(null);

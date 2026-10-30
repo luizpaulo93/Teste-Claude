@@ -21,7 +21,10 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
     const tz = str(fd, 'tz_offset', 6);
     const starts = new Date(`${startsLocal}:00${/^[+-]\d{2}:\d{2}$/.test(tz) ? tz : '-03:00'}`);
     if (Number.isNaN(starts.getTime())) return { error: 'Data/hora inválida.' };
-    const courseId = str(fd, 'course_id', 64);
+    // Público: todos, turmas de um curso ou só alunos de uma mentoria (m:… / g:…)
+    const audience = str(fd, 'audience', 260) || str(fd, 'course_id', 64);
+    const space = /^[mg]:[^/]{1,200}$/.test(audience) ? audience : null;
+    const courseId = space ? '' : audience;
     const title = str(fd, 'title', 160);
     if (!title) return { error: 'Informe o título.' };
     const values = [
@@ -39,14 +42,14 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
       if (!isDocId(id)) return { error: 'Inválido.' };
       await sql.exec(
         `update live_sessions set title = $2, description = $3, youtube_id = $4, cover_url = $5, course_id = $6, starts_at = $7,
-           show_replay = $8, chat_enabled = $9, is_published = $10, updated_at = now() where id = $1`,
-        [id, ...values],
+           show_replay = $8, chat_enabled = $9, is_published = $10, space = $11, updated_at = now() where id = $1`,
+        [id, ...values, space],
       );
     } else {
       await sql.exec(
-        `insert into live_sessions (id, title, description, youtube_id, cover_url, course_id, starts_at, show_replay, chat_enabled, is_published)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [newId(), ...values],
+        `insert into live_sessions (id, title, description, youtube_id, cover_url, course_id, starts_at, show_replay, chat_enabled, is_published, space)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [newId(), ...values, space],
       );
     }
     refresh(id || undefined);

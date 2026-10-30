@@ -40,6 +40,7 @@ export function AppShell({
   isMember,
   hasMentoria,
   liveNow = false,
+  mentoriaAlert = 0,
 }: {
   children: ReactNode;
   brand: string;
@@ -48,6 +49,7 @@ export function AppShell({
   isMember: boolean;
   hasMentoria: boolean;
   liveNow?: boolean;
+  mentoriaAlert?: number;
 }) {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
@@ -67,7 +69,8 @@ export function AppShell({
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
     { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
-    { href: '/mentoria', label: 'Mentoria', icon: Target, show: hasMentoria },
+    // Mentor vai direto para a gestão da mentoria (com aviso de dúvidas sem resposta)
+    { href: isAdmin ? '/admin/mentoria' : '/mentoria', label: 'Mentoria', icon: Target, show: hasMentoria, dot: mentoriaAlert > 0 },
     { href: '/calendario', label: 'Calendário', icon: CalendarDays },
   ].filter((i) => i.show !== false);
 
