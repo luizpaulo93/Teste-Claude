@@ -503,3 +503,8 @@ alter table mentorias add column if not exists group_id text references mentoria
 alter table doubts add column if not exists space text;
 create index if not exists doubts_space_idx on doubts (space, created_at desc);
 alter table live_sessions add column if not exists space text;
+
+-- ============================================================================
+-- Versão 9: como o aluno achou o assunto (1 de boas, 2 mais ou menos, 3 ladeira abaixo)
+-- ============================================================================
+alter table mentoria_cards add column if not exists last_feel int;

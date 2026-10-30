@@ -1,6 +1,6 @@
 import 'server-only';
 import { emailKey, sql } from '@/lib/db';
-import { reschedule, syncCards } from '@/lib/mentoria-data';
+import { appendCards, reschedule, syncCards } from '@/lib/mentoria-data';
 import type { Viewer } from '@/lib/session';
 
 /**
@@ -67,10 +67,12 @@ export async function canUseSpace(viewer: Viewer, space: string) {
 }
 
 /**
- * Aplica o grupo nos alunos: cria a mentoria de quem ainda não tem (ligada ao grupo, com as datas do grupo)
- * e deixa o cronograma de cada um igual aos assuntos do grupo. Só mexe nas mentorias ligadas a este grupo.
+ * Aplica o grupo nos alunos: cria a mentoria de quem ainda não tem (ligada ao grupo, com as datas do grupo).
+ * Os assuntos só são iguais na primeira geração: quem ainda não tem cronograma recebe o do grupo;
+ * depois cada aluno segue o seu (revisões e ritmo pelo próprio rendimento). Mudanças nos assuntos do grupo
+ * só acrescentam os novos e tiram os que o aluno ainda não estudou, sem refazer o cronograma de ninguém.
  */
-export async function syncGroup(groupId: string, onlyEmail?: string) {
+export async function syncGroup(groupId: string, onlyEmail?: string, delta?: { add: string[]; remove: string[] }) {
   const g = await getGroup(groupId);
   if (!g) return 0;
   const members = (await groupMembers(g)).filter((m) => !onlyEmail || m.email === onlyEmail);
@@ -87,7 +89,13 @@ export async function syncGroup(groupId: string, onlyEmail?: string) {
     );
     const own = await sql.one<{ group_id: string | null }>(`select group_id from mentorias where id = $1`, [id]);
     if (own?.group_id !== g.id) continue;
-    if (g.plan_keys.length) await syncCards(id, g.plan_keys);
+    const has = await sql.one<{ n: number }>(`select count(*)::int as n from mentoria_cards where mentoria_id = $1`, [id]);
+    if (!has?.n) {
+      if (g.plan_keys.length) await syncCards(id, g.plan_keys);
+    } else if (delta) {
+      if (delta.remove.length) await sql.exec(`delete from mentoria_cards where mentoria_id = $1 and item_key = any($2) and level = 0 and attempts = 0`, [id, delta.remove]);
+      if (delta.add.length) await appendCards(id, delta.add);
+    }
     await reschedule(id);
     n++;
   }

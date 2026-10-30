@@ -51,16 +51,25 @@ export function daysUntil(date: string | null) {
  * - não bateu → continua no mesmo nível e volta na semana seguinte, até bater;
  * - depois da Revisão 03 o assunto continua voltando, a cada 60 dias.
  */
-export function afterScore(level: number, questions: number, correct: number, today: string) {
+export function afterScore(level: number, questions: number, correct: number, today: string, feel = 1) {
   const acc = questions ? Math.round((correct / questions) * 100) : 0;
-  if (level === 0) return { level: 1, acc, due: shift(today, NEXT[1]), passed: true, goal: 0 };
-  const goal = GOAL[Math.min(level, 4)];
-  if (acc >= goal) {
-    const next = Math.min(4, level + 1);
-    return { level: next, acc, due: shift(today, NEXT[next]), passed: true, goal };
-  }
-  return { level, acc, due: shift(today, RETRY), passed: false, goal };
+  const r =
+    level === 0
+      ? { level: 1, acc, days: NEXT[1], passed: true, goal: 0 }
+      : acc >= GOAL[Math.min(level, 4)]
+        ? { level: Math.min(4, level + 1), acc, days: NEXT[Math.min(4, level + 1)], passed: true, goal: GOAL[Math.min(level, 4)] }
+        : { level, acc, days: RETRY, passed: false, goal: GOAL[Math.min(level, 4)] };
+  // Personalizado pelo que o aluno sentiu: "ladeira abaixo" volta em 3 dias; "mais ou menos" volta na metade do tempo
+  const days = feel >= 3 ? Math.min(r.days, 3) : feel === 2 ? Math.max(3, Math.round(r.days / 2)) : r.days;
+  return { level: r.level, acc: r.acc, passed: r.passed, goal: r.goal, due: shift(today, days) };
 }
+
+/** Como o aluno achou o assunto */
+export const FEELS = [
+  { value: 1, label: 'Achei de boas', emoji: '😎' },
+  { value: 2, label: 'Foi mais ou menos', emoji: '😐' },
+  { value: 3, label: 'Ladeira abaixo', emoji: '😵' },
+] as const;
 
 export interface PlanCard {
   id: string;

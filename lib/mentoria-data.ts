@@ -18,7 +18,7 @@ export interface Card {
   last_acc: number | null;
   attempts: number;
   last_day: string | null;
-  history: { d: string; q: number; c: number; l: number }[];
+  history: { d: string; q: number; c: number; l: number; f?: number }[];
 }
 
 export async function getMentoria(id: string) {
@@ -96,6 +96,20 @@ export async function syncCards(mentoriaId: string, keys: string[]) {
   return list.length;
 }
 
+/** Acrescenta assuntos no fim do cronograma do aluno (sem mexer no que ele já tem). */
+export async function appendCards(mentoriaId: string, keys: string[]) {
+  const list = keys.filter((k) => ASSUNTO_BY_KEY.has(k)).map((k) => ASSUNTO_BY_KEY.get(k)!);
+  if (!list.length) return;
+  const max = await sql.one<{ m: number }>(`select coalesce(max(ord), -1)::int as m from mentoria_cards where mentoria_id = $1`, [mentoriaId]);
+  const start = (max?.m ?? -1) + 1;
+  await sql.exec(
+    `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
+     select v.id, $1, v.k, v.d, v.t, v.p, v.o from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
+     on conflict (mentoria_id, item_key) do nothing`,
+    [mentoriaId, list.map(() => newId()), list.map((x) => x.key), list.map((x) => x.discipline), list.map((x) => x.title), list.map((x) => x.priority), list.map((_, j) => start + j)],
+  );
+}
+
 /** Plano automático: todos os conteúdos das disciplinas escolhidas, na ordem escolhida. */
 export async function writePlan(mentoriaId: string, chosen: string[], mode: 'prioridade' | 'matriz') {
   const n = await syncCards(mentoriaId, orderedKeys(chosen, mode));
@@ -169,7 +183,7 @@ export async function dayData(m: { id: string; availability: number[] }, request
       .map((h) => {
         const acc = h.q ? Math.round((h.c / h.q) * 100) : 0;
         const goal = h.l ? GOAL[Math.min(4, h.l)] : 0;
-        return { ...base(c), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal } };
+        return { ...base(c), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f } };
       }),
   );
   const pending =

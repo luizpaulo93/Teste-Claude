@@ -8,7 +8,7 @@ import { toast } from '@/components/toast';
 import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { moveCard, scoreCard } from '@/app/(app)/mentoria/actions';
-import { GOAL, LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
+import { FEELS, GOAL, LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
 
 export interface DayItem {
@@ -20,7 +20,7 @@ export interface DayItem {
   level: number;
   step: 'study' | 'questions';
   /** já feito neste dia: resultado */
-  result?: { q: number; c: number; acc: number; passed: boolean; goal: number } | null;
+  result?: { q: number; c: number; acc: number; passed: boolean; goal: number; f?: number } | null;
 }
 
 /** Cronograma por dia da semana: escolhe o dia e vê os assuntos; hoje dá para marcar estudado e as questões. */
@@ -102,6 +102,7 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
   const [q, setQ] = useState('');
   const [c, setC] = useState('');
   const [busy, setBusy] = useState(false);
+  const [feel, setFeel] = useState(0);
   const goal = GOAL[Math.min(4, it.level)];
   const total = Number(q) || 0;
   const right = Math.min(total, Number(c) || 0);
@@ -117,8 +118,9 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
   async function save(e: React.FormEvent) {
     e.preventDefault();
     if (!total || c === '') return toast.error('Preencha quantas questões fez e quantas acertou.');
+    if (!feel) return toast.error('Conte como foi: de boas, mais ou menos ou ladeira abaixo.');
     setBusy(true);
-    const r = await scoreCard(it.id, total, right, mentoriaId);
+    const r = await scoreCard(it.id, total, right, feel, mentoriaId);
     setBusy(false);
     if (r.error) return toast.error(r.error);
     toast(r.passed ? `${r.acc}% de acerto${r.goal ? ' — meta batida!' : ''} Próxima vez em ${formatDate(r.due!)}` : `${r.acc}% — meta de ${r.goal}% não batida. Volta em ${formatDate(r.due!)}`);
@@ -144,6 +146,7 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
             <p className={cn('mt-1.5 flex items-center gap-1 text-xs font-semibold', it.result.passed ? 'text-success' : 'text-danger')}>
               {it.result.passed ? <Check className="size-3.5" /> : <X className="size-3.5" />}
               {it.result.c}/{it.result.q} · {it.result.acc}% {it.result.goal ? `(meta ${it.result.goal}%)` : ''}
+              {it.result.f ? <span className="ml-1 font-normal text-muted">· {FEELS[it.result.f - 1].emoji} {FEELS[it.result.f - 1].label}</span> : null}
             </p>
           ) : (
             <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -169,13 +172,31 @@ function Row({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; men
       {editable && step === 'questions' && (
         <form onSubmit={save} className="mt-3 space-y-2 border-t border-line pt-3">
           <p className="text-xs font-semibold text-ink-2">Questões resolvidas</p>
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <Input value={q} onChange={(e) => setQ(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" placeholder="Feitas" aria-label="Questões feitas" className="h-10" />
             <Input value={c} onChange={(e) => setC(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" placeholder="Acertos" aria-label="Acertos" className="h-10" />
-            <button type="submit" disabled={busy} className={buttonClass('primary', 'sm', 'h-10')}>
-              {busy ? <Spinner /> : 'Salvar'}
-            </button>
           </div>
+          <p className="pt-1 text-xs font-semibold text-ink-2">Como foi esse assunto?</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            {FEELS.map((x) => (
+              <button
+                key={x.value}
+                type="button"
+                onClick={() => setFeel(x.value)}
+                aria-pressed={feel === x.value}
+                className={cn(
+                  'flex flex-col items-center gap-0.5 rounded-xl border px-1 py-2 text-[11px] font-semibold transition',
+                  feel === x.value ? (x.value === 3 ? 'border-danger bg-danger/10 text-danger' : x.value === 2 ? 'border-warning bg-warning/10 text-warning' : 'border-success bg-success/10 text-success') : 'border-line text-ink-2',
+                )}
+              >
+                <span className="text-lg leading-none">{x.emoji}</span>
+                {x.label}
+              </button>
+            ))}
+          </div>
+          <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'w-full')}>
+            {busy ? <Spinner /> : 'Salvar'}
+          </button>
           {total > 0 && (
             <p className={cn('text-xs font-semibold', Math.round((right / total) * 100) >= goal ? 'text-success' : 'text-danger')}>
               Taxa de acerto: {Math.round((right / total) * 100)}%{goal ? ` · meta ${goal}%` : ''}

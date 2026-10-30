@@ -1,6 +1,7 @@
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ReportDownload } from '@/components/mentoria/report-download';
 import { PageHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import { daysUntil } from '@/lib/mentoria';
@@ -36,7 +37,12 @@ export default async function GroupLayout({ children, params }: { children: Reac
           eyebrow="Mentoria em grupo"
           title={g.name}
           subtitle={[`${members.length} aluno${members.length === 1 ? '' : 's'}`, g.exam_target, left !== null && left >= 0 ? `${left} dias para a prova` : ''].filter(Boolean).join(' · ')}
-          actions={<GroupAdminActions group={g} students={students} classes={classes} />}
+          actions={
+            <div className="flex flex-wrap gap-2">
+              <ReportDownload target={`g:${g.id}`} />
+              <GroupAdminActions group={g} students={students} classes={classes} />
+            </div>
+          }
         />
       </div>
       <MentoriaTabs

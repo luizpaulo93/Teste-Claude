@@ -64,6 +64,7 @@ export async function scoreCard(
   id: string,
   questions: number,
   correct: number,
+  feel: number,
   mentoriaId?: string,
 ): Promise<Result & { level?: number; acc?: number; due?: string | null; passed?: boolean; goal?: number }> {
   const a = await access(mentoriaId);
@@ -71,15 +72,17 @@ export async function scoreCard(
   const q = clampInt(questions, 0, 300);
   const c = Math.min(q, clampInt(correct, 0, 300));
   if (!q) return { error: 'Informe quantas questões você fez e quantas acertou.' };
+  const f = [1, 2, 3].includes(Number(feel)) ? Number(feel) : 0;
+  if (!f) return { error: 'Diga como foi o assunto: de boas, mais ou menos ou ladeira abaixo.' };
   const card = await sql.one<{ level: number; history: unknown[] }>(`select level, history from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
   if (!card) return { error: 'Card não encontrado.' };
   const today = todayBR();
-  const r = afterScore(card.level, q, c, today);
-  const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level }].slice(-30);
+  const r = afterScore(card.level, q, c, today, f);
+  const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level, f }].slice(-30);
   await sql.exec(
-    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, updated_at = now()
+    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, updated_at = now()
      where id = $1 and mentoria_id = $2`,
-    [id, a.id, r.level, r.due, r.acc, JSON.stringify(history)],
+    [id, a.id, r.level, r.due, r.acc, JSON.stringify(history), f],
   );
   await reschedule(a.id);
   refresh(a.id);

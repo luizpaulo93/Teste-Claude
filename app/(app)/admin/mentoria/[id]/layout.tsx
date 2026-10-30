@@ -1,6 +1,7 @@
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ReportDownload } from '@/components/mentoria/report-download';
 import { PageHeader } from '@/components/ui';
 import { daysUntil } from '@/lib/mentoria';
 import { getMentoria } from '@/lib/mentoria-data';
@@ -24,6 +25,9 @@ export default async function AdminMentoradoLayout({ children, params }: { child
         </Link>
         <PageHeader
           title={m.student_name || m.student_email}
+          actions={
+            <ReportDownload target={`m:${m.id}`} />
+          }
           subtitle={[m.exam_target, left !== null && left >= 0 ? `${left} dias para a prova` : ''].filter(Boolean).join(' · ') || m.student_email}
         />
       </div>

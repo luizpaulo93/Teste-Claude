@@ -114,7 +114,7 @@ export async function setGroupAssuntos(id: string, keys: string[]): Promise<Acti
     const next = [...kept, ...added];
     const discs = [...new Set(next.map((k) => ASSUNTO_BY_KEY.get(k)!.discipline))];
     await sql.exec(`update mentoria_groups set plan_keys = $2, plan_disciplines = $3, updated_at = now() where id = $1`, [id, next, discs]);
-    await syncGroup(id);
+    await syncGroup(id, undefined, { add: added, remove: g.plan_keys.filter((k) => !wanted.has(k)) });
     refresh(id);
     return { ok: true, added: added.length, removed: g.plan_keys.length - kept.length };
   } catch (e) {
