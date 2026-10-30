@@ -1,10 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { emailKey, newId, sql, tx } from '@/lib/db';
-import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
+import { emailKey, newId, sql } from '@/lib/db';
+import { DISCIPLINES } from '@/lib/enem-matriz';
 import { afterScore, todayBR } from '@/lib/mentoria';
-import { reschedule } from '@/lib/mentoria-data';
+import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
 
@@ -42,40 +42,10 @@ export async function buildPlan(disciplines: string[], order: 'prioridade' | 'ma
   const chosen = DISCIPLINES.map((d) => d.key).filter((k) => (disciplines ?? []).includes(k));
   if (!chosen.length) return { error: 'Escolha pelo menos uma disciplina.' };
   const mode = order === 'matriz' ? 'matriz' : 'prioridade';
-
-  // Fila de cada disciplina, intercalando uma de cada por vez
-  const queues = chosen.map((k) =>
-    ASSUNTOS.filter((x) => x.discipline === k).sort((x, y) => (mode === 'prioridade' ? y.priority - x.priority : 0) || x.index - y.index),
-  );
-  const ordered: (typeof ASSUNTOS)[number][] = [];
-  for (let i = 0; queues.some((q) => q.length > i); i++) for (const q of queues) if (q[i]) ordered.push(q[i]);
-
-  await tx(async (t) => {
-    // Disciplina tirada: some só o que ainda não foi estudado
-    await t.exec(`delete from mentoria_cards where mentoria_id = $1 and level = 0 and step = 'study' and not (discipline = any($2))`, [a.id, chosen]);
-    for (let i = 0; i < ordered.length; i += 200) {
-      const part = ordered.slice(i, i + 200);
-      await t.exec(
-        `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
-         select v.id, $1, v.k, v.d, v.t, v.p, v.o
-           from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
-         on conflict (mentoria_id, item_key) do update set ord = excluded.ord, priority = excluded.priority, title = excluded.title`,
-        [
-          a.id,
-          part.map(() => newId()),
-          part.map((x) => x.key),
-          part.map((x) => x.discipline),
-          part.map((x) => x.title),
-          part.map((x) => x.priority),
-          part.map((_, j) => i + j),
-        ],
-      );
-    }
-    await t.exec(`update mentorias set plan_disciplines = $2, plan_order = $3, updated_at = now() where id = $1`, [a.id, chosen, mode]);
-  });
+  const count = await writePlan(a.id, chosen, mode);
   await reschedule(a.id);
   refresh(a.id);
-  return { ok: true, count: ordered.length };
+  return { ok: true, count };
 }
 
 // ---------------- Quadro: mover card e marcar desempenho

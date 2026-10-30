@@ -1,17 +1,24 @@
 /**
- * Assuntos da Matriz de Referência do ENEM (Anexo — objetos de conhecimento)
- * de Matemática e Ciências da Natureza, por disciplina.
- * Chave de cada assunto: "<disciplina>.<bloco>.<item>".
+ * Conteúdos de Matemática e Ciências da Natureza para o ENEM, por disciplina e frente.
+ * Nomes concretos (o que o aluno estuda de fato), no padrão dos cronogramas de cursinho,
+ * cobrindo os objetos de conhecimento da Matriz de Referência.
+ * Prioridade (levantamentos de incidência do ENEM — Aprova Total, Estratégia, Projeto Medicina):
+ * 3 = mais cobrado, 2 = cobrado com frequência, 1 = cobrado às vezes.
  */
 
-export interface MatrizTopic {
+export interface MatrizItem {
+  key: string;
   title: string;
-  items: string[];
+  priority: number;
+}
+export interface MatrizBlock {
+  title: string;
+  items: MatrizItem[];
 }
 export interface MatrizDiscipline {
   key: string;
   name: string;
-  topics: MatrizTopic[];
+  blocks: MatrizBlock[];
 }
 export interface MatrizArea {
   area: "MT" | "CN";
@@ -27,68 +34,275 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "matematica",
         name: "Matemática",
-        topics: [
+        blocks: [
           {
-            title: "Conhecimentos numéricos",
+            title: "Matemática básica",
             items: [
-              "Operações em conjuntos numéricos (naturais, inteiros, racionais e reais)",
-              "Desigualdades",
-              "Divisibilidade",
-              "Fatoração",
-              "Razões e proporções",
-              "Porcentagem e juros",
-              "Relações de dependência entre grandezas",
-              "Sequências e progressões",
-              "Princípios de contagem",
+              {
+                key: "matematica.operacoes-com-fracoes-e-numeros-decimais",
+                title: "Operações com frações e números decimais",
+                priority: 2,
+              },
+              {
+                key: "matematica.potenciacao-e-radiciacao",
+                title: "Potenciação e radiciação",
+                priority: 2,
+              },
+              {
+                key: "matematica.notacao-cientifica",
+                title: "Notação científica",
+                priority: 2,
+              },
+              {
+                key: "matematica.divisibilidade-mmc-e-mdc",
+                title: "Divisibilidade, MMC e MDC",
+                priority: 2,
+              },
+              {
+                key: "matematica.razao-e-proporcao",
+                title: "Razão e proporção",
+                priority: 3,
+              },
+              {
+                key: "matematica.regra-de-tres-simples-e-composta",
+                title: "Regra de três simples e composta",
+                priority: 3,
+              },
+              {
+                key: "matematica.porcentagem",
+                title: "Porcentagem",
+                priority: 3,
+              },
+              {
+                key: "matematica.juros-simples-e-compostos",
+                title: "Juros simples e compostos",
+                priority: 2,
+              },
+              {
+                key: "matematica.grandezas-e-unidades-de-medida",
+                title: "Grandezas e unidades de medida",
+                priority: 3,
+              },
+              {
+                key: "matematica.escalas",
+                title: "Escalas",
+                priority: 3,
+              },
             ],
           },
           {
-            title: "Conhecimentos geométricos",
+            title: "Álgebra e funções",
             items: [
-              "Características das figuras geométricas planas e espaciais",
-              "Grandezas",
-              "Unidades de medida e escalas",
-              "Comprimentos",
-              "Áreas e volumes",
-              "Ângulos",
-              "Posições de retas",
-              "Simetrias de figuras planas ou espaciais",
-              "Congruência e semelhança de triângulos",
-              "Teorema de Tales",
-              "Relações métricas nos triângulos",
-              "Circunferências",
-              "Trigonometria do ângulo agudo",
+              {
+                key: "matematica.equacoes-do-1o-grau",
+                title: "Equações do 1º grau",
+                priority: 2,
+              },
+              {
+                key: "matematica.equacoes-do-2o-grau",
+                title: "Equações do 2º grau",
+                priority: 2,
+              },
+              {
+                key: "matematica.sistemas-de-equacoes",
+                title: "Sistemas de equações",
+                priority: 2,
+              },
+              {
+                key: "matematica.inequacoes",
+                title: "Inequações",
+                priority: 1,
+              },
+              {
+                key: "matematica.leitura-e-interpretacao-de-graficos",
+                title: "Leitura e interpretação de gráficos",
+                priority: 3,
+              },
+              {
+                key: "matematica.funcao-afim-1o-grau",
+                title: "Função afim (1º grau)",
+                priority: 3,
+              },
+              {
+                key: "matematica.funcao-quadratica-2o-grau",
+                title: "Função quadrática (2º grau)",
+                priority: 3,
+              },
+              {
+                key: "matematica.funcao-exponencial",
+                title: "Função exponencial",
+                priority: 2,
+              },
+              {
+                key: "matematica.logaritmo-e-funcao-logaritmica",
+                title: "Logaritmo e função logarítmica",
+                priority: 2,
+              },
+              {
+                key: "matematica.progressao-aritmetica-pa",
+                title: "Progressão aritmética (PA)",
+                priority: 2,
+              },
+              {
+                key: "matematica.progressao-geometrica-pg",
+                title: "Progressão geométrica (PG)",
+                priority: 2,
+              },
+              {
+                key: "matematica.matrizes-e-determinantes",
+                title: "Matrizes e determinantes",
+                priority: 1,
+              },
             ],
           },
           {
-            title: "Conhecimentos de estatística e probabilidade",
+            title: "Estatística e probabilidade",
             items: [
-              "Representação e análise de dados",
-              "Medidas de tendência central (médias, moda e mediana)",
-              "Desvios e variância",
-              "Noções de probabilidade",
+              {
+                key: "matematica.tabelas-e-graficos-estatisticos",
+                title: "Tabelas e gráficos estatísticos",
+                priority: 3,
+              },
+              {
+                key: "matematica.media-aritmetica-e-ponderada",
+                title: "Média aritmética e ponderada",
+                priority: 3,
+              },
+              {
+                key: "matematica.moda-e-mediana",
+                title: "Moda e mediana",
+                priority: 3,
+              },
+              {
+                key: "matematica.desvio-padrao-e-variancia",
+                title: "Desvio padrão e variância",
+                priority: 2,
+              },
+              {
+                key: "matematica.principio-fundamental-da-contagem",
+                title: "Princípio fundamental da contagem",
+                priority: 3,
+              },
+              {
+                key: "matematica.permutacao",
+                title: "Permutação",
+                priority: 2,
+              },
+              {
+                key: "matematica.arranjo-e-combinacao",
+                title: "Arranjo e combinação",
+                priority: 2,
+              },
+              {
+                key: "matematica.probabilidade",
+                title: "Probabilidade",
+                priority: 3,
+              },
             ],
           },
           {
-            title: "Conhecimentos algébricos",
+            title: "Geometria plana",
             items: [
-              "Gráficos e funções",
-              "Funções algébricas do 1.º e do 2.º graus",
-              "Polinomiais",
-              "Racionais",
-              "Exponenciais e logarítmicas",
-              "Equações e inequações",
-              "Relações no ciclo trigonométrico e funções trigonométricas",
+              {
+                key: "matematica.angulos-e-retas-paralelas",
+                title: "Ângulos e retas paralelas",
+                priority: 1,
+              },
+              {
+                key: "matematica.semelhanca-de-triangulos-e-teorema-de-tales",
+                title: "Semelhança de triângulos e Teorema de Tales",
+                priority: 2,
+              },
+              {
+                key: "matematica.teorema-de-pitagoras",
+                title: "Teorema de Pitágoras",
+                priority: 3,
+              },
+              {
+                key: "matematica.relacoes-metricas-no-triangulo-retangulo",
+                title: "Relações métricas no triângulo retângulo",
+                priority: 2,
+              },
+              {
+                key: "matematica.trigonometria-no-triangulo-retangulo",
+                title: "Trigonometria no triângulo retângulo",
+                priority: 2,
+              },
+              {
+                key: "matematica.areas-de-figuras-planas",
+                title: "Áreas de figuras planas",
+                priority: 3,
+              },
+              {
+                key: "matematica.circunferencia-e-circulo-comprimento-e-area",
+                title: "Circunferência e círculo: comprimento e área",
+                priority: 3,
+              },
+              {
+                key: "matematica.simetria-e-transformacoes-geometricas",
+                title: "Simetria e transformações geométricas",
+                priority: 1,
+              },
             ],
           },
           {
-            title: "Conhecimentos algébricos/geométricos",
+            title: "Geometria espacial",
             items: [
-              "Plano cartesiano",
-              "Retas",
-              "Circunferências",
-              "Paralelismo e perpendicularidade",
-              "Sistemas de equações",
+              {
+                key: "matematica.planificacao-e-vistas-de-solidos",
+                title: "Planificação e vistas de sólidos",
+                priority: 3,
+              },
+              {
+                key: "matematica.prismas-e-cubos-area-e-volume",
+                title: "Prismas e cubos: área e volume",
+                priority: 3,
+              },
+              {
+                key: "matematica.cilindro-area-e-volume",
+                title: "Cilindro: área e volume",
+                priority: 3,
+              },
+              {
+                key: "matematica.piramides-e-cones",
+                title: "Pirâmides e cones",
+                priority: 2,
+              },
+              {
+                key: "matematica.esfera",
+                title: "Esfera",
+                priority: 2,
+              },
+              {
+                key: "matematica.poliedros-e-relacao-de-euler",
+                title: "Poliedros e relação de Euler",
+                priority: 1,
+              },
+            ],
+          },
+          {
+            title: "Geometria analítica e trigonometria",
+            items: [
+              {
+                key: "matematica.plano-cartesiano-e-distancia-entre-pontos",
+                title: "Plano cartesiano e distância entre pontos",
+                priority: 2,
+              },
+              {
+                key: "matematica.equacao-da-reta",
+                title: "Equação da reta",
+                priority: 1,
+              },
+              {
+                key: "matematica.equacao-da-circunferencia",
+                title: "Equação da circunferência",
+                priority: 1,
+              },
+              {
+                key: "matematica.ciclo-trigonometrico-e-funcoes-trigonometricas",
+                title: "Ciclo trigonométrico e funções trigonométricas",
+                priority: 1,
+              },
             ],
           },
         ],
@@ -102,126 +316,332 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "fisica",
         name: "Física",
-        topics: [
+        blocks: [
           {
-            title: "Conhecimentos básicos e fundamentais",
+            title: "Fundamentos",
             items: [
-              "Noções de ordem de grandeza",
-              "Notação Científica",
-              "Sistema Internacional de Unidades",
-              "Metodologia de investigação: a procura de regularidades e de sinais na interpretação física do mundo",
-              "Observações e mensurações: representação de grandezas físicas como grandezas mensuráveis",
-              "Ferramentas básicas: gráficos e vetores",
-              "Conceituação de grandezas vetoriais e escalares",
-              "Operações básicas com vetores",
+              {
+                key: "fisica.notacao-cientifica-e-ordem-de-grandeza",
+                title: "Notação científica e ordem de grandeza",
+                priority: 2,
+              },
+              {
+                key: "fisica.sistema-internacional-de-unidades",
+                title: "Sistema Internacional de Unidades",
+                priority: 2,
+              },
+              {
+                key: "fisica.vetores",
+                title: "Vetores",
+                priority: 1,
+              },
             ],
           },
           {
-            title: "O movimento, o equilíbrio e a descoberta de leis físicas",
+            title: "Cinemática",
             items: [
-              "Grandezas fundamentais da mecânica: tempo, espaço, velocidade e aceleração",
-              "Relação histórica entre força e movimento",
-              "Descrições do movimento e sua interpretação: quantificação do movimento e sua descrição matemática e gráfica",
-              "Casos especiais de movimentos e suas regularidades observáveis",
-              "Conceito de inércia",
-              "Noção de sistemas de referência inerciais e não inerciais",
-              "Noção dinâmica de massa e quantidade de movimento (momento linear)",
-              "Força e variação da quantidade de movimento",
-              "Leis de Newton",
-              "Centro de massa e a idéia de ponto material",
-              "Conceito de forças externas e internas",
-              "Lei da conservação da quantidade de movimento (momento linear) e teorema do impulso",
-              "Momento de uma força (torque)",
-              "Condições de equilíbrio estático de ponto material e de corpos rígidos",
-              "Força de atrito, força peso, força normal de contato e tração",
-              "Diagramas de forças",
-              "Identificação das forças que atuam nos movimentos circulares",
-              "Noção de força centrípeta e sua quantificação",
-              "A hidrostática: aspectos históricos e variáveis relevantes",
-              "Empuxo",
-              "Princípios de Pascal, Arquimedes e Stevin: condições de flutuação, relação entre diferença de nível e pressão hidrostática",
+              {
+                key: "fisica.velocidade-media",
+                title: "Velocidade média",
+                priority: 3,
+              },
+              {
+                key: "fisica.movimento-uniforme-mu",
+                title: "Movimento uniforme (MU)",
+                priority: 3,
+              },
+              {
+                key: "fisica.movimento-uniformemente-variado-muv",
+                title: "Movimento uniformemente variado (MUV)",
+                priority: 3,
+              },
+              {
+                key: "fisica.graficos-do-movimento",
+                title: "Gráficos do movimento",
+                priority: 3,
+              },
+              {
+                key: "fisica.queda-livre-e-lancamentos",
+                title: "Queda livre e lançamentos",
+                priority: 2,
+              },
+              {
+                key: "fisica.movimento-circular",
+                title: "Movimento circular",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Energia, trabalho e potência",
+            title: "Dinâmica e energia",
             items: [
-              "Conceituação de trabalho, energia e potência",
-              "Conceito de energia potencial e de energia cinética",
-              "Conservação de energia mecânica e dissipação de energia",
-              "Trabalho da força gravitacional e energia potencial gravitacional",
-              "Forças conservativas e dissipativas",
+              {
+                key: "fisica.leis-de-newton",
+                title: "Leis de Newton",
+                priority: 3,
+              },
+              {
+                key: "fisica.forca-peso-normal-e-tracao",
+                title: "Força peso, normal e tração",
+                priority: 2,
+              },
+              {
+                key: "fisica.forca-de-atrito",
+                title: "Força de atrito",
+                priority: 2,
+              },
+              {
+                key: "fisica.plano-inclinado",
+                title: "Plano inclinado",
+                priority: 1,
+              },
+              {
+                key: "fisica.forca-centripeta",
+                title: "Força centrípeta",
+                priority: 2,
+              },
+              {
+                key: "fisica.trabalho-de-uma-forca",
+                title: "Trabalho de uma força",
+                priority: 3,
+              },
+              {
+                key: "fisica.energia-cinetica-e-potencial",
+                title: "Energia cinética e potencial",
+                priority: 3,
+              },
+              {
+                key: "fisica.conservacao-da-energia-mecanica",
+                title: "Conservação da energia mecânica",
+                priority: 3,
+              },
+              {
+                key: "fisica.potencia-e-rendimento",
+                title: "Potência e rendimento",
+                priority: 3,
+              },
+              {
+                key: "fisica.impulso-e-quantidade-de-movimento",
+                title: "Impulso e quantidade de movimento",
+                priority: 2,
+              },
+              {
+                key: "fisica.colisoes",
+                title: "Colisões",
+                priority: 1,
+              },
+              {
+                key: "fisica.gravitacao-universal-e-leis-de-kepler",
+                title: "Gravitação universal e Leis de Kepler",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "A Mecânica e o funcionamento do Universo",
+            title: "Estática e hidrostática",
             items: [
-              "Força peso",
-              "Aceleração gravitacional",
-              "Lei da Gravitação Universal",
-              "Leis de Kepler",
-              "Movimentos de corpos celestes",
-              "Influência na Terra: marés e variações climáticas",
-              "Concepções históricas sobre a origem do universo e sua evolução",
+              {
+                key: "fisica.equilibrio-torque-e-alavancas",
+                title: "Equilíbrio, torque e alavancas",
+                priority: 2,
+              },
+              {
+                key: "fisica.pressao-e-densidade",
+                title: "Pressão e densidade",
+                priority: 2,
+              },
+              {
+                key: "fisica.teorema-de-stevin",
+                title: "Teorema de Stevin",
+                priority: 2,
+              },
+              {
+                key: "fisica.principio-de-pascal",
+                title: "Princípio de Pascal",
+                priority: 2,
+              },
+              {
+                key: "fisica.empuxo-principio-de-arquimedes",
+                title: "Empuxo (Princípio de Arquimedes)",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Fenômenos Elétricos e Magnéticos",
+            title: "Termologia",
             items: [
-              "Carga elétrica e corrente elétrica",
-              "Lei de Coulomb",
-              "Campo elétrico e potencial elétrico",
-              "Linhas de campo",
-              "Superfícies equipotenciais",
-              "Poder das pontas",
-              "Blindagem",
-              "Capacitores",
-              "Efeito Joule",
-              "Lei de Ohm",
-              "Resistência elétrica e resistividade",
-              "Relações entre grandezas elétricas: tensão, corrente, potência e energia",
-              "Circuitos elétricos simples",
-              "Correntes contínua e alternada",
-              "Medidores elétricos",
-              "Representação gráfica de circuitos",
-              "Símbolos convencionais",
-              "Potência e consumo de energia em dispositivos elétricos",
-              "Campo magnético",
-              "Imãs permanentes",
-              "Linhas de campo magnético",
-              "Campo magnético terrestre",
+              {
+                key: "fisica.temperatura-e-escalas-termometricas",
+                title: "Temperatura e escalas termométricas",
+                priority: 2,
+              },
+              {
+                key: "fisica.calorimetria-calor-sensivel-e-latente",
+                title: "Calorimetria: calor sensível e latente",
+                priority: 3,
+              },
+              {
+                key: "fisica.mudancas-de-estado-fisico",
+                title: "Mudanças de estado físico",
+                priority: 3,
+              },
+              {
+                key: "fisica.propagacao-do-calor-conducao-conveccao-e-irradia",
+                title: "Propagação do calor: condução, convecção e irradiação",
+                priority: 3,
+              },
+              {
+                key: "fisica.dilatacao-termica",
+                title: "Dilatação térmica",
+                priority: 2,
+              },
+              {
+                key: "fisica.estudo-dos-gases",
+                title: "Estudo dos gases",
+                priority: 2,
+              },
+              {
+                key: "fisica.termodinamica-e-maquinas-termicas",
+                title: "Termodinâmica e máquinas térmicas",
+                priority: 3,
+              },
             ],
           },
           {
-            title: "Oscilações, ondas, óptica e radiação",
+            title: "Ondulatória",
             items: [
-              "Feixes e frentes de ondas",
-              "Reflexão e refração",
-              "Óptica geométrica: lentes e espelhos",
-              "Formação de imagens",
-              "Instrumentos ópticos simples",
-              "Fenômenos ondulatórios",
-              "Pulsos e ondas",
-              "Período, frequência, ciclo",
-              "Propagação: relação entre velocidade, frequência e comprimento de onda",
-              "Ondas em diferentes meios de propagação",
+              {
+                key: "fisica.caracteristicas-das-ondas-frequencia-periodo-e-c",
+                title:
+                  "Características das ondas: frequência, período e comprimento",
+                priority: 3,
+              },
+              {
+                key: "fisica.equacao-fundamental-da-onda",
+                title: "Equação fundamental da onda",
+                priority: 3,
+              },
+              {
+                key: "fisica.fenomenos-ondulatorios-reflexao-refracao-difraca",
+                title:
+                  "Fenômenos ondulatórios: reflexão, refração, difração e interferência",
+                priority: 3,
+              },
+              {
+                key: "fisica.acustica-e-som",
+                title: "Acústica e som",
+                priority: 3,
+              },
+              {
+                key: "fisica.espectro-eletromagnetico",
+                title: "Espectro eletromagnético",
+                priority: 2,
+              },
+              {
+                key: "fisica.efeito-doppler",
+                title: "Efeito Doppler",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "O calor e os fenômenos térmicos",
+            title: "Óptica",
             items: [
-              "Conceitos de calor e de temperatura",
-              "Escalas termométricas",
-              "Transferência de calor e equilíbrio térmico",
-              "Capacidade calorífica e calor específico",
-              "Condução do calor",
-              "Dilatação térmica",
-              "Mudanças de estado físico e calor latente de transformação",
-              "Comportamento de Gases ideais",
-              "Máquinas térmicas",
-              "Ciclo de Carnot",
-              "Leis da Termodinâmica",
-              "Aplicações e fenômenos térmicos de uso cotidiano",
-              "Compreensão de fenômenos climáticos relacionados ao ciclo da água",
+              {
+                key: "fisica.principios-da-optica-geometrica",
+                title: "Princípios da óptica geométrica",
+                priority: 2,
+              },
+              {
+                key: "fisica.espelhos-planos-e-esfericos",
+                title: "Espelhos planos e esféricos",
+                priority: 2,
+              },
+              {
+                key: "fisica.refracao-da-luz",
+                title: "Refração da luz",
+                priority: 3,
+              },
+              {
+                key: "fisica.lentes-e-instrumentos-opticos",
+                title: "Lentes e instrumentos ópticos",
+                priority: 3,
+              },
+              {
+                key: "fisica.olho-humano-e-defeitos-da-visao",
+                title: "Olho humano e defeitos da visão",
+                priority: 3,
+              },
+            ],
+          },
+          {
+            title: "Eletricidade",
+            items: [
+              {
+                key: "fisica.carga-eletrica-e-processos-de-eletrizacao",
+                title: "Carga elétrica e processos de eletrização",
+                priority: 2,
+              },
+              {
+                key: "fisica.lei-de-coulomb-e-campo-eletrico",
+                title: "Lei de Coulomb e campo elétrico",
+                priority: 2,
+              },
+              {
+                key: "fisica.corrente-eletrica",
+                title: "Corrente elétrica",
+                priority: 3,
+              },
+              {
+                key: "fisica.resistores-e-lei-de-ohm",
+                title: "Resistores e Lei de Ohm",
+                priority: 3,
+              },
+              {
+                key: "fisica.associacao-de-resistores",
+                title: "Associação de resistores",
+                priority: 3,
+              },
+              {
+                key: "fisica.potencia-eletrica-e-consumo-de-energia-kwh",
+                title: "Potência elétrica e consumo de energia (kWh)",
+                priority: 3,
+              },
+              {
+                key: "fisica.circuitos-eletricos-e-medidores",
+                title: "Circuitos elétricos e medidores",
+                priority: 3,
+              },
+              {
+                key: "fisica.geradores-e-receptores",
+                title: "Geradores e receptores",
+                priority: 2,
+              },
+              {
+                key: "fisica.capacitores",
+                title: "Capacitores",
+                priority: 1,
+              },
+            ],
+          },
+          {
+            title: "Magnetismo",
+            items: [
+              {
+                key: "fisica.imas-e-campo-magnetico",
+                title: "Ímãs e campo magnético",
+                priority: 2,
+              },
+              {
+                key: "fisica.forca-magnetica",
+                title: "Força magnética",
+                priority: 1,
+              },
+              {
+                key: "fisica.inducao-eletromagnetica-e-transformadores",
+                title: "Indução eletromagnética e transformadores",
+                priority: 2,
+              },
             ],
           },
         ],
@@ -229,157 +649,232 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "quimica",
         name: "Química",
-        topics: [
+        blocks: [
           {
-            title: "Transformações Químicas",
+            title: "Química geral",
             items: [
-              "Evidências de transformações químicas",
-              "Interpretando transformações químicas",
-              "Sistemas Gasosos: Lei dos gases",
-              "Equação geral dos gases ideais, Princípio de Avogadro, conceito de molécula; massa molar, volume molar dos gases",
-              "Teoria cinética dos gases",
-              "Misturas gasosas",
-              "Modelo corpuscular da matéria",
-              "Modelo atômico de Dalton",
-              "Natureza elétrica da matéria: Modelo Atômico de Thomson, Rutherford, Rutherford-Bohr",
-              "Átomos e sua estrutura",
-              "Número atômico, número de massa, isótopos, massa atômica",
-              "Elementos químicos e Tabela Periódica",
-              "Reações químicas",
+              {
+                key: "quimica.propriedades-da-materia",
+                title: "Propriedades da matéria",
+                priority: 2,
+              },
+              {
+                key: "quimica.substancias-e-misturas",
+                title: "Substâncias e misturas",
+                priority: 3,
+              },
+              {
+                key: "quimica.separacao-de-misturas",
+                title: "Separação de misturas",
+                priority: 3,
+              },
+              {
+                key: "quimica.modelos-atomicos",
+                title: "Modelos atômicos",
+                priority: 2,
+              },
+              {
+                key: "quimica.estrutura-do-atomo-numero-atomico-massa-e-isotop",
+                title: "Estrutura do átomo: número atômico, massa e isótopos",
+                priority: 2,
+              },
+              {
+                key: "quimica.tabela-periodica-e-propriedades-periodicas",
+                title: "Tabela periódica e propriedades periódicas",
+                priority: 2,
+              },
+              {
+                key: "quimica.ligacoes-ionicas-covalentes-e-metalicas",
+                title: "Ligações iônicas, covalentes e metálicas",
+                priority: 3,
+              },
+              {
+                key: "quimica.polaridade-das-moleculas",
+                title: "Polaridade das moléculas",
+                priority: 3,
+              },
+              {
+                key: "quimica.forcas-intermoleculares",
+                title: "Forças intermoleculares",
+                priority: 3,
+              },
+              {
+                key: "quimica.funcoes-inorganicas-acidos-e-bases",
+                title: "Funções inorgânicas: ácidos e bases",
+                priority: 3,
+              },
+              {
+                key: "quimica.funcoes-inorganicas-sais-e-oxidos",
+                title: "Funções inorgânicas: sais e óxidos",
+                priority: 2,
+              },
+              {
+                key: "quimica.reacoes-quimicas-e-balanceamento",
+                title: "Reações químicas e balanceamento",
+                priority: 3,
+              },
+              {
+                key: "quimica.numero-de-oxidacao",
+                title: "Número de oxidação",
+                priority: 2,
+              },
+              {
+                key: "quimica.radioatividade",
+                title: "Radioatividade",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Representação das transformações químicas",
+            title: "Estequiometria",
             items: [
-              "Fórmulas químicas",
-              "Balanceamento de equações químicas",
-              "Aspectos quantitativos das transformações químicas",
-              "Leis ponderais das reações químicas",
-              "Determinação de fórmulas químicas",
-              "Grandezas Químicas: massa, volume, mol, massa molar, constante de Avogadro",
-              "Cálculos estequiométricos",
+              {
+                key: "quimica.mol-massa-molar-e-constante-de-avogadro",
+                title: "Mol, massa molar e constante de Avogadro",
+                priority: 3,
+              },
+              {
+                key: "quimica.calculo-estequiometrico",
+                title: "Cálculo estequiométrico",
+                priority: 3,
+              },
+              {
+                key: "quimica.reagente-limitante-pureza-e-rendimento",
+                title: "Reagente limitante, pureza e rendimento",
+                priority: 3,
+              },
+              {
+                key: "quimica.gases-equacao-de-clapeyron",
+                title: "Gases: equação de Clapeyron",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Materiais, suas propriedades e usos",
+            title: "Físico-química",
             items: [
-              "Propriedades de materiais",
-              "Estados físicos de materiais",
-              "Mudanças de estado",
-              "Misturas: tipos e métodos de separação",
-              "Substâncias químicas: classificação e características gerais",
-              "Metais e Ligas metálicas",
-              "Ferro, cobre e alumínio",
-              "Ligações metálicas",
-              "Substâncias iônicas: características e propriedades",
-              "Substâncias iônicas do grupo: cloreto, carbonato, nitrato e sulfato",
-              "Ligação iônica",
-              "Substâncias moleculares: características e propriedades",
-              "Substâncias moleculares: H2, O2, N2, Cl2, NH3, H2O, HCl, CH4",
-              "Ligação Covalente",
-              "Polaridade de moléculas",
-              "Forças intermoleculares",
-              "Relação entre estruturas, propriedade e aplicação das substâncias",
+              {
+                key: "quimica.solucoes-e-concentracao-g-l-mol-l-e",
+                title: "Soluções e concentração (g/L, mol/L e %)",
+                priority: 3,
+              },
+              {
+                key: "quimica.diluicao-e-mistura-de-solucoes",
+                title: "Diluição e mistura de soluções",
+                priority: 2,
+              },
+              {
+                key: "quimica.propriedades-coligativas",
+                title: "Propriedades coligativas",
+                priority: 2,
+              },
+              {
+                key: "quimica.termoquimica-entalpia-e-lei-de-hess",
+                title: "Termoquímica: entalpia e Lei de Hess",
+                priority: 3,
+              },
+              {
+                key: "quimica.cinetica-quimica",
+                title: "Cinética química",
+                priority: 2,
+              },
+              {
+                key: "quimica.equilibrio-quimico",
+                title: "Equilíbrio químico",
+                priority: 2,
+              },
+              {
+                key: "quimica.ph-poh-e-equilibrio-ionico",
+                title: "pH, pOH e equilíbrio iônico",
+                priority: 3,
+              },
+              {
+                key: "quimica.hidrolise-salina-e-solucao-tampao",
+                title: "Hidrólise salina e solução-tampão",
+                priority: 1,
+              },
+              {
+                key: "quimica.eletroquimica-pilhas",
+                title: "Eletroquímica: pilhas",
+                priority: 3,
+              },
+              {
+                key: "quimica.eletrolise",
+                title: "Eletrólise",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Água",
+            title: "Química orgânica",
             items: [
-              "Ocorrência e importância na vida animal e vegetal",
-              "Ligação, estrutura e propriedades",
-              "Sistemas em Solução Aquosa: Soluções verdadeiras, soluções coloidais e suspensões",
-              "Solubilidade",
-              "Concentração das soluções",
-              "Aspectos qualitativos das propriedades coligativas das soluções",
-              "Ácidos, Bases, Sais e Óxidos: definição, classificação, propriedades, formulação e nomenclatura",
-              "Conceitos de ácidos e base",
-              "Principais propriedades dos ácidos e bases: indicadores, condutibilidade elétrica, reação com metais, reação de neutralização",
+              {
+                key: "quimica.cadeias-carbonicas",
+                title: "Cadeias carbônicas",
+                priority: 2,
+              },
+              {
+                key: "quimica.hidrocarbonetos",
+                title: "Hidrocarbonetos",
+                priority: 2,
+              },
+              {
+                key: "quimica.funcoes-oxigenadas-alcool-aldeido-cetona-acido-e",
+                title:
+                  "Funções oxigenadas: álcool, aldeído, cetona, ácido e éster",
+                priority: 3,
+              },
+              {
+                key: "quimica.funcoes-nitrogenadas-aminas-e-amidas",
+                title: "Funções nitrogenadas: aminas e amidas",
+                priority: 2,
+              },
+              {
+                key: "quimica.isomeria",
+                title: "Isomeria",
+                priority: 2,
+              },
+              {
+                key: "quimica.reacoes-organicas-combustao-esterificacao-e-sapo",
+                title:
+                  "Reações orgânicas: combustão, esterificação e saponificação",
+                priority: 3,
+              },
+              {
+                key: "quimica.polimeros",
+                title: "Polímeros",
+                priority: 3,
+              },
+              {
+                key: "quimica.petroleo-e-combustiveis",
+                title: "Petróleo e combustíveis",
+                priority: 3,
+              },
+              {
+                key: "quimica.bioquimica-carboidratos-lipidios-e-proteinas",
+                title: "Bioquímica: carboidratos, lipídios e proteínas",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Transformações Químicas e Energia",
+            title: "Química ambiental",
             items: [
-              "Transformações químicas e energia calorífica",
-              "Calor de reação",
-              "Entalpia",
-              "Equações termoquímicas",
-              "Lei de Hess",
-              "Transformações químicas e energia elétrica",
-              "Reação de oxirredução",
-              "Potenciais padrão de redução",
-              "Pilha",
-              "Eletrólise",
-              "Leis de Faraday",
-              "Transformações nucleares",
-              "Conceitos fundamentais da radioatividade",
-              "Reações de fissão e fusão nuclear",
-              "Desintegração radioativa e radioisótopos",
-            ],
-          },
-          {
-            title: "Dinâmica das Transformações Químicas",
-            items: [
-              "Transformações Químicas e velocidade",
-              "Velocidade de reação",
-              "Energia de ativação",
-              "Fatores que alteram a velocidade de reação: concentração, pressão, temperatura e catalisador",
-            ],
-          },
-          {
-            title: "Transformação Química e Equilíbrio",
-            items: [
-              "Caracterização do sistema em equilíbrio",
-              "Constante de equilíbrio",
-              "Produto iônico da água, equilíbrio ácido-base e pH. Solubilidade dos sais e hidrólise",
-              "Fatores que alteram o sistema em equilíbrio",
-              "Aplicação da velocidade e do equilíbrio químico no cotidiano",
-            ],
-          },
-          {
-            title: "Compostos de Carbono",
-            items: [
-              "Características gerais dos compostos orgânicos",
-              "Principais funções orgânicas",
-              "Estrutura e propriedades de Hidrocarbonetos",
-              "Estrutura e propriedades de compostos orgânicos oxigenados",
-              "Fermentação",
-              "Estrutura e propriedades de compostos orgânicos nitrogenados",
-              "Macromoléculas naturais e sintéticas",
-              "Noções básicas sobre polímeros",
-              "Amido, glicogênio e celulose",
-              "Borracha natural e sintética",
-              "Polietileno, poliestireno, PVC, Teflon, náilon",
-              "Óleos e gorduras, sabões e detergentes sintéticos",
-              "Proteínas e enzimas",
-            ],
-          },
-          {
-            title:
-              "Relações da Química com as Tecnologias, a Sociedade e o Meio Ambiente",
-            items: [
-              "Química no cotidiano",
-              "Química na agricultura e na saúde",
-              "Química nos alimentos",
-              "Química e ambiente",
-              "Aspectos científico-tecnológicos, socioeconômicos e ambientais associados à obtenção ou produção de substâncias químicas",
-              "Indústria Química: obtenção e utilização do cloro, hidróxido de sódio, ácido sulfúrico, amônia e ácido nítrico",
-              "Mineração e Metalurgia",
-              "Poluição e tratamento de água",
-              "Poluição atmosférica",
-              "Contaminação e proteção do ambiente",
-            ],
-          },
-          {
-            title: "Energias Químicas no Cotidiano",
-            items: [
-              "Petróleo, gás natural e carvão",
-              "Madeira e hulha",
-              "Biomassa",
-              "Biocombustíveis",
-              "Impactos ambientais de combustíveis fosseis",
-              "Energia nuclear",
-              "Lixo atômico",
-              "Vantagens e desvantagens do uso de energia nuclear",
+              {
+                key: "quimica.poluicao-do-ar-chuva-acida-e-efeito-estufa",
+                title: "Poluição do ar, chuva ácida e efeito estufa",
+                priority: 3,
+              },
+              {
+                key: "quimica.tratamento-de-agua-e-esgoto",
+                title: "Tratamento de água e esgoto",
+                priority: 3,
+              },
+              {
+                key: "quimica.quimica-verde-e-reciclagem",
+                title: "Química verde e reciclagem",
+                priority: 2,
+              },
             ],
           },
         ],
@@ -387,106 +882,275 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "biologia",
         name: "Biologia",
-        topics: [
+        blocks: [
           {
-            title: "Moléculas, células e tecidos",
+            title: "Ecologia",
             items: [
-              "Estrutura e fisiologia celular: membrana, citoplasma e núcleo",
-              "Divisão celular",
-              "Aspectos bioquímicos das estruturas celulares",
-              "Aspectos gerais do metabolismo celular",
-              "Metabolismo energético: fotossíntese e respiração",
-              "Codificação da informação genética",
-              "Síntese protéica",
-              "Diferenciação celular",
-              "Principais tecidos animais e vegetais",
-              "Origem e evolução das células",
-              "Noções sobre células-tronco, clonagem e tecnologia do DNA recombinante",
-              "Aplicações de biotecnologia na produção de alimentos, fármacos e componentes biológicos",
-              "Aplicações de tecnologias relacionadas ao DNA a investigações científicas, determinação da paternidade, investigação criminal e identificação de indivíduos",
-              "Aspectos éticos relacionados ao desenvolvimento biotecnológico",
-              "Biotecnologia e sustentabilidade",
+              {
+                key: "biologia.cadeias-e-teias-alimentares",
+                title: "Cadeias e teias alimentares",
+                priority: 3,
+              },
+              {
+                key: "biologia.fluxo-de-energia-e-piramides-ecologicas",
+                title: "Fluxo de energia e pirâmides ecológicas",
+                priority: 3,
+              },
+              {
+                key: "biologia.ciclos-biogeoquimicos-carbono-nitrogenio-e-agua",
+                title: "Ciclos biogeoquímicos: carbono, nitrogênio e água",
+                priority: 3,
+              },
+              {
+                key: "biologia.relacoes-ecologicas",
+                title: "Relações ecológicas",
+                priority: 3,
+              },
+              {
+                key: "biologia.dinamica-de-populacoes",
+                title: "Dinâmica de populações",
+                priority: 2,
+              },
+              {
+                key: "biologia.sucessao-ecologica",
+                title: "Sucessão ecológica",
+                priority: 2,
+              },
+              {
+                key: "biologia.biomas-brasileiros",
+                title: "Biomas brasileiros",
+                priority: 3,
+              },
+              {
+                key: "biologia.impactos-ambientais-e-poluicao",
+                title: "Impactos ambientais e poluição",
+                priority: 3,
+              },
+              {
+                key: "biologia.aquecimento-global-e-efeito-estufa",
+                title: "Aquecimento global e efeito estufa",
+                priority: 3,
+              },
+              {
+                key: "biologia.conservacao-e-desenvolvimento-sustentavel",
+                title: "Conservação e desenvolvimento sustentável",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Hereditariedade e diversidade da vida",
+            title: "Citologia e bioenergética",
             items: [
-              "Princípios básicos que regem a transmissão de características hereditárias",
-              "Concepções pré-mendelianas sobre a hereditariedade",
-              "Aspectos genéticos do funcionamento do corpo humano",
-              "Antígenos e anticorpos",
-              "Grupos sanguíneos, transplantes e doenças auto-imunes",
-              "Neoplasias e a influência de fatores ambientais",
-              "Mutações gênicas e cromossômicas",
-              "Aconselhamento genético",
-              "Fundamentos genéticos da evolução",
-              "Aspectos genéticos da formação e manutenção da diversidade biológica",
+              {
+                key: "biologia.membrana-plasmatica-e-transportes",
+                title: "Membrana plasmática e transportes",
+                priority: 2,
+              },
+              {
+                key: "biologia.organelas-celulares",
+                title: "Organelas celulares",
+                priority: 2,
+              },
+              {
+                key: "biologia.nucleo-dna-e-rna",
+                title: "Núcleo, DNA e RNA",
+                priority: 3,
+              },
+              {
+                key: "biologia.sintese-de-proteinas",
+                title: "Síntese de proteínas",
+                priority: 3,
+              },
+              {
+                key: "biologia.mitose-e-meiose",
+                title: "Mitose e meiose",
+                priority: 2,
+              },
+              {
+                key: "biologia.respiracao-celular-e-fermentacao",
+                title: "Respiração celular e fermentação",
+                priority: 3,
+              },
+              {
+                key: "biologia.fotossintese",
+                title: "Fotossíntese",
+                priority: 3,
+              },
             ],
           },
           {
-            title: "Identidade dos seres vivos",
+            title: "Genética e biotecnologia",
             items: [
-              "Níveis de organização dos seres vivos",
-              "Vírus, procariontes e eucariontes",
-              "Autótrofos e heterótrofos",
-              "Seres unicelulares e pluricelulares",
-              "Sistemática e as grandes linhas da evolução dos seres vivos",
-              "Tipos de ciclo de vida",
-              "Evolução e padrões anatômicos e fisiológicos observados nos seres vivos",
-              "Funções vitais dos seres vivos e sua relação com a adaptação desses organismos a diferentes ambientes",
-              "Embriologia, anatomia e fisiologia humana",
-              "Evolução humana",
-              "Biotecnologia e sistemática",
+              {
+                key: "biologia.1a-lei-de-mendel",
+                title: "1ª Lei de Mendel",
+                priority: 3,
+              },
+              {
+                key: "biologia.heredogramas",
+                title: "Heredogramas",
+                priority: 2,
+              },
+              {
+                key: "biologia.grupos-sanguineos-sistema-abo-e-fator-rh",
+                title: "Grupos sanguíneos: sistema ABO e fator Rh",
+                priority: 3,
+              },
+              {
+                key: "biologia.heranca-ligada-ao-sexo",
+                title: "Herança ligada ao sexo",
+                priority: 2,
+              },
+              {
+                key: "biologia.mutacoes",
+                title: "Mutações",
+                priority: 2,
+              },
+              {
+                key: "biologia.dna-recombinante-e-transgenicos",
+                title: "DNA recombinante e transgênicos",
+                priority: 3,
+              },
+              {
+                key: "biologia.clonagem-e-celulas-tronco",
+                title: "Clonagem e células-tronco",
+                priority: 2,
+              },
+              {
+                key: "biologia.testes-de-dna-e-paternidade",
+                title: "Testes de DNA e paternidade",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Ecologia e ciências ambientais",
+            title: "Evolução",
             items: [
-              "Ecossistemas",
-              "Fatores bióticos e abióticos",
-              "Habitat e nicho ecológico",
-              "A comunidade biológica: teia alimentar, sucessão e comunidade clímax",
-              "Dinâmica de populações",
-              "Interações entre os seres vivos",
-              "Ciclos biogeoquímicos",
-              "Fluxo de energia no ecossistema",
-              "Biogeografia",
-              "Biomas brasileiros",
-              "Exploração e uso de recursos naturais",
-              "Problemas ambientais: mudanças climáticas, efeito estufa; desmatamento; erosão; poluição da água, do solo e do ar",
-              "Conservação e recuperação de ecossistemas",
-              "Conservação da biodiversidade",
-              "Tecnologias ambientais",
-              "Noções de saneamento básico",
-              "Noções de legislação ambiental: água, florestas, unidades de conservação; biodiversidade",
+              {
+                key: "biologia.origem-da-vida",
+                title: "Origem da vida",
+                priority: 1,
+              },
+              {
+                key: "biologia.teorias-evolutivas-lamarck-e-darwin",
+                title: "Teorias evolutivas: Lamarck e Darwin",
+                priority: 2,
+              },
+              {
+                key: "biologia.selecao-natural-e-adaptacao",
+                title: "Seleção natural e adaptação",
+                priority: 3,
+              },
+              {
+                key: "biologia.teoria-sintetica-e-especiacao",
+                title: "Teoria sintética e especiação",
+                priority: 2,
+              },
             ],
           },
           {
-            title: "Origem e evolução da vida",
+            title: "Fisiologia humana",
             items: [
-              "A biologia como ciência: história, métodos, técnicas e experimentação",
-              "Hipóteses sobre a origem do Universo, da Terra e dos seres vivos",
-              "Teorias de evolução",
-              "Explicações pré-darwinistas para a modificação das espécies",
-              "A teoria evolutiva de Charles Darwin",
-              "Teoria sintética da evolução",
-              "Seleção artificial e seu impacto sobre ambientes naturais e sobre populações humanas",
+              {
+                key: "biologia.sistema-digestorio",
+                title: "Sistema digestório",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-respiratorio",
+                title: "Sistema respiratório",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-circulatorio",
+                title: "Sistema circulatório",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-excretor",
+                title: "Sistema excretor",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-nervoso",
+                title: "Sistema nervoso",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-endocrino-e-hormonios",
+                title: "Sistema endócrino e hormônios",
+                priority: 2,
+              },
+              {
+                key: "biologia.sistema-imunologico-e-vacinas",
+                title: "Sistema imunológico e vacinas",
+                priority: 3,
+              },
+              {
+                key: "biologia.reproducao-humana-e-metodos-contraceptivos",
+                title: "Reprodução humana e métodos contraceptivos",
+                priority: 2,
+              },
+              {
+                key: "biologia.embriologia",
+                title: "Embriologia",
+                priority: 1,
+              },
             ],
           },
           {
-            title: "Qualidade de vida das populações humanas",
+            title: "Seres vivos e saúde",
             items: [
-              "Aspectos biológicos da pobreza e do desenvolvimento humano",
-              "Indicadores sociais, ambientais e econômicos",
-              "Índice de desenvolvimento humano",
-              "Principais doenças que afetam a população brasileira: caracterização, prevenção e profilaxia",
-              "Noções de primeiros socorros",
-              "Doenças sexualmente transmissíveis",
-              "Aspectos sociais da biologia: uso indevido de drogas; gravidez na adolescência; obesidade",
-              "Violência e segurança pública",
-              "Exercícios físicos e vida saudável",
-              "Aspectos biológicos do desenvolvimento sustentável",
-              "Legislação e cidadania",
+              {
+                key: "biologia.virus-e-viroses",
+                title: "Vírus e viroses",
+                priority: 3,
+              },
+              {
+                key: "biologia.bacterias-e-bacterioses",
+                title: "Bactérias e bacterioses",
+                priority: 3,
+              },
+              {
+                key: "biologia.protozoarios-e-protozooses",
+                title: "Protozoários e protozooses",
+                priority: 3,
+              },
+              {
+                key: "biologia.verminoses",
+                title: "Verminoses",
+                priority: 2,
+              },
+              {
+                key: "biologia.doencas-e-saneamento-basico",
+                title: "Doenças e saneamento básico",
+                priority: 3,
+              },
+              {
+                key: "biologia.fungos",
+                title: "Fungos",
+                priority: 1,
+              },
+              {
+                key: "biologia.grupos-de-plantas",
+                title: "Grupos de plantas",
+                priority: 2,
+              },
+              {
+                key: "biologia.fisiologia-vegetal",
+                title: "Fisiologia vegetal",
+                priority: 2,
+              },
+              {
+                key: "biologia.invertebrados",
+                title: "Invertebrados",
+                priority: 1,
+              },
+              {
+                key: "biologia.vertebrados",
+                title: "Vertebrados",
+                priority: 1,
+              },
             ],
           },
         ],
@@ -497,63 +1161,28 @@ export const MATRIZ: MatrizArea[] = [
 
 export const DISCIPLINES = MATRIZ.flatMap((a) => a.disciplines);
 
-export const itemKey = (d: string, t: number, i: number) => `${d}.${t}.${i}`;
-
 export interface Assunto {
   key: string;
-  discipline: string; // chave
+  discipline: string;
   disciplineName: string;
-  block: string; // bloco da matriz
+  block: string;
   title: string;
-  /** posição na matriz (do primeiro ao último assunto) */
+  /** posição na lista (do primeiro ao último conteúdo) */
   index: number;
-  /** 3 = mais cobrado, 2 = cobrado com frequência, 1 = demais */
   priority: number;
 }
 
-/**
- * Assuntos mais cobrados no ENEM (levantamentos de incidência 2009–2025: Aprova Total,
- * Projeto Medicina, Vestibulando Web). Matemática básica, estatística, geometria e funções;
- * eletrodinâmica, termologia, ondulatória, cinemática e óptica; estequiometria, propriedades
- * das substâncias, soluções, orgânica e eletroquímica; ecologia, fisiologia humana, genética,
- * biotecnologia e bioenergética.
- */
-const HIGH: Record<string, RegExp> = {
-  matematica:
-    /porcentagem|raz(õ|o)es e propor|grandezas|escala|operações em conjuntos|médias|mediana|representação e análise de dados|comprimentos, áreas e volumes|figuras geométricas planas e espaciais|gráficos e funções|funções algébricas|probabilidade|princípios de contagem/i,
-  fisica:
-    /corrente|ohm|potência e consumo|circuitos|efeito joule|tensão, corrente|calor|temperatura|termodinâmica|mudanças de estado|ondas|ondulat|frequência|grandezas fundamentais da mecânica|descrições do movimento|casos especiais de movimentos|energia mecânica|trabalho, energia e potência|lentes e espelhos|reflexão e refração|leis de newton|força de atrito/i,
-  quimica:
-    /estequiom|mol, massa molar|balanceamento|forças intermoleculares|polaridade|ligação|misturas: tipos|concentração das soluções|solubilidade|funções orgânicas|polímeros|pilha|eletrólise|oxirredução|entalpia|\bph\b|poluição|química e ambiente|biocombust|petróleo/i,
-  biologia:
-    /ecossistem|teia alimentar|ciclos biogeoquímicos|fluxo de energia|biomas|problemas ambientais|interações entre os seres|dinâmica de populações|anatomia e fisiologia humana|fotossíntese e respiração|metabolismo energético|dna recombinante|biotecnologia|síntese protéica|transmissão de características hereditárias|grupos sanguíneos|principais doenças|darwin|teoria sintética|vírus/i,
-};
-const MEDIUM: Record<string, RegExp> = {
-  matematica:
-    /semelhança|tales|relações métricas|trigonometria|sequências e progressões|exponenciais|juros|plano cartesiano|desvios e variância/i,
-  fisica:
-    /hidrostática|empuxo|pascal|gravitação|kepler|campo elétrico|campo magnético|dilatação|gases ideais|máquinas térmicas|vetores|quantidade de movimento/i,
-  quimica:
-    /equilíbrio|velocidade de reação|catalisador|ácidos, bases|radioatividade|fissão|tabela periódica|modelo atômico|gases|propriedades coligativas|óleos e gorduras|sabões/i,
-  biologia:
-    /divisão celular|membrana|mutações|diferenciação celular|embriologia|sucessão|conservação|saneamento|evolução|tecidos|sistemática|antígenos/i,
-};
-
 export const ASSUNTOS: Assunto[] = DISCIPLINES.flatMap((d) => {
   let index = 0;
-  return d.topics.flatMap((t, ti) =>
-    t.items.map((title, ii) => ({
-      key: itemKey(d.key, ti, ii),
+  return d.blocks.flatMap((b) =>
+    b.items.map((i) => ({
+      key: i.key,
       discipline: d.key,
       disciplineName: d.name,
-      block: t.title,
-      title,
+      block: b.title,
+      title: i.title,
       index: index++,
-      priority: HIGH[d.key]?.test(title)
-        ? 3
-        : MEDIUM[d.key]?.test(title)
-          ? 2
-          : 1,
+      priority: i.priority,
     })),
   );
 });
