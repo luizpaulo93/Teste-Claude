@@ -1,7 +1,7 @@
 import 'server-only';
 import { newId, sql, tx } from '@/lib/db';
 import { ASSUNTO_BY_KEY, ASSUNTOS } from '@/lib/enem-matriz';
-import { COST, schedule, todayBR, type PlanCard } from '@/lib/mentoria';
+import { COST, schedule, shift, todayBR, type PlanCard } from '@/lib/mentoria';
 import type { Mentoria, MentoriaMessage } from '@/lib/types';
 
 export interface Card {
@@ -18,6 +18,7 @@ export interface Card {
   last_acc: number | null;
   attempts: number;
   last_day: string | null;
+  history: { d: string; q: number; c: number; l: number }[];
 }
 
 export async function getMentoria(id: string) {
@@ -29,25 +30,34 @@ export async function getMentoria(id: string) {
 export const cards = (id: string) =>
   sql.query<Card>(
     `select id, item_key, discipline, title, priority, ord, level, step, due_on::text as due_on, scheduled_on::text as scheduled_on, last_acc, attempts,
-            history -> -1 ->> 'd' as last_day
+            history -> -1 ->> 'd' as last_day, history
        from mentoria_cards where mentoria_id = $1 order by ord`,
     [id],
   );
 
-/** Recalcula em que dia cai cada card, conforme os horários do aluno. */
+/** Fim do cronograma: fim da mentoria, ou data da prova, ou 6 meses. */
+export function planEnd(m: { end_date: string | null; exam_date: string | null }, today: string) {
+  return m.end_date || m.exam_date || shift(today, 180);
+}
+
+/** Recalcula em que dia cai cada assunto, do início ao fim da mentoria, nos horários do aluno. */
 export async function reschedule(mentoriaId: string) {
-  const m = await sql.one<{ availability: number[] }>(`select availability from mentorias where id = $1`, [mentoriaId]);
+  const m = await sql.one<{ availability: number[]; start_date: string; end_date: string | null; exam_date: string | null }>(
+    `select availability, start_date::text as start_date, end_date::text as end_date, exam_date::text as exam_date from mentorias where id = $1`,
+    [mentoriaId],
+  );
   if (!m) return;
-  const today = todayBR();
+  const now = todayBR();
+  const from = m.start_date && m.start_date > now ? m.start_date : now;
   const list = await sql.query<PlanCard & { last_day: string | null; last_level: number | null }>(
     `select id, level, step, ord, due_on::text as due_on, history -> -1 ->> 'd' as last_day, (history -> -1 ->> 'l')::int as last_level
        from mentoria_cards where mentoria_id = $1`,
     [mentoriaId],
   );
-  const done = list.filter((c) => c.last_day === today && c.step === 'study');
-  const plan = schedule(list, m.availability ?? [], today, 14, {
-    minutes: done.reduce((a, c) => a + (c.last_level ? COST.revisao : COST.novo), 0),
-    count: done.length,
+  const done = list.filter((c) => c.last_day === now && c.step === 'study');
+  const plan = schedule(list, m.availability ?? [], from, planEnd(m, now), {
+    minutes: from === now ? done.reduce((a, c) => a + (c.last_level ? COST.revisao : COST.novo), 0) : 0,
+    count: from === now ? done.length : 0,
   });
   const ids = [...plan.keys()];
   await sql.exec(
@@ -63,11 +73,14 @@ export async function reschedule(mentoriaId: string) {
  * intercalando as disciplinas. Conteúdos que saíram da lista são removidos.
  */
 export async function writePlan(mentoriaId: string, chosen: string[], mode: 'prioridade' | 'matriz') {
-  const queues = chosen.map((k) =>
-    ASSUNTOS.filter((x) => x.discipline === k).sort((x, y) => (mode === 'prioridade' ? y.priority - x.priority : 0) || x.index - y.index),
-  );
+  // Mais cobrados primeiro: por faixa de prioridade (3, 2, 1), alternando as disciplinas dentro de cada faixa.
+  // "Do primeiro ao último": só alterna as disciplinas na ordem da lista.
+  const tiers = mode === 'prioridade' ? [3, 2, 1] : [0];
   const ordered: (typeof ASSUNTOS)[number][] = [];
-  for (let i = 0; queues.some((q) => q.length > i); i++) for (const q of queues) if (q[i]) ordered.push(q[i]);
+  for (const tier of tiers) {
+    const queues = chosen.map((k) => ASSUNTOS.filter((x) => x.discipline === k && (tier === 0 || x.priority === tier)).sort((x, y) => x.index - y.index));
+    for (let i = 0; queues.some((q) => q.length > i); i++) for (const q of queues) if (q[i]) ordered.push(q[i]);
+  }
   await tx(async (t) => {
     await t.exec(`delete from mentoria_cards where mentoria_id = $1 and not (item_key = any($2))`, [mentoriaId, ASSUNTOS.map((x) => x.key)]);
     // Disciplina tirada: some só o que ainda não foi estudado
@@ -104,7 +117,7 @@ export async function ensureFresh(mentoriaId: string) {
       return;
     }
   }
-  const late = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 and level < 4 and (scheduled_on < $2 or scheduled_on is null) limit 1`, [
+  const late = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 and (scheduled_on < $2) limit 1`, [
     mentoriaId,
     todayBR(),
   ]);
@@ -142,7 +155,39 @@ export async function assuntoRows(id: string, list?: Card[]) {
       last_acc: c?.last_acc ?? null,
       due_on: c?.due_on ?? null,
       attempts: c?.attempts ?? 0,
+      scheduled: c?.scheduled_on ?? null,
     };
   });
   return { rows, disciplines };
+}
+
+/** Dados de um dia do cronograma (passado: o que foi estudado; hoje: a fazer + feitos; futuro: planejado). */
+export async function dayData(m: { id: string; availability: number[] }, requested?: string) {
+  const { ASSUNTO_BY_KEY: byKey, DISCIPLINES: discs } = await import('@/lib/enem-matriz');
+  const { GOAL, weekdayIndex } = await import('@/lib/mentoria');
+  const names = Object.fromEntries(discs.map((d) => [d.key, d.name]));
+  const today = todayBR();
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(requested ?? '') ? requested! : today;
+  const monday = shift(day, -weekdayIndex(day));
+  const week = Array.from({ length: 7 }, (_, i) => shift(monday, i));
+  const list = await cards(m.id);
+  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority });
+  const done = list.flatMap((c) =>
+    (c.history ?? [])
+      .filter((h) => h.d === day)
+      .map((h) => {
+        const acc = h.q ? Math.round((h.c / h.q) * 100) : 0;
+        const goal = h.l ? GOAL[Math.min(4, h.l)] : 0;
+        return { ...base(c), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal } };
+      }),
+  );
+  const pending =
+    day < today
+      ? []
+      : list
+          .filter((c) => (day === today ? c.scheduled_on !== null && c.scheduled_on <= today : c.scheduled_on === day) && !(c.last_day === today && day === today && c.step === 'study'))
+          .map((c) => ({ ...base(c), level: c.level, step: c.step === 'questions' ? ('questions' as const) : ('study' as const), result: null }));
+  const items = [...pending, ...done];
+  const minutes = items.reduce((a, i) => a + (i.level ? COST.revisao : COST.novo), 0);
+  return { today, day, week, items, minutes, free: Number(m.availability[weekdayIndex(day)]) || 0 };
 }

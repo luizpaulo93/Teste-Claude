@@ -2,7 +2,7 @@
 
 export const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
-/** Situação do assunto (cores pedidas: vermelho, amarelo, revisões). */
+/** Situação do assunto (cores: vermelho, amarelo e as revisões). */
 export const LEVELS = [
   { label: 'Não estudado', dot: 'bg-red-500', chip: 'bg-red-500/15 text-red-500' },
   { label: 'Estudado', dot: 'bg-amber-400', chip: 'bg-amber-400/15 text-amber-500' },
@@ -11,21 +11,16 @@ export const LEVELS = [
   { label: 'Revisão 03', dot: 'bg-emerald-500', chip: 'bg-emerald-500/15 text-emerald-500' },
 ] as const;
 
-/** Etapas do card no quadro */
-export const STEPS = [
-  { key: 'study', label: 'Estudar' },
-  { key: 'questions', label: 'Resolver questões' },
-  { key: 'score', label: 'Marcar desempenho' },
-] as const;
-export type Step = (typeof STEPS)[number]['key'];
+/** O que o aluno faz no card, conforme o nível em que o assunto está */
+export const TASK_KIND = ['Estudar', 'Revisão 01', 'Revisão 02', 'Revisão 03', 'Revisão de manutenção'];
 
-/** Acerto mínimo para avançar de etapa de revisão */
-export const PASS = 70;
-/** Dias até a próxima revisão depois de chegar no nível (1 → revisão 1 etc.) */
-const NEXT_REVIEW = [0, 1, 7, 21];
-/** Errou muito: volta a revisar em */
-const RETRY_DAYS = 2;
-/** Minutos que cada card ocupa no dia */
+/** Meta de acerto para passar em cada revisão (nível 1 → Revisão 01 …) */
+export const GOAL = [0, 40, 60, 70, 70];
+/** Dias até a próxima vez: depois de estudar 7, depois da 01 14, da 02 28 e da 03 em diante 60 */
+const NEXT = [7, 7, 14, 28, 60];
+/** Não bateu a meta: volta na semana seguinte */
+const RETRY = 7;
+/** Minutos que cada assunto ocupa no dia */
 export const COST = { novo: 60, revisao: 30 };
 
 /** Data de hoje no horário do Brasil (AAAA-MM-DD). */
@@ -50,19 +45,21 @@ export function daysUntil(date: string | null) {
 }
 
 /**
- * Resultado de "marcar desempenho":
- * - assunto novo → vira "Estudado" e a revisão 01 fica para amanhã;
- * - revisão com acerto ≥ 70% → sobe de nível (próxima revisão em 7 e depois 21 dias; a 03 conclui);
- * - revisão com acerto baixo → continua no mesmo nível e volta em 2 dias, até melhorar.
+ * Questões resolvidas (feitas e acertos):
+ * - assunto novo → "Estudado"; a Revisão 01 vem em 7 dias;
+ * - revisão que bate a meta (01: 40%, 02: 60%, 03: 70%) sobe de nível;
+ * - não bateu → continua no mesmo nível e volta na semana seguinte, até bater;
+ * - depois da Revisão 03 o assunto continua voltando, a cada 60 dias.
  */
 export function afterScore(level: number, questions: number, correct: number, today: string) {
   const acc = questions ? Math.round((correct / questions) * 100) : 0;
-  if (level === 0) return { level: 1, acc, due: shift(today, NEXT_REVIEW[1]) };
-  if (acc >= PASS) {
+  if (level === 0) return { level: 1, acc, due: shift(today, NEXT[1]), passed: true, goal: 0 };
+  const goal = GOAL[Math.min(level, 4)];
+  if (acc >= goal) {
     const next = Math.min(4, level + 1);
-    return { level: next, acc, due: next >= 4 ? null : shift(today, NEXT_REVIEW[next]) };
+    return { level: next, acc, due: shift(today, NEXT[next]), passed: true, goal };
   }
-  return { level, acc, due: shift(today, RETRY_DAYS) };
+  return { level, acc, due: shift(today, RETRY), passed: false, goal };
 }
 
 export interface PlanCard {
@@ -74,47 +71,57 @@ export interface PlanCard {
 }
 
 /**
- * Distribui os cards nos próximos dias conforme os minutos livres de cada dia:
- * primeiro o que já está em andamento (hoje), depois as revisões vencidas, depois assuntos novos na ordem.
+ * Distribui os assuntos do dia de hoje até o fim da mentoria, nos minutos livres de cada dia.
+ * Em cada dia: o que já está em andamento, depois as revisões, depois assuntos novos (ordem do plano:
+ * mais cobrados primeiro). Cada assunto novo já reserva o tempo das suas revisões futuras (7, 21 e 49 dias),
+ * para o cronograma fechar dentro do período. O que não couber fica fora (os menos cobrados).
  */
-export function schedule(cards: PlanCard[], availability: number[], today: string, horizon = 14, doneToday = { minutes: 0, count: 0 }) {
+export function schedule(cards: PlanCard[], availability: number[], today: string, end: string, doneToday = { minutes: 0, count: 0 }) {
   const out = new Map<string, string | null>();
-  const days = Array.from({ length: horizon }, (_, i) => shift(today, i));
-  const left = new Map(days.map((d) => [d, Math.max(0, Number(availability[weekdayIndex(d)]) || 0)]));
-  const used = new Map(days.map((d) => [d, 0]));
-  // O que já foi concluído hoje ocupa o tempo de hoje
-  left.set(today, Math.max(0, left.get(today)! - doneToday.minutes));
-  used.set(today, doneToday.count);
-  const take = (d: string, min: number, force = false) => {
-    const free = left.get(d)!;
-    if (free >= min || (force && used.get(d) === 0 && free > 0)) {
-      left.set(d, free - min);
-      used.set(d, used.get(d)! + 1);
-      return true;
-    }
-    return false;
-  };
+  const last = end < today ? today : end;
+  const days: string[] = [];
+  for (let d = today; d <= last && days.length < 500; d = shift(d, 1)) days.push(d);
+  const free = (d: string) => Math.max(0, Number(availability[weekdayIndex(d)]) || 0) - (d === today ? doneToday.minutes : 0);
 
-  for (const c of cards) if (c.level >= 4) out.set(c.id, null);
-  const open = cards.filter((c) => c.level < 4);
-  // Em andamento (já começou hoje): fica hoje
-  for (const c of open.filter((c) => c.step !== 'study')) {
-    take(today, c.level ? COST.revisao : COST.novo, true);
-    out.set(c.id, today);
-  }
-  const rest = open.filter((c) => c.step === 'study');
-  // Revisões pela data
-  for (const c of rest.filter((c) => c.level > 0).sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord)) {
-    const from = c.due_on && c.due_on > today ? c.due_on : today;
-    const day = days.find((d) => d >= from && take(d, COST.revisao, true));
-    out.set(c.id, day ?? null);
-  }
-  // Assuntos novos na ordem do plano
-  let i = 0;
-  const news = rest.filter((c) => c.level === 0).sort((a, b) => a.ord - b.ord);
+  const active = cards.filter((c) => c.step !== 'study');
+  const reviews = cards.filter((c) => c.step === 'study' && c.level > 0).sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord);
+  const news = cards.filter((c) => c.step === 'study' && c.level === 0).sort((a, b) => a.ord - b.ord);
+  const projected: string[] = []; // datas de revisões futuras reservadas
+  let r = 0;
+  let n = 0;
+
   for (const d of days) {
-    while (i < news.length && take(d, COST.novo, true)) out.set(news[i++].id, d);
+    let left = free(d);
+    let count = d === today ? doneToday.count : 0;
+    const fits = (min: number) => left >= min || (count === 0 && left > 0);
+    if (d === today)
+      for (const c of active) {
+        out.set(c.id, d);
+        left -= c.level ? COST.revisao : COST.novo;
+        count++;
+      }
+    // Revisões vencidas (reais)
+    while (r < reviews.length && (reviews[r].due_on ?? today) <= d && fits(COST.revisao)) {
+      out.set(reviews[r++].id, d);
+      left -= COST.revisao;
+      count++;
+    }
+    // Revisões futuras reservadas
+    projected.sort();
+    while (projected.length && projected[0] <= d && fits(COST.revisao)) {
+      projected.shift();
+      left -= COST.revisao;
+      count++;
+    }
+    // Assuntos novos
+    while (n < news.length && fits(COST.novo)) {
+      out.set(news[n++].id, d);
+      left -= COST.novo;
+      count++;
+      for (const k of [7, 21, 49]) if (shift(d, k) <= last) projected.push(shift(d, k));
+    }
   }
-  for (; i < news.length; i++) out.set(news[i].id, null);
+  for (; r < reviews.length; r++) out.set(reviews[r].id, null);
+  for (; n < news.length; n++) out.set(news[n].id, null);
   return out;
 }

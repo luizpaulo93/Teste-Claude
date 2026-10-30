@@ -1,5 +1,6 @@
 'use server';
 
+import { reschedule } from '@/lib/mentoria-data';
 import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { EVENT_CATEGORIES, EVENT_COLORS, eventColor } from '@/lib/calendar';
@@ -157,9 +158,12 @@ export async function saveMentoria(fd: FormData): Promise<ActionResult> {
       );
       if (!n) return { error: 'Este aluno já tem mentoria.' };
     }
+    // Período mudou: o cronograma fecha no novo fim
+    await reschedule(key);
     updateTag('viewers');
     revalidatePath('/admin/mentoria');
-    revalidatePath(`/admin/mentoria/${key}`);
+    revalidatePath(`/admin/mentoria/${key}`, 'layout');
+    revalidatePath('/mentoria', 'layout');
     return { ok: true, id: key };
   } catch (e) {
     return fail(e);

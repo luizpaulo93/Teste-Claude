@@ -15,6 +15,7 @@ export interface AssuntoRow {
   last_acc: number | null;
   due_on: string | null;
   attempts: number;
+  scheduled: string | null;
 }
 
 /** Todos os assuntos de cada disciplina e em que parte do estudo o aluno está (cores por situação). */
@@ -81,7 +82,9 @@ export function AssuntosView({ rows, disciplines }: { rows: AssuntoRow[]; discip
                       <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted">
                         <span className={cn('rounded px-1.5 py-0.5 font-bold', lv.chip)}>{lv.label}</span>
                         {r.last_acc !== null && <span>acerto {r.last_acc}%</span>}
-                        {r.level !== null && r.level >= 1 && r.level < 4 && r.due_on && <span>· próxima revisão {formatDate(r.due_on)}</span>}
+                        {r.level !== null && r.level >= 1 && r.scheduled && <span>· próxima revisão {formatDate(r.scheduled)}</span>}
+                        {r.level === 0 && r.scheduled && <span>· estudar em {formatDate(r.scheduled)}</span>}
+                        {r.level === 0 && !r.scheduled && <span>· não cabe no período da mentoria</span>}
                         {r.level === null && <span>fora do cronograma</span>}
                       </span>
                     </span>

@@ -49,9 +49,10 @@ export async function buildPlan(disciplines: string[], order: 'prioridade' | 'ma
 }
 
 // ---------------- Quadro: mover card e marcar desempenho
-export async function moveCard(id: string, step: 'study' | 'questions' | 'score', mentoriaId?: string): Promise<Result> {
+/** Seta do assunto: "a estudar" → "estudado" (ou volta). */
+export async function moveCard(id: string, step: 'study' | 'questions', mentoriaId?: string): Promise<Result> {
   const a = await access(mentoriaId);
-  if (!a || !isDocId(id) || !['study', 'questions', 'score'].includes(step)) return { error: 'Sem acesso.' };
+  if (!a || !isDocId(id) || !['study', 'questions'].includes(step)) return { error: 'Sem acesso.' };
   const n = await sql.exec(`update mentoria_cards set step = $3, updated_at = now() where id = $1 and mentoria_id = $2`, [id, a.id, step]);
   if (!n) return { error: 'Card não encontrado.' };
   refresh(a.id);
@@ -64,12 +65,12 @@ export async function scoreCard(
   questions: number,
   correct: number,
   mentoriaId?: string,
-): Promise<Result & { level?: number; acc?: number; due?: string | null }> {
+): Promise<Result & { level?: number; acc?: number; due?: string | null; passed?: boolean; goal?: number }> {
   const a = await access(mentoriaId);
   if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
   const q = clampInt(questions, 0, 300);
   const c = Math.min(q, clampInt(correct, 0, 300));
-  if (!q) return { error: 'Informe quantas questões você fez.' };
+  if (!q) return { error: 'Informe quantas questões você fez e quantas acertou.' };
   const card = await sql.one<{ level: number; history: unknown[] }>(`select level, history from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
   if (!card) return { error: 'Card não encontrado.' };
   const today = todayBR();
@@ -82,7 +83,7 @@ export async function scoreCard(
   );
   await reschedule(a.id);
   refresh(a.id);
-  return { ok: true, level: r.level, acc: r.acc, due: r.due };
+  return { ok: true, level: r.level, acc: r.acc, due: r.due, passed: r.passed, goal: r.goal };
 }
 
 // ---------------- Horários do aluno

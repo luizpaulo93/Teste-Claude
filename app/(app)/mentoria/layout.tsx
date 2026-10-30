@@ -40,8 +40,7 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
       <MentoriaTabs
         base="/mentoria"
         tabs={[
-          { href: '', label: 'Hoje' },
-          { href: '/semana', label: 'Semana' },
+          { href: '', label: 'Cronograma' },
           { href: '/assuntos', label: 'Assuntos' },
           { href: '/mensagens', label: 'Mentor', badge: unread },
           { href: '/horarios', label: 'Horários' },
