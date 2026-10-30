@@ -7,7 +7,7 @@ import type { LiveSession } from '@/lib/types';
 /** Lives só da mentoria: no ar, agendadas e gravadas (a gravação também vira aula na pasta "Lives"). */
 export async function SpaceLives({ spaces, admin }: { spaces: string[]; admin?: boolean }) {
   const lives = spaces.length
-    ? await sql.query<LiveSession>(`select * from live_sessions where space = any($1) ${admin ? '' : 'and is_published'} order by starts_at desc limit 100`, [spaces])
+    ? await sql.query<LiveSession>(`select * from live_sessions where (space = any($1) or audience && $1::text[]) ${admin ? '' : 'and is_published'} order by starts_at desc limit 100`, [spaces])
     : [];
   const now = lives.filter((l) => l.status === 'live');
   const next = lives.filter((l) => l.status === 'scheduled').reverse();

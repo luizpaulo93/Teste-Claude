@@ -48,6 +48,7 @@ export default async function AdminMentoradoLayout({ children, params }: { child
         tabs={[
           { href: '', label: 'Cronograma' },
           { href: '/assuntos', label: 'Assuntos' },
+          { href: '/apostilas', label: 'Apostilas' },
           { href: '/duvidas', label: 'Dúvidas', badge: pending },
           { href: '/horarios', label: 'Horários' },
         ]}

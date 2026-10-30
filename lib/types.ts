@@ -352,6 +352,12 @@ export interface LiveSession {
   is_published: boolean;
   /** live só para uma mentoria (m:… ou g:…) */
   space?: string | null;
+  /** quem assiste: c:<turma> · u:<aluno> · m:<mentoria> · g:<grupo> · course:<curso> (vazio = todos) */
+  audience?: string[];
+  /** PDFs da live (subidos durante ou depois) */
+  materials?: LessonMaterial[];
+  /** aula em que a gravação foi salva */
+  lesson_id?: string | null;
 }
 
 export interface LiveMessage extends AuthorInfo {

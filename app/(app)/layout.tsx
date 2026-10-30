@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!viewer) redirect('/auth/expirado');
 
   // Tudo vem do cache ou da consulta única do usuário: nenhuma consulta extra por página
-  const liveNow = viewer.isMember && (await visibleLives(viewer, ['live'])).length > 0;
+  const liveNow = (await visibleLives(viewer, ['live'])).length > 0;
   // Mentor: aviso de dúvidas da mentoria sem resposta
   const mentoriaAlert = viewer.isAdmin ? [...(await pendingDoubts()).values()].reduce((a, b) => a + b, 0) : 0;
 

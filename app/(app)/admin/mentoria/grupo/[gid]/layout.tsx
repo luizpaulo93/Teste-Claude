@@ -50,6 +50,7 @@ export default async function GroupLayout({ children, params }: { children: Reac
         tabs={[
           { href: '', label: 'Cronograma' },
           { href: '/alunos', label: 'Alunos' },
+          { href: '/apostilas', label: 'Apostilas' },
           { href: '/duvidas', label: 'Dúvidas', badge: pending.get(`g:${g.id}`) ?? 0 },
           { href: '/lives', label: 'Lives' },
         ]}

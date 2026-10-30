@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import { PlanBuilder } from '@/components/mentoria/plan-builder';
 import { AssuntoPicker } from '@/components/mentoria/assunto-picker';
 import { DayList } from '@/components/mentoria/day-list';
+import { BlocksPanel } from '@/components/mentoria/blocks-panel';
 import { Card } from '@/components/ui';
+import { blocksOf, blocksOnDay, spacesOfMentoria } from '@/lib/mentoria-blocks';
 import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
 import { cards, dayData, ensureFresh, getMentoria, planEnd } from '@/lib/mentoria-data';
 import { todayBR } from '@/lib/mentoria';
@@ -16,7 +18,8 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
   const m = await getMentoria(decodeURIComponent((await params).id));
   if (!m) notFound();
   await ensureFresh(m.id);
-  const [list, data] = await Promise.all([cards(m.id), dayData(m, (await searchParams).d)]);
+  const [list, data, spaces] = await Promise.all([cards(m.id), dayData(m, (await searchParams).d), spacesOfMentoria(m.id)]);
+  const blocks = await blocksOf(spaces);
   const end = planEnd(m, todayBR());
   const out = list.filter((c) => c.scheduled_on === null).length;
   const extras = list.filter((c) => c.pinned_on).sort((a, b) => a.pinned_on!.localeCompare(b.pinned_on!));
@@ -26,6 +29,10 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
   });
   return (
     <div className="space-y-4">
+      <Card className="p-4 sm:p-5">
+        <BlocksPanel space={`m:${m.id}`} blocks={blocks.filter((b) => b.space === `m:${m.id}`)} today={todayBR()} />
+        {m.group_id && <p className="mt-3 text-[11px] text-muted">Os períodos do grupo são editados na página do grupo e também aparecem para este aluno.</p>}
+      </Card>
       <Card className="p-4 sm:p-5">
         <PlanBuilder mentoriaId={m.id} disciplines={disciplines} chosen={m.plan_disciplines} order={m.plan_order} hasSchedule={Boolean(m.diagnosed_at)} />
         {list.length > 0 && (
@@ -63,9 +70,9 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
           </div>
         </details>
       </Card>
-      {list.length > 0 && (
+      {(list.length > 0 || blocks.length > 0) && (
         <Card className="p-4 sm:p-5">
-          <DayList key={data.day} {...data} mentoriaId={m.id} />
+          <DayList key={data.day + data.items.length} {...data} mentoriaId={m.id} folder={blocksOnDay(blocks, data.day)} />
         </Card>
       )}
       <MentoriaAdminCard mentoria={m} />

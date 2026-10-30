@@ -1,6 +1,6 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
-import { getCatalogData, getSettings, sql } from './db';
+import { emailKey, getCatalogData, getSettings, sql } from './db';
 import { canUseSpace } from './mentoria-space';
 import { canAccessCourse, type Viewer } from './session';
 import type { LiveMessage, LiveSession } from './types';
@@ -9,6 +9,11 @@ import type { LiveMessage, LiveSession } from './types';
 export async function canSeeLive(viewer: Viewer, live: LiveSession & { space?: string | null }) {
   if (viewer.isAdmin) return true;
   if (!live.is_published) return false;
+  // Público escolhido: turmas, alunos, mentorias (individual ou grupo) ou cursos
+  if (live.audience?.length) {
+    for (const t of live.audience) if (await audienceMatch(viewer, t)) return true;
+    return false;
+  }
   // Live só da mentoria: apenas quem participa daquela mentoria
   if (live.space) return canUseSpace(viewer, live.space);
   if (!viewer.isMember) return false;
@@ -16,6 +21,22 @@ export async function canSeeLive(viewer: Viewer, live: LiveSession & { space?: s
   const [{ courses }, settings] = await Promise.all([getCatalogData(), getSettings()]);
   const course = courses.find((c) => c.id === live.course_id);
   return Boolean(course && canAccessCourse(viewer, course, settings.restrict_to_student_list));
+}
+
+async function audienceMatch(viewer: Viewer, token: string) {
+  const [kind, ...rest] = token.split(':');
+  const id = rest.join(':');
+  if (!id) return false;
+  if (kind === 'c') return viewer.student?.status === 'active' && viewer.student.class_id === id;
+  if (kind === 'u') return emailKey(viewer.email) === id;
+  if (kind === 'm' || kind === 'g') return canUseSpace(viewer, token);
+  if (kind === 'course') {
+    if (!viewer.isMember) return false;
+    const [{ courses }, settings] = await Promise.all([getCatalogData(), getSettings()]);
+    const course = courses.find((c) => c.id === id);
+    return Boolean(course && canAccessCourse(viewer, course, settings.restrict_to_student_list));
+  }
+  return false;
 }
 
 /** Lives agendadas e no ar, em cache (renovado quando o admin agenda, inicia ou encerra uma live). */
@@ -26,7 +47,7 @@ const activeLives = unstable_cache(
 );
 
 export async function visibleLives(viewer: Viewer, statuses?: LiveSession['status'][]) {
-  if (!viewer.isMember && !viewer.hasMentoria) return [];
+  // (aluno escolhido pelo nome pode assistir mesmo sem turma)
   const onlyActive = statuses?.length && !statuses.includes('ended');
   const list = onlyActive
     ? (await activeLives()).filter((l) => statuses!.includes(l.status))

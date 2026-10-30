@@ -21,10 +21,13 @@ export interface Card {
   history: { d: string; q: number; c: number; l: number; f?: number; x?: number }[];
   pinned_on: string | null;
   added_by_student: boolean;
+  /** período escolhido pelo mentor: de pinned_on até span_end */
+  span_end: string | null;
+  block_id: string | null;
 }
 
 export async function getMentoria(id: string) {
-  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string }>(`select * from mentorias where id = $1`, [id]);
+  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null }>(`select * from mentorias where id = $1`, [id]);
   if (!m) return null;
   return { ...m, availability: Array.isArray(m.availability) ? m.availability.map(Number) : [0, 0, 0, 0, 0, 0, 0], plan_disciplines: m.plan_disciplines ?? [] };
 }
@@ -32,7 +35,7 @@ export async function getMentoria(id: string) {
 export const cards = (id: string) =>
   sql.query<Card>(
     `select id, item_key, discipline, title, priority, ord, level, step, due_on::text as due_on, scheduled_on::text as scheduled_on, last_acc, attempts,
-            history -> -1 ->> 'd' as last_day, history, pinned_on::text as pinned_on, added_by_student
+            history -> -1 ->> 'd' as last_day, history, pinned_on::text as pinned_on, added_by_student, span_end::text as span_end, block_id
        from mentoria_cards where mentoria_id = $1 order by ord`,
     [id],
   );
@@ -180,7 +183,7 @@ export async function dayData(m: { id: string; availability: number[] }, request
   const monday = shift(day, -weekdayIndex(day));
   const week = Array.from({ length: 7 }, (_, i) => shift(monday, i));
   const list = await cards(m.id);
-  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority, extra: false });
+  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority, extra: false, period: null as { from: string; to: string } | null });
   const done = list.flatMap((c) =>
     (c.history ?? [])
       .filter((h) => h.d === day)
@@ -190,13 +193,25 @@ export async function dayData(m: { id: string; availability: number[] }, request
         return { ...base(c), extra: Boolean(h.x), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f } };
       }),
   );
+  // Assunto num período (mentor): aparece em todos os dias do período; atrasado, aparece hoje
+  const inSpan = (c: Card) => Boolean(c.pinned_on && c.span_end && c.block_id);
+  const coversDay = (c: Card) => c.pinned_on! <= day && (c.span_end! >= day || (day === today && c.span_end! < today));
   const pending =
     day < today
       ? []
       : list
-          .filter((c) => (day === today ? c.scheduled_on !== null && c.scheduled_on <= today : c.scheduled_on === day) && !(c.last_day === today && day === today && c.step === 'study'))
-          .map((c) => ({ ...base(c), extra: Boolean(c.pinned_on), level: c.level, step: c.step === 'questions' ? ('questions' as const) : ('study' as const), result: null }));
+          .filter((c) => (inSpan(c) ? coversDay(c) : day === today ? c.scheduled_on !== null && c.scheduled_on <= today : c.scheduled_on === day))
+          .filter((c) => !(c.last_day === today && day === today && c.step === 'study'))
+          .map((c) => ({
+            ...base(c),
+            extra: Boolean(c.pinned_on) && !c.block_id,
+            period: inSpan(c) && c.span_end !== c.pinned_on ? { from: c.pinned_on!, to: c.span_end! } : null,
+            level: c.level,
+            step: c.step === 'questions' ? ('questions' as const) : ('study' as const),
+            result: null,
+          }));
   const items = [...pending, ...done];
-  const minutes = items.reduce((a, i) => a + (i.level ? COST.revisao : COST.novo), 0);
+  // Assuntos de período não contam no tempo do dia (o aluno distribui dentro do período)
+  const minutes = items.filter((i) => !i.period).reduce((a, i) => a + (i.level ? COST.revisao : COST.novo), 0);
   return { today, day, week, items, minutes, free: Number(m.availability[weekdayIndex(day)]) || 0 };
 }

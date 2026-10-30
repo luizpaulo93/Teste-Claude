@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { DayList } from '@/components/mentoria/day-list';
 import { buttonClass, Card } from '@/components/ui';
 import { emailKey, sql } from '@/lib/db';
+import { blocksOf, blocksOnDay, spacesOfMentoria } from '@/lib/mentoria-blocks';
 import { dayData, ensureFresh, getMentoria, nextMeeting } from '@/lib/mentoria-data';
 import { requireViewer } from '@/lib/session';
 import { formatDateTime } from '@/lib/utils';
@@ -15,8 +16,8 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  const has = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]);
-  if (!has) {
+  const [has, blocks] = await Promise.all([sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]), spacesOfMentoria(m.id).then(blocksOf)]);
+  if (!has && !blocks.length) {
     return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu mentor está montando seu cronograma. Assim que ficar pronto, os assuntos de cada dia aparecem aqui.</p>;
   }
   await ensureFresh(m.id);
@@ -42,7 +43,7 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
           )}
         </Card>
       )}
-      <DayList key={data.day + data.items.map((i) => i.id + i.step).join()} {...data} />
+      <DayList key={data.day + data.items.map((i) => i.id + i.step).join()} {...data} folder={blocksOnDay(blocks, data.day)} />
     </div>
   );
 }

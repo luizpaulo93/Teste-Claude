@@ -514,3 +514,31 @@ alter table mentoria_cards add column if not exists last_feel int;
 -- ============================================================================
 alter table mentoria_cards add column if not exists pinned_on date;
 alter table mentoria_cards add column if not exists added_by_student boolean not null default false;
+
+-- ============================================================================
+-- Versão 11: cronograma flexível (assuntos num dia ou num período), apostilas da
+-- mentoria, público das lives (turmas, alunos, mentorias) e PDFs da live.
+-- ============================================================================
+create table if not exists mentoria_blocks (
+  id text primary key,
+  space text not null,                       -- m:<mentoria> ou g:<grupo>
+  title text not null default '',
+  item_keys text[] not null default '{}',
+  start_on date not null,
+  end_on date not null,
+  files jsonb not null default '[]'::jsonb,  -- [{id, title, file_path, size_label}]
+  file_paths text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists mblocks_space_idx on mentoria_blocks (space, start_on);
+create index if not exists mblocks_paths_idx on mentoria_blocks using gin (file_paths);
+alter table mentoria_cards add column if not exists span_end date;
+alter table mentoria_cards add column if not exists block_id text;
+alter table mentoria_cards add column if not exists from_block boolean not null default false;
+
+alter table live_sessions add column if not exists audience text[] not null default '{}';
+alter table live_sessions add column if not exists materials jsonb not null default '[]'::jsonb;
+alter table live_sessions add column if not exists material_paths text[] not null default '{}';
+alter table live_sessions add column if not exists lesson_id text;
+create index if not exists lives_paths_idx on live_sessions using gin (material_paths);

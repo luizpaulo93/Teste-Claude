@@ -3,6 +3,7 @@
 import { Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { LiveMaterialsList } from '@/components/live/live-materials';
 import { VideoPlayer } from '@/components/player/video-player';
 import { toast } from '@/components/toast';
 import { Avatar, Card } from '@/components/ui';
@@ -39,10 +40,10 @@ export function LiveRoom({
     const timer = window.setInterval(async () => {
       if (document.visibilityState !== 'visible') return;
       const r = await pollLive(live.id).catch(() => null);
-      if (r && r.status !== live.status) router.refresh();
+      if (r && (r.status !== live.status || ('files' in r && r.files !== (live.materials?.length ?? 0)))) router.refresh();
     }, every);
     return () => window.clearInterval(timer);
-  }, [live.id, live.status, router]);
+  }, [live.id, live.status, live.materials?.length, router]);
 
   const showChat = live.chat_enabled || messages.length > 0;
 
@@ -72,6 +73,7 @@ export function LiveRoom({
           <h1 className="mt-2 text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
           {live.description && <p className="mt-2 text-sm whitespace-pre-line text-ink-2">{live.description}</p>}
         </div>
+        <LiveMaterialsList materials={live.materials ?? []} />
       </div>
       {showChat && (
         <LiveChat liveId={live.id} initial={messages} me={me} isAdmin={isAdmin} canSend={live.chat_enabled && live.status !== 'ended'} isLive={live.status === 'live'} />
@@ -120,7 +122,7 @@ function Countdown({ startsAt, serverNow, label, icon, cover }: { startsAt: stri
   );
 }
 
-function LiveChat({
+export function LiveChat({
   liveId,
   initial,
   me,

@@ -2,7 +2,10 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { AssuntoPicker } from '@/components/mentoria/assunto-picker';
 import { PlanBuilder } from '@/components/mentoria/plan-builder';
+import { BlocksPanel } from '@/components/mentoria/blocks-panel';
 import { Card } from '@/components/ui';
+import { todayBR } from '@/lib/mentoria';
+import { blocksOf } from '@/lib/mentoria-blocks';
 import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
 import { getGroup } from '@/lib/mentoria-space';
 import { formatDate } from '@/lib/utils';
@@ -17,8 +20,12 @@ export default async function GroupPlan({ params }: { params: Promise<{ gid: str
     const all = ASSUNTOS.filter((a) => a.discipline === d.key);
     return { key: d.key, name: d.name, count: all.length, top: all.filter((a) => a.priority >= 3).length };
   });
+  const blocks = await blocksOf([`g:${g.id}`]);
   return (
     <div className="space-y-4">
+      <Card className="p-4 sm:p-5">
+        <BlocksPanel space={`g:${g.id}`} blocks={blocks} today={todayBR()} />
+      </Card>
       <Card className="p-4 sm:p-5">
         <PlanBuilder groupId={g.id} disciplines={disciplines} chosen={g.plan_disciplines} order={g.plan_order} hasSchedule />
         <p className="mt-4 rounded-xl bg-surface-2/60 p-3 text-xs text-ink-2">

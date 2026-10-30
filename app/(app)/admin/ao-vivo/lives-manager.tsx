@@ -1,14 +1,15 @@
 'use client';
 
-import { CheckCircle2, CircleStop, ExternalLink, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video } from 'lucide-react';
+import { CheckCircle2, CircleStop, ExternalLink, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video, X, FileText } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
+import { LiveMaterialsAdmin } from '@/components/live/live-materials';
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, buttonClass } from '@/components/ui';
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
 import type { Course, LiveSession } from '@/lib/types';
-import { formatDateTime } from '@/lib/utils';
+import { cn, formatDateTime } from '@/lib/utils';
 import { deleteLive, disconnectYoutube, saveLive, setLiveStatus } from '../live-actions';
 
 function toLocalInput(iso?: string) {
@@ -33,17 +34,26 @@ export function LivesManager({
   courses,
   yt,
   spaces,
+  options,
 }: {
   lives: (LiveSession & { space?: string | null })[];
+  options: AudienceOptions;
   courses: Pick<Course, 'id' | 'title'>[];
   yt: YoutubeState;
   /** mentorias (grupos e individuais) que podem ter live só para elas */
   spaces: { key: string; label: string }[];
 }) {
   const [edit, setEdit] = useState<{ live?: LiveSession } | null>(null);
+  const [pdfs, setPdfs] = useState<string | null>(null);
+  const pdfLive = lives.find((l) => l.id === pdfs);
   const courseName = (id: string | null) => (id ? courses.find((c) => c.id === id)?.title ?? 'Curso removido' : 'Todos os alunos liberados');
-  const audience = (l: { course_id: string | null; space?: string | null }) =>
-    l.space ? `Mentoria: ${spaces.find((x) => x.key === l.space)?.label ?? 'removida'}` : courseName(l.course_id);
+  const all = [...options.classes, ...options.mentorias, ...options.students, ...options.courses];
+  const audience = (l: LiveSession) =>
+    l.audience?.length
+      ? l.audience.map((t) => all.find((x) => x.key === t)?.label ?? 'removido').join(', ')
+      : l.space
+        ? `Mentoria: ${spaces.find((x) => x.key === l.space)?.label ?? 'removida'}`
+        : courseName(l.course_id);
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -99,6 +109,10 @@ export function LivesManager({
                     <Link href={`/ao-vivo/${l.id}`} target="_blank" className={buttonClass('ghost', 'sm', 'px-2')} aria-label="Abrir sala">
                       <ExternalLink className="size-4" />
                     </Link>
+                    <Button variant="ghost" size="sm" className="px-2" onClick={() => setPdfs(l.id)} aria-label="PDFs da live" title="PDFs da live">
+                      <FileText className="size-4" />
+                      {(l.materials?.length ?? 0) > 0 && <span className="text-[11px]">{l.materials!.length}</span>}
+                    </Button>
                     <Button variant="ghost" size="sm" className="px-2" onClick={() => setEdit({ live: l })} aria-label="Editar">
                       <Pencil className="size-4" />
                     </Button>
@@ -117,6 +131,15 @@ export function LivesManager({
 
       <YoutubeCard yt={yt} />
 
+      <Modal open={Boolean(pdfLive)} onClose={() => setPdfs(null)} title={`PDFs · ${pdfLive?.title ?? ''}`} size="md">
+        {pdfLive && (
+          <div className="space-y-2">
+            <LiveMaterialsAdmin liveId={pdfLive.id} materials={pdfLive.materials ?? []} />
+            <p className="text-[11px] text-muted">Os PDFs aparecem na sala da live e na aula salva no banco de aulas.</p>
+          </div>
+        )}
+      </Modal>
+
       <Modal open={Boolean(edit)} onClose={() => setEdit(null)} title={edit?.live ? 'Editar transmissão' : 'Agendar transmissão'} size="lg">
         {edit && (
           <ActionForm action={saveLive} success="Transmissão salva" onSuccess={() => setEdit(null)} className="space-y-4">
@@ -132,26 +155,8 @@ export function LivesManager({
               <Field label="Data e hora">
                 <Input name="starts_at" type="datetime-local" defaultValue={toLocalInput(edit.live?.starts_at)} required />
               </Field>
-              <Field label="Quem pode assistir">
-                <Select name="audience" defaultValue={edit.live?.space ?? edit.live?.course_id ?? ''}>
-                  <option value="">Todos os alunos liberados</option>
-                  {courses.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      Turmas com acesso a: {c.title}
-                    </option>
-                  ))}
-                  {spaces.length > 0 && (
-                    <optgroup label="Só alunos da mentoria">
-                      {spaces.map((x) => (
-                        <option key={x.key} value={x.key}>
-                          Mentoria: {x.label}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                </Select>
-              </Field>
             </div>
+            <AudiencePicker options={options} initial={edit.live?.audience?.length ? edit.live.audience : edit.live?.space ? [edit.live.space] : edit.live?.course_id ? [`course:${edit.live.course_id}`] : []} />
             <Field label="Descrição">
               <Textarea name="description" defaultValue={edit.live?.description} rows={3} maxLength={2000} />
             </Field>
@@ -170,6 +175,82 @@ export function LivesManager({
           </ActionForm>
         )}
       </Modal>
+    </div>
+  );
+}
+
+export interface AudienceOptions {
+  classes: { key: string; label: string }[];
+  mentorias: { key: string; label: string }[];
+  students: { key: string; label: string; sub?: string }[];
+  courses: { key: string; label: string }[];
+}
+
+/** Quem assiste: turmas, alunos, mentorias (individual ou grupo) e cursos. Nada marcado = todos os alunos liberados. */
+function AudiencePicker({ options, initial }: { options: AudienceOptions; initial: string[] }) {
+  const [sel, setSel] = useState<string[]>(initial);
+  const [q, setQ] = useState('');
+  const all = [...options.classes, ...options.mentorias, ...options.students, ...options.courses];
+  const toggle = (k: string) => setSel((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
+  const term = q.trim().toLowerCase();
+  const found = term ? options.students.filter((x) => `${x.label} ${x.sub ?? ''}`.toLowerCase().includes(term)).slice(0, 8) : [];
+  const Chips = ({ title, list }: { title: string; list: { key: string; label: string }[] }) =>
+    list.length ? (
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-semibold text-muted">{title}</p>
+        <div className="flex flex-wrap gap-1.5">
+          {list.map((x) => (
+            <button
+              key={x.key}
+              type="button"
+              aria-pressed={sel.includes(x.key)}
+              onClick={() => toggle(x.key)}
+              className={cn('rounded-lg border px-2.5 py-1 text-xs font-semibold transition', sel.includes(x.key) ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2')}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    ) : null;
+  return (
+    <div className="space-y-3 rounded-2xl border border-line p-3.5">
+      {sel.map((k) => (
+        <input key={k} type="hidden" name="audience" value={k} />
+      ))}
+      <div>
+        <p className="text-xs font-semibold text-ink-2">Quem pode assistir</p>
+        <p className="text-[11px] text-muted">
+          {sel.length ? `${sel.length} escolhido${sel.length > 1 ? 's' : ''}: ${sel.map((k) => all.find((x) => x.key === k)?.label ?? k).join(', ')}` : 'Todos os alunos liberados (escolha abaixo para limitar).'}
+        </p>
+      </div>
+      <Chips title="Turmas" list={options.classes} />
+      <Chips title="Mentorias (individual ou em grupo)" list={options.mentorias} />
+      <div className="space-y-1.5">
+        <p className="text-[11px] font-semibold text-muted">Alunos</p>
+        <div className="flex flex-wrap gap-1.5">
+          {sel
+            .filter((k) => k.startsWith('u:'))
+            .map((k) => (
+              <button key={k} type="button" onClick={() => toggle(k)} className="flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1 text-xs font-semibold text-white">
+                {all.find((x) => x.key === k)?.label ?? k.slice(2)} <X className="size-3" />
+              </button>
+            ))}
+        </div>
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar aluno por nome ou e-mail" aria-label="Buscar aluno" className="h-9" />
+        {found.length > 0 && (
+          <ul className="divide-y divide-line rounded-xl border border-line">
+            {found.map((x) => (
+              <li key={x.key}>
+                <button type="button" onClick={() => { toggle(x.key); setQ(''); }} className="w-full px-3 py-2 text-left text-xs hover:bg-surface-2">
+                  <span className="font-semibold text-ink">{x.label}</span> <span className="text-muted">{x.sub}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <Chips title="Turmas com acesso ao curso" list={options.courses} />
     </div>
   );
 }

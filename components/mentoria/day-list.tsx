@@ -1,12 +1,13 @@
 'use client';
 
-import { ArrowRight, Check, ChevronLeft, ChevronRight, Flame, Plus, X } from 'lucide-react';
+import { ArrowRight, CalendarRange, Check, ChevronLeft, ChevronRight, Flame, Plus, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
 import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
+import { DayFolder, periodLabel, type ApostilaGroup } from '@/components/mentoria/apostilas';
 import { moveCard, removeFromDay, scoreCard } from '@/app/(app)/mentoria/actions';
 import { FEELS, GOAL, LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
@@ -21,6 +22,8 @@ export interface DayItem {
   step: 'study' | 'questions';
   /** acrescentado pelo aluno (além do que o mentor montou) */
   extra?: boolean;
+  /** assunto de um período escolhido pelo mentor */
+  period?: { from: string; to: string } | null;
   /** já feito neste dia: resultado */
   result?: { q: number; c: number; acc: number; passed: boolean; goal: number; f?: number } | null;
 }
@@ -34,6 +37,7 @@ export function DayList({
   minutes,
   free,
   mentoriaId,
+  folder = [],
 }: {
   week: string[]; // 7 datas (seg..dom)
   day: string;
@@ -42,6 +46,8 @@ export function DayList({
   minutes: number;
   free: number;
   mentoriaId?: string;
+  /** apostilas dos períodos que valem neste dia */
+  folder?: ApostilaGroup[];
 }) {
   const path = usePathname();
   const href = (d: string) => `${path}?d=${d}`;
@@ -82,6 +88,8 @@ export function DayList({
         </p>
         <p className="text-[11px] text-muted tabular-nums">{free ? `${fmt(minutes)} de ${fmt(free)} livres` : day < today ? '' : 'sem estudo neste dia'}</p>
       </div>
+
+      <DayFolder groups={folder} />
 
       {items.length ? (
         <ul className="space-y-2">
@@ -148,6 +156,11 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
             {it.priority >= 3 && (
               <span className="flex items-center gap-0.5 normal-case text-orange-500">
                 <Flame className="size-3" /> mais cobrado
+              </span>
+            )}
+            {it.period && (
+              <span className="flex items-center gap-0.5 rounded-md bg-sky-500/15 px-1.5 py-0.5 normal-case text-sky-500">
+                <CalendarRange className="size-3" /> período {periodLabel(it.period.from, it.period.to)}
               </span>
             )}
             {it.extra && (

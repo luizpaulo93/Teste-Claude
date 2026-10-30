@@ -15,20 +15,28 @@ const NOTICES: Record<string, string> = {
 
 export default async function AdminLives({ searchParams }: { searchParams: Promise<{ yt?: string }> }) {
   const { yt: notice } = await searchParams;
-  const [lives, catalog, acc, groups, singles] = await Promise.all([
+  const [lives, catalog, acc, groups, singles, classes, students] = await Promise.all([
     sql.query<LiveSession>(`select * from live_sessions order by starts_at desc limit 200`),
     getCatalogData(),
     getAccount(),
     sql.query<{ id: string; name: string }>(`select id, name from mentoria_groups order by name`),
     sql.query<{ id: string; name: string }>(`select id, coalesce(nullif(student_name, ''), student_email) as name from mentorias where group_id is null order by 2`),
+    sql.query<{ id: string; name: string }>(`select id, name from classes order by name`),
+    sql.query<{ id: string; name: string }>(`select id, coalesce(nullif(name, ''), email) as name from students order by 2 limit 5000`),
   ]);
   const spaces = [...groups.map((g) => ({ key: `g:${g.id}`, label: `${g.name} (grupo)` })), ...singles.map((m) => ({ key: `m:${m.id}`, label: m.name }))];
+  const options = {
+    classes: classes.map((c) => ({ key: `c:${c.id}`, label: c.name })),
+    mentorias: spaces,
+    students: students.map((x) => ({ key: `u:${x.id}`, label: x.name, sub: x.id })),
+    courses: catalog.courses.map((c) => ({ key: `course:${c.id}`, label: c.title })),
+  };
   const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', notice: notice ? NOTICES[notice] : undefined };
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>
       <PageHeader title="Ao vivo" subtitle="Transmita do Estúdio direto para o seu canal (não listado). Só alunos com acesso assistem aqui dentro." />
-      <LivesManager lives={lives} courses={courses} yt={yt} spaces={spaces} />
+      <LivesManager lives={lives} courses={courses} yt={yt} spaces={spaces} options={options} />
     </>
   );
 }

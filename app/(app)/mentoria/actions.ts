@@ -80,7 +80,7 @@ export async function scoreCard(
   const r = afterScore(card.level, q, c, today, f);
   const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level, f, ...(card.pinned_on ? { x: 1 } : {}) }].slice(-30);
   await sql.exec(
-    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, pinned_on = null, updated_at = now()
+    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, pinned_on = null, span_end = null, updated_at = now()
      where id = $1 and mentoria_id = $2`,
     [id, a.id, r.level, r.due, r.acc, JSON.stringify(history), f],
   );
@@ -150,7 +150,7 @@ export async function addToDay(itemKey: string, day: string, mentoriaId?: string
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today || day > shift(today, 6)) return { error: 'Escolha hoje ou um dos próximos dias.' };
   const card = await sql.one<{ id: string; step: string }>(`select id, step from mentoria_cards where mentoria_id = $1 and item_key = $2`, [a.id, itemKey]);
   if (card?.step === 'questions') return { error: 'Esse assunto já está em andamento hoje.' };
-  if (card) await sql.exec(`update mentoria_cards set pinned_on = $3, updated_at = now() where id = $1 and mentoria_id = $2`, [card.id, a.id, day]);
+  if (card) await sql.exec(`update mentoria_cards set pinned_on = $3, span_end = null, block_id = null, updated_at = now() where id = $1 and mentoria_id = $2`, [card.id, a.id, day]);
   else {
     const max = await sql.one<{ m: number }>(`select coalesce(max(ord), -1)::int as m from mentoria_cards where mentoria_id = $1`, [a.id]);
     await sql.exec(
@@ -168,8 +168,8 @@ export async function addToDay(itemKey: string, day: string, mentoriaId?: string
 export async function removeFromDay(id: string, mentoriaId?: string): Promise<Result> {
   const a = await access(mentoriaId);
   if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
-  const del = await sql.exec(`delete from mentoria_cards where id = $1 and mentoria_id = $2 and added_by_student and attempts = 0 and step = 'study'`, [id, a.id]);
-  if (!del) await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2`, [id, a.id]);
+  const del = await sql.exec(`delete from mentoria_cards where id = $1 and mentoria_id = $2 and added_by_student and block_id is null and attempts = 0 and step = 'study'`, [id, a.id]);
+  if (!del) await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2 and block_id is null`, [id, a.id]);
   await reschedule(a.id);
   refresh(a.id);
   return { ok: true };

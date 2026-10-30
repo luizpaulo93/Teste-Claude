@@ -1,4 +1,5 @@
 import 'server-only';
+import { applyGroupBlocks } from '@/lib/mentoria-blocks';
 import { emailKey, sql } from '@/lib/db';
 import { appendCards, reschedule, syncCards } from '@/lib/mentoria-data';
 import type { Viewer } from '@/lib/session';
@@ -96,6 +97,7 @@ export async function syncGroup(groupId: string, onlyEmail?: string, delta?: { a
       if (delta.remove.length) await sql.exec(`delete from mentoria_cards where mentoria_id = $1 and item_key = any($2) and level = 0 and attempts = 0`, [id, delta.remove]);
       if (delta.add.length) await appendCards(id, delta.add);
     }
+    await applyGroupBlocks(g.id, m.email);
     await reschedule(id);
     n++;
   }

@@ -50,5 +50,5 @@ export async function pollLive(liveId: string) {
   if (!viewer || !isDocId(liveId)) return { status: 'ended' as const, messages: [] as LiveMessage[] };
   const feed = await liveFeed(liveId);
   if (!feed.live || !(await canSeeLive(viewer, feed.live))) return { status: 'ended' as const, messages: [] as LiveMessage[] };
-  return { status: feed.live.status, messages: feed.messages };
+  return { status: feed.live.status, messages: feed.messages, files: feed.live.materials?.length ?? 0 };
 }

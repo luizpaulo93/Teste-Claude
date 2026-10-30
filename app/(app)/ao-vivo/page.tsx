@@ -10,7 +10,8 @@ export const metadata: Metadata = { title: 'Ao vivo' };
 
 export default async function LivesPage() {
   const viewer = await requireViewer();
-  if (!viewer.isMember) {
+  const all = (await visibleLives(viewer)).filter((l) => l.is_published);
+  if (!viewer.isMember && !all.length) {
     return (
       <>
         <PageHeader title="Ao vivo" />
@@ -18,7 +19,6 @@ export default async function LivesPage() {
       </>
     );
   }
-  const all = (await visibleLives(viewer)).filter((l) => l.is_published);
   const now = all.filter((l) => l.status === 'live');
   const next = all.filter((l) => l.status === 'scheduled').reverse();
   const past = all.filter((l) => l.status === 'ended' && l.show_replay && l.youtube_id);

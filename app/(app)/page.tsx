@@ -18,7 +18,7 @@ export default async function HomePage() {
     getCatalog(),
     getMyProgress(viewer.userId),
     getUpcomingEvents(5),
-    viewer.isMember ? visibleLives(viewer, ['live', 'scheduled']) : Promise.resolve([] as LiveSession[]),
+    visibleLives(viewer, ['live', 'scheduled']),
   ]);
 
   // Última aula em andamento (a mais recente que ainda não terminou)
