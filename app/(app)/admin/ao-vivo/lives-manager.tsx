@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
 import { LiveMaterialsAdmin } from '@/components/live/live-materials';
+import { YoutubeGuide } from './youtube-guide';
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, buttonClass } from '@/components/ui';
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
 import type { Course, LiveSession } from '@/lib/types';
@@ -27,6 +28,8 @@ export interface YoutubeState {
   oauth: boolean;
   channel: string;
   notice?: string;
+  /** endereço do site (para as URLs do tutorial) */
+  origin: string;
 }
 
 export function LivesManager({
@@ -279,6 +282,7 @@ function YoutubeCard({ yt }: { yt: YoutubeState }) {
         </a>
       )}
       {!yt.channel && <p className="text-xs text-muted">Conecte uma vez. No Estúdio, a live é criada no seu canal e, ao encerrar, o link vira aula na pasta “Lives”.</p>}
+      {!yt.channel && <YoutubeGuide origin={yt.origin} open={!yt.oauth} />}
     </Card>
   );
 }

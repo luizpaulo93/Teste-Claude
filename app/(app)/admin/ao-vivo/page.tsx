@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { PageHeader } from '@/components/ui';
 import { getCatalogData, sql } from '@/lib/db';
 import type { LiveSession } from '@/lib/types';
@@ -10,7 +11,7 @@ export const metadata: Metadata = { title: 'Ao vivo · Admin' };
 const NOTICES: Record<string, string> = {
   ok: 'Conta do YouTube conectada.',
   erro: 'Não foi possível conectar ao YouTube. Tente de novo.',
-  'sem-config': 'Para conectar a conta, configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel.',
+  'sem-config': 'Falta configurar GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel. Siga o passo a passo abaixo.',
 };
 
 export default async function AdminLives({ searchParams }: { searchParams: Promise<{ yt?: string }> }) {
@@ -31,7 +32,9 @@ export default async function AdminLives({ searchParams }: { searchParams: Promi
     students: students.map((x) => ({ key: `u:${x.id}`, label: x.name, sub: x.id })),
     courses: catalog.courses.map((c) => ({ key: `course:${c.id}`, label: c.title })),
   };
-  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', notice: notice ? NOTICES[notice] : undefined };
+  const h = await headers();
+  const origin = `${h.get('x-forwarded-proto') ?? 'https'}://${h.get('x-forwarded-host') ?? h.get('host')}`;
+  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', notice: notice ? NOTICES[notice] : undefined, origin };
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>

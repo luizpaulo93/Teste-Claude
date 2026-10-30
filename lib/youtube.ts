@@ -7,8 +7,9 @@ import { sql } from '@/lib/db';
  * - Sem conta conectada: usa a chave HLS copiada do YouTube Studio.
  */
 
-const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const API = 'https://www.googleapis.com/youtube/v3';
+// Endereços do Google (podem ser trocados só para testes locais)
+const TOKEN_URL = process.env.GOOGLE_TOKEN_URL || 'https://oauth2.googleapis.com/token';
+const API = process.env.YOUTUBE_API_BASE || 'https://www.googleapis.com/youtube/v3';
 export const YT_SCOPE = 'https://www.googleapis.com/auth/youtube';
 
 export interface YoutubeAccount {

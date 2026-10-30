@@ -3,6 +3,7 @@
  * câmera/tela + microfone → H.264 + AAC (WebCodecs) → segmentos MPEG-TS de ~2 s → HLS para o YouTube.
  * O envio passa pelo nosso servidor (/api/youtube/ingest), que guarda a chave do YouTube.
  */
+import { workerTicker } from './ticker';
 import { adts, TsMuxer, type AudioSample, type VideoSample } from './ts-muxer';
 
 export interface BroadcastOptions {
@@ -67,7 +68,8 @@ export class Broadcaster {
   private audioCfg?: { sampleRate: number; channels: number; adts: boolean };
   private readers: ReadableStreamDefaultReader[] = [];
   private status: BroadcastStatus = { state: 'starting', seconds: 0, sent: 0, queue: 0, kbps: 0 };
-  private tick?: number;
+  private stopTick?: () => void;
+  private nextFrame = 0;
   private audioFirstTs = -1;
   private audioOffsetUs = 0;
 
@@ -97,10 +99,11 @@ export class Broadcaster {
     const at = this.o.stream.getAudioTracks()[0];
     if (vt) this.setVideoTrack(vt);
     if (at) void this.pumpAudio(at);
-    this.tick = window.setInterval(() => {
+    // Relógio de Worker: não para quando a aba do estúdio fica em segundo plano
+    this.stopTick = workerTicker(200, () => {
       this.flush();
       this.emit();
-    }, 200);
+    });
     this.emit();
   }
 
@@ -108,7 +111,7 @@ export class Broadcaster {
     if (!this.running) return;
     this.running = false;
     for (const r of this.readers) r.cancel().catch(() => {});
-    if (this.tick) window.clearInterval(this.tick);
+    this.stopTick?.();
     try {
       await this.venc?.flush();
       await this.aenc?.flush();
@@ -123,6 +126,19 @@ export class Broadcaster {
     this.aenc?.close();
     this.status = { ...this.status, state: 'stopped' };
     this.emit();
+  }
+
+  /** Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto. */
+  pushFrame(canvas: HTMLCanvasElement) {
+    if (!this.running || !this.venc) return;
+    const ts = Math.round((performance.now() - this.t0) * 1000);
+    if (ts < this.nextFrame || this.venc.encodeQueueSize > 3) return;
+    this.nextFrame = ts + (1e6 / this.o.fps) * 0.9;
+    const out = new VideoFrame(canvas, { timestamp: ts });
+    const key = ts - this.lastKeyAt >= SEGMENT_US;
+    if (key) this.lastKeyAt = ts;
+    this.venc.encode(out, { keyFrame: key });
+    out.close();
   }
 
   /** Troca a câmera/tela no meio da transmissão (o vídeo continua no mesmo tamanho). */
@@ -313,7 +329,7 @@ export class Broadcaster {
     this.emit();
     this.running = false;
     for (const r of this.readers) r.cancel().catch(() => {});
-    if (this.tick) window.clearInterval(this.tick);
+    this.stopTick?.();
   }
 
   private emit() {
