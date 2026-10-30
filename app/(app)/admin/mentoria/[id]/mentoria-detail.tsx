@@ -1,6 +1,6 @@
 'use client';
 
-import { CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Star, Trash2 } from 'lucide-react';
+import { CalendarClock, Check, ChevronLeft, ChevronRight, Copy, Pencil, Plus, Sparkles, Star, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -12,6 +12,7 @@ import { TASK_KINDS, type Mentoria, type MentoriaCheckin, type MentoriaMeeting, 
 import { addDays, cn, formatDate, formatDateTime } from '@/lib/utils';
 import { copyWeek, deleteMeeting, deleteMentoria, deleteTask, saveFeedback, saveTask } from '../../misc-actions';
 import { MentoriaForm } from '../mentoria-form';
+import { generateWeek } from '../../../mentoria/actions';
 
 export function MentoriaDetail({
   mentoria,
@@ -52,6 +53,18 @@ export function MentoriaDetail({
               <ActionButton action={() => copyWeek(mentoria.id, addDays(week, -7), week)} success="Tarefas copiadas" size="sm" className="h-9" title="Copiar da semana anterior">
                 <Copy className="size-3.5" /> <span className="hidden sm:inline">Copiar anterior</span>
               </ActionButton>
+              <ActionButton
+                action={async () => {
+                  const r = await generateWeek(week, mentoria.id);
+                  return r.error ? r : undefined;
+                }}
+                success="Cronograma gerado pelo diagnóstico"
+                size="sm"
+                className="h-9"
+                title="Gerar cronograma automático"
+              >
+                <Sparkles className="size-3.5" /> <span className="hidden sm:inline">Gerar</span>
+              </ActionButton>
               <Button size="sm" className="h-9" onClick={() => setTask({})}>
                 <Plus className="size-3.5" /> Tarefa
               </Button>
@@ -68,7 +81,10 @@ export function MentoriaDetail({
                     <p className={cn('truncate text-sm font-semibold', t.done ? 'text-muted line-through' : 'text-ink')}>{t.title}</p>
                     {t.description && <p className="truncate text-xs text-muted">{t.description}</p>}
                   </div>
-                  <Badge>{TASK_KINDS[t.kind]}</Badge>
+                  <span className="hidden flex-col items-end gap-0.5 sm:flex">
+                    <Badge>{TASK_KINDS[t.kind]}</Badge>
+                    {t.due_date && <span className="text-[10px] text-muted">{formatDate(t.due_date)}</span>}
+                  </span>
                   <Button variant="ghost" size="sm" className="px-1.5" onClick={() => setTask({ t })} aria-label="Editar">
                     <Pencil className="size-3.5" />
                   </Button>

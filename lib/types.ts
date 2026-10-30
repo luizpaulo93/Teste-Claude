@@ -227,6 +227,14 @@ export interface Mentoria {
   weekly_hours_target: number;
   start_date: string;
   end_date: string | null;
+  target_course: string;
+  target_score: number;
+  exam_date: string | null;
+  /** minutos por dia, seg..dom */
+  availability: number[];
+  /** 1 (fraco) a 5 (forte) */
+  subject_levels: Record<string, number>;
+  diagnosed_at: string | null;
 }
 
 export interface MentoriaTask {
@@ -240,6 +248,54 @@ export interface MentoriaTask {
   done: boolean;
   done_at: string | null;
   created_at?: string;
+  subject: string;
+  minutes: number;
+  auto: boolean;
+}
+
+export interface MentoriaSession {
+  id: string;
+  mentoria_id: string;
+  subject: string;
+  minutes: number;
+  questions: number;
+  correct: number;
+  studied_on: string;
+  created_at: string;
+}
+
+export type ErrorReason = 'conteudo' | 'atencao' | 'interpretacao' | 'tempo' | 'chute';
+export const ERROR_REASONS: Record<ErrorReason, string> = {
+  conteudo: 'Não sabia o conteúdo',
+  atencao: 'Falta de atenção',
+  interpretacao: 'Interpretação',
+  tempo: 'Faltou tempo',
+  chute: 'Chutei',
+};
+
+export interface MentoriaError {
+  id: string;
+  mentoria_id: string;
+  subject: string;
+  topic: string;
+  question: string;
+  reason: ErrorReason;
+  answer: string;
+  image_url: string;
+  stage: number;
+  next_review: string;
+  mastered: boolean;
+  created_at: string;
+}
+
+export interface MentoriaMessage {
+  id: string;
+  mentoria_id: string;
+  from_mentor: boolean;
+  author_name: string;
+  text: string;
+  read_at: string | null;
+  created_at: string;
 }
 
 export interface MentoriaCheckin {

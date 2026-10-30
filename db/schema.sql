@@ -377,3 +377,62 @@ create table if not exists integrations (
   data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
+
+-- ============================================================================
+-- Versão 5: mentoria completa (diagnóstico, cronograma automático, cronômetro,
+-- registro de questões, caderno de erros com revisão espaçada e mensagens).
+-- ============================================================================
+alter table mentorias add column if not exists target_course text not null default '';
+alter table mentorias add column if not exists target_score int not null default 0;
+alter table mentorias add column if not exists exam_date date;
+-- minutos disponíveis por dia (seg..dom)
+alter table mentorias add column if not exists availability jsonb not null default '[120,120,120,120,120,60,0]'::jsonb;
+-- nível 1 (fraco) a 5 (forte) por matéria
+alter table mentorias add column if not exists subject_levels jsonb not null default '{}'::jsonb;
+alter table mentorias add column if not exists diagnosed_at timestamptz;
+
+alter table mentoria_tasks add column if not exists subject text not null default '';
+alter table mentoria_tasks add column if not exists minutes int not null default 0;
+alter table mentoria_tasks add column if not exists auto boolean not null default false;
+
+-- Sessões de estudo (cronômetro ou registro manual) e questões feitas
+create table if not exists mentoria_sessions (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  subject text not null default '',
+  minutes int not null default 0,
+  questions int not null default 0,
+  correct int not null default 0,
+  studied_on date not null default current_date,
+  created_at timestamptz not null default now()
+);
+create index if not exists msessions_idx on mentoria_sessions (mentoria_id, studied_on desc);
+
+-- Caderno de erros com revisão espaçada (1, 7, 15 e 30 dias)
+create table if not exists mentoria_errors (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  subject text not null default '',
+  topic text not null default '',
+  question text not null default '',
+  reason text not null default 'conteudo',
+  answer text not null default '',
+  image_url text not null default '',
+  stage int not null default 0,
+  next_review date not null default current_date,
+  mastered boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists merrors_idx on mentoria_errors (mentoria_id, mastered, next_review);
+
+-- Conversa aluno ↔ mentor
+create table if not exists mentoria_messages (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  from_mentor boolean not null default false,
+  author_name text not null default '',
+  text text not null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index if not exists mmessages_idx on mentoria_messages (mentoria_id, created_at desc);

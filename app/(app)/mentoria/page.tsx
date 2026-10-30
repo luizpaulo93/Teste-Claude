@@ -1,156 +1,114 @@
-import { CalendarClock, ChevronLeft, ChevronRight, Clock, Flag, Target, Video } from 'lucide-react';
+import { BookX, CalendarClock, ChevronRight, Clock, Flame, ListChecks, Video } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Badge, buttonClass, Card, EmptyState, LinkButton, PageHeader } from '@/components/ui';
-import { requireViewer } from '@/lib/session';
+import { redirect } from 'next/navigation';
+import { QuestionsLog } from '@/components/mentoria/questions-log';
+import { StudyTimer } from '@/components/mentoria/study-timer';
+import { WeekPlan } from '@/components/mentoria/week-plan';
+import { buttonClass, Card } from '@/components/ui';
 import { emailKey, sql } from '@/lib/db';
-import type { Mentoria, MentoriaCheckin, MentoriaMeeting, MentoriaTask } from '@/lib/types';
-import { addDays, cn, formatDate, formatDateTime, weekStart } from '@/lib/utils';
-import { CheckinForm } from './checkin-form';
-import { TaskList } from './task-list';
+import { fmtMinutes, streak, todayBR } from '@/lib/mentoria';
+import { getMentoria, recentSessions, upcomingMeetings, weekTasks } from '@/lib/mentoria-data';
+import { requireViewer } from '@/lib/session';
+import { formatDateTime, weekStart } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Mentoria' };
 
-export default async function MentoriaPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
+/** Hoje: o que estudar agora, cronômetro e registro de questões. */
+export default async function MentoriaToday() {
   const viewer = await requireViewer();
-  const { w } = await searchParams;
-  const m = await sql.one<Mentoria>(`select * from mentorias where id = $1`, [emailKey(viewer.email)]);
-
-  if (!m) {
-    return (
-      <>
-        <PageHeader title="Mentoria" />
-        <EmptyState
-          icon={<Target className="size-6" />}
-          title="Você ainda não participa da mentoria"
-          description="A mentoria individual inclui plano semanal, check-ins e encontros com o professor."
-          action={viewer.isAdmin ? <LinkButton href="/admin/mentoria">Gerenciar mentorias</LinkButton> : undefined}
-        />
-      </>
-    );
-  }
-  const mentoria = m as Mentoria;
-  const current = weekStart();
-  const week = /^\d{4}-\d{2}-\d{2}$/.test(w ?? '') ? weekStart(new Date(`${w}T12:00:00`)) : current;
-
-  const since = new Date(Date.now() - 3 * 3600_000).toISOString();
-  const [tasks, checkinList, meetings] = await Promise.all([
-    sql.query<MentoriaTask>(
-      `select * from mentoria_tasks where mentoria_id = $1 and week_start = $2 order by due_date nulls last, created_at`,
-      [mentoria.id, week],
-    ),
-    sql.query<MentoriaCheckin>(`select * from mentoria_checkins where mentoria_id = $1 order by week_start desc limit 12`, [mentoria.id]),
-    sql.query<MentoriaMeeting>(
-      `select * from mentoria_meetings where (mentoria_id = $1 or mentoria_id is null) and starts_at >= $2 order by starts_at limit 6`,
-      [mentoria.id, since],
-    ),
+  const m = await getMentoria(emailKey(viewer.email));
+  if (!m) return null;
+  if (!m.diagnosed_at) redirect('/mentoria/diagnostico?primeira=1');
+  const today = todayBR();
+  const week = weekStart(new Date(`${today}T12:00:00`));
+  const [tasks, sessions, meetings, due] = await Promise.all([
+    weekTasks(m.id, week),
+    recentSessions(m.id, 40),
+    upcomingMeetings(m.id),
+    sql.one<{ n: number }>(`select count(*)::int as n from mentoria_errors where mentoria_id = $1 and not mastered and next_review <= $2`, [m.id, today]),
   ]);
-  const thisCheckin = checkinList.find((c) => c.week_start === week) ?? null;
-  const history = [...checkinList].reverse().slice(-8);
-  const maxH = Math.max(mentoria.weekly_hours_target, ...history.map((h) => Number(h.hours_studied)), 1);
+  const todays = tasks.filter((t) => t.due_date === today || (!t.due_date && !t.done));
+  const todayMin = sessions.filter((s) => s.studied_on === today).reduce((a, s) => a + s.minutes, 0);
+  const todayQ = sessions.filter((s) => s.studied_on === today).reduce((a, s) => a + s.questions, 0);
+  const days = streak(sessions);
+  const next = meetings[0];
+  const nextSubject = todays.find((t) => !t.done && t.subject)?.subject;
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Mentoria individual"
-        title={mentoria.exam_target || 'Seu plano de estudos'}
-        subtitle={mentoria.goal}
-        actions={
-          <Badge tone={mentoria.status === 'active' ? 'success' : 'warning'}>
-            {mentoria.status === 'active' ? 'Ativa' : mentoria.status === 'paused' ? 'Pausada' : 'Encerrada'}
-          </Badge>
-        }
-      />
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="min-w-0 space-y-4">
+        <div className="grid grid-cols-3 gap-2">
+          <MiniStat icon={<Clock className="size-4" />} value={fmtMinutes(todayMin)} label="estudados hoje" />
+          <MiniStat icon={<ListChecks className="size-4" />} value={String(todayQ)} label="questões hoje" />
+          <MiniStat icon={<Flame className="size-4" />} value={`${days}`} label={days === 1 ? 'dia seguido' : 'dias seguidos'} />
+        </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-6">
-          <Card className="p-4 sm:p-5">
-            <div className="mb-4 flex items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-bold text-ink">Plano da semana</p>
-                <p className="text-xs text-muted">
-                  {formatDate(week)} – {formatDate(addDays(week, 6))}
-                  {week === current && ' · semana atual'}
-                </p>
-              </div>
-              <div className="flex gap-1">
-                <Link href={`/mentoria?w=${addDays(week, -7)}`} scroll={false} className={buttonClass('secondary', 'icon', 'size-9')} aria-label="Semana anterior">
-                  <ChevronLeft className="size-4" />
+        <Card className="p-4 sm:p-5">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <p className="text-sm font-bold text-ink">Para hoje</p>
+            <Link href="/mentoria/plano" className="flex items-center gap-0.5 text-xs font-semibold text-brand">
+              Semana <ChevronRight className="size-3.5" />
+            </Link>
+          </div>
+          {todays.length ? (
+            <WeekPlan tasks={todays} week={week} today={today} canGenerate={false} />
+          ) : (
+            <div className="space-y-3 rounded-xl bg-surface-2/60 p-4 text-sm text-muted">
+              <p>Nada planejado para hoje.</p>
+              {!tasks.length && (
+                <Link href="/mentoria/plano" className={buttonClass('primary', 'sm')}>
+                  Montar meu cronograma
                 </Link>
-                <Link href={`/mentoria?w=${addDays(week, 7)}`} scroll={false} className={buttonClass('secondary', 'icon', 'size-9')} aria-label="Próxima semana">
-                  <ChevronRight className="size-4" />
-                </Link>
-              </div>
+              )}
             </div>
-            <TaskList key={week} tasks={tasks} />
-          </Card>
+          )}
+        </Card>
 
-          <Card className="p-4 sm:p-5">
-            <p className="text-sm font-bold text-ink">Check-in semanal</p>
-            <p className="mb-4 text-xs text-muted">Conte como foi sua semana — o professor responde com um feedback.</p>
-            <CheckinForm key={week} mentoriaId={mentoria.id} week={week} checkin={thisCheckin} />
-          </Card>
-        </div>
+        {(due?.n ?? 0) > 0 && (
+          <Link href="/mentoria/erros" className="flex items-center gap-3 rounded-2xl border border-warning/40 bg-warning/10 p-4 transition hover:bg-warning/15">
+            <BookX className="size-5 shrink-0 text-warning" />
+            <span className="min-w-0 flex-1 text-sm font-semibold text-ink">
+              {due!.n} erro{due!.n === 1 ? '' : 's'} para revisar hoje
+            </span>
+            <ChevronRight className="size-4 text-muted" />
+          </Link>
+        )}
 
-        <div className="space-y-6">
-          <Card className="p-4 sm:p-5">
-            <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
-              <Clock className="size-4 text-brand" /> Horas estudadas
-            </p>
-            {history.length ? (
-              <div className="flex h-36 items-end gap-2">
-                {history.map((h) => {
-                  const v = Number(h.hours_studied);
-                  return (
-                    <div key={h.id} className="flex flex-1 flex-col items-center gap-1">
-                      <span className="text-[10px] font-bold text-ink tabular-nums">{v}</span>
-                      <div
-                        className={cn('w-full rounded-t-md', v >= mentoria.weekly_hours_target ? 'bg-success' : 'bg-brand')}
-                        style={{ height: `${Math.max(4, (v / maxH) * 100)}px` }}
-                      />
-                      <span className="text-[9px] text-muted">{formatDate(h.week_start).replace(' de', '')}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p className="text-sm text-muted">Seus check-ins aparecem aqui.</p>
-            )}
-            <p className="mt-3 flex items-center gap-1.5 text-xs text-muted">
-              <Flag className="size-3.5" /> Meta: {mentoria.weekly_hours_target} h/semana
-            </p>
-          </Card>
-
-          <Card className="p-4 sm:p-5">
-            <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
-              <CalendarClock className="size-4 text-brand" /> Próximos encontros
-            </p>
-            {meetings.length ? (
-              <ul className="space-y-3">
-                {meetings.map((mt) => (
-                  <li key={mt.id} className="rounded-xl border border-line bg-surface-2/50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-ink">{mt.title}</p>
-                      <Badge tone={mt.mentoria_id ? 'brand' : 'neutral'}>{mt.mentoria_id ? 'Individual' : 'Grupo'}</Badge>
-                    </div>
-                    <p className="mt-1 text-xs text-muted">
-                      {formatDateTime(mt.starts_at)} · {mt.duration_min} min
-                    </p>
-                    {mt.description && <p className="mt-1 text-xs text-ink-2">{mt.description}</p>}
-                    {mt.link && (
-                      <a href={mt.link} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm', 'mt-3 w-full')}>
-                        <Video className="size-3.5" /> Entrar no encontro
-                      </a>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-sm text-muted">Nenhum encontro agendado.</p>
+        {next && (
+          <Card className="flex items-center gap-3 p-4">
+            <CalendarClock className="size-5 shrink-0 text-brand" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-ink">{next.title}</p>
+              <p className="text-xs text-muted">{formatDateTime(next.starts_at)}</p>
+            </div>
+            {next.link && (
+              <a href={next.link} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm')}>
+                <Video className="size-3.5" /> Entrar
+              </a>
             )}
           </Card>
-        </div>
+        )}
       </div>
-    </>
+
+      <div className="space-y-4">
+        <Card className="p-4 sm:p-5">
+          <StudyTimer defaultSubject={nextSubject} />
+        </Card>
+        <Card className="p-4 sm:p-5">
+          <QuestionsLog />
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
+  return (
+    <div className="rounded-2xl border border-line bg-surface p-3 text-center">
+      <span className="mx-auto mb-1 grid size-7 place-items-center rounded-lg bg-brand/12 text-brand">{icon}</span>
+      <p className="text-lg font-extrabold text-ink tabular-nums">{value}</p>
+      <p className="text-[10px] leading-tight text-muted">{label}</p>
+    </div>
   );
 }
