@@ -179,91 +179,9 @@ export async function deleteMentoria(id: string): Promise<ActionResult> {
   }
 }
 
-export async function saveTask(fd: FormData): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    const id = str(fd, 'id', 64);
-    const mentoria_id = str(fd, 'mentoria_id', 200);
-    const kind = str(fd, 'kind', 20);
-    const row = {
-      mentoria_id,
-      week_start: dateOrNull(fd, 'week_start'),
-      title: str(fd, 'title', 200),
-      description: str(fd, 'description', 1000),
-      kind: ['aula', 'questoes', 'simulado', 'revisao', 'outro'].includes(kind) ? kind : 'outro',
-      due_date: dateOrNull(fd, 'due_date'),
-    };
-    if (!row.title || !row.week_start || !mentoria_id) return { error: 'Informe o título e a semana.' };
-    const values = [row.mentoria_id, row.week_start, row.title, row.description, row.kind, row.due_date];
-    if (id) {
-      if (!isDocId(id)) return { error: 'Inválido.' };
-      await sql.exec(
-        `update mentoria_tasks set mentoria_id = $2, week_start = $3, title = $4, description = $5, kind = $6, due_date = $7 where id = $1`,
-        [id, ...values],
-      );
-    } else {
-      await sql.exec(
-        `insert into mentoria_tasks (id, mentoria_id, week_start, title, description, kind, due_date) values ($1, $2, $3, $4, $5, $6, $7)`,
-        [newId(), ...values],
-      );
-    }
-    revalidatePath(`/admin/mentoria/${mentoria_id}`);
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
-export async function deleteTask(id: string, mentoriaId: string): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    if (!isDocId(id)) return { error: 'Inválido.' };
-    await sql.exec(`delete from mentoria_tasks where id = $1`, [id]);
-    revalidatePath(`/admin/mentoria/${mentoriaId}`);
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
-/** Copia as tarefas de uma semana para a seguinte (sem marcar como feitas). */
-export async function copyWeek(mentoriaId: string, from: string, to: string): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) return { error: 'Semana inválida.' };
-    const tasks = await sql.query<{ title: string; description: string; kind: string }>(
-      `select title, description, kind from mentoria_tasks where mentoria_id = $1 and week_start = $2 order by created_at`,
-      [mentoriaId, from],
-    );
-    if (!tasks.length) return { error: 'Não há tarefas nessa semana.' };
-    await tx(async (t) => {
-      for (const task of tasks) {
-        await t.exec(
-          `insert into mentoria_tasks (id, mentoria_id, week_start, title, description, kind) values ($1, $2, $3, $4, $5, $6)`,
-          [newId(), mentoriaId, to, task.title, task.description, task.kind],
-        );
-      }
-    });
-    revalidatePath(`/admin/mentoria/${mentoriaId}`);
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
-export async function saveFeedback(fd: FormData): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    const id = str(fd, 'id', 260);
-    const mentoriaId = str(fd, 'mentoria_id', 200);
-    if (!id || id.includes('/')) return { error: 'Inválido.' };
-    await sql.exec(`update mentoria_checkins set mentor_feedback = $2, feedback_at = now() where id = $1`, [id, str(fd, 'mentor_feedback', 3000)]);
-    revalidatePath(`/admin/mentoria/${mentoriaId}`);
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
 export async function saveMeeting(fd: FormData): Promise<ActionResult> {
   try {

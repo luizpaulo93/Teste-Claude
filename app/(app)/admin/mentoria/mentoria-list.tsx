@@ -15,17 +15,16 @@ import { MentoriaForm } from "./mentoria-form";
 export interface MentoriaSignals {
   idleDays: number | null;
   unread: number;
-  tasks: number | null;
+  studied: number;
+  total: number;
 }
 
 export function MentoriaList({
   mentorias,
-  weekly,
   groupMeetings,
   signals,
 }: {
   mentorias: Mentoria[];
-  weekly: Record<string, string>;
   groupMeetings: MentoriaMeeting[];
   signals: Record<string, MentoriaSignals>;
 }) {
@@ -72,9 +71,6 @@ export function MentoriaList({
                             ? "Pausada"
                             : "Encerrada"}
                       </Badge>
-                      {weekly[m.id] === "pendente" && (
-                        <Badge tone="warning">Check-in novo</Badge>
-                      )}
                       {(signals[m.id]?.unread ?? 0) > 0 && (
                         <Badge tone="brand">
                           {signals[m.id].unread} mensagem(ns)
@@ -85,7 +81,7 @@ export function MentoriaList({
                   <div className="flex flex-wrap gap-1.5 empty:hidden">
                     {m.status === "active" &&
                       signals[m.id]?.idleDays === null && (
-                        <Badge tone="danger">Ainda não estudou pelo app</Badge>
+                        <Badge tone="danger">Ainda não marcou desempenho</Badge>
                       )}
                     {m.status === "active" &&
                       (signals[m.id]?.idleDays ?? 0) >= 3 && (
@@ -93,20 +89,14 @@ export function MentoriaList({
                           {signals[m.id].idleDays} dias sem estudar
                         </Badge>
                       )}
-                    {signals[m.id]?.tasks != null && (
-                      <Badge
-                        tone={
-                          signals[m.id].tasks! >= 70
-                            ? "success"
-                            : signals[m.id].tasks! >= 40
-                              ? "warning"
-                              : "danger"
-                        }
-                      >
-                        Tarefas da semana {signals[m.id].tasks}%
+                    {signals[m.id]?.total ? (
+                      <Badge tone="brand">
+                        {signals[m.id].studied}/{signals[m.id].total} assuntos estudados
                       </Badge>
+                    ) : (
+                      <Badge tone="warning">Sem cronograma</Badge>
                     )}
-                    {!m.diagnosed_at && <Badge>Sem diagnóstico</Badge>}
+                    {!m.diagnosed_at && <Badge>Sem horários</Badge>}
                   </div>
                 </Card>
               </Link>

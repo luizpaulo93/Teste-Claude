@@ -448,3 +448,32 @@ create table if not exists mentoria_topics (
   updated_at timestamptz not null default now(),
   primary key (mentoria_id, item_key)
 );
+
+-- ============================================================================
+-- Versão 7: cronograma por assuntos (quadro estilo Trello).
+-- Cada assunto da matriz vira um card: estudar → resolver questões → marcar desempenho;
+-- depois revisões 1, 2 e 3. Acerto baixo faz o assunto voltar até melhorar.
+-- level: 0 não estudado, 1 estudado, 2 revisão 01, 3 revisão 02, 4 revisão 03 (concluído)
+-- ============================================================================
+create table if not exists mentoria_cards (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  item_key text not null,
+  discipline text not null,
+  title text not null,
+  priority int not null default 1,
+  ord int not null default 0,
+  level int not null default 0,
+  step text not null default 'study',
+  due_on date,
+  scheduled_on date,
+  last_acc int,
+  attempts int not null default 0,
+  history jsonb not null default '[]'::jsonb,
+  updated_at timestamptz not null default now(),
+  unique (mentoria_id, item_key)
+);
+create index if not exists mcards_idx on mentoria_cards (mentoria_id, scheduled_on);
+
+alter table mentorias add column if not exists plan_disciplines text[] not null default '{}';
+alter table mentorias add column if not exists plan_order text not null default 'prioridade';

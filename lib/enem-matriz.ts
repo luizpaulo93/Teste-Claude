@@ -1,180 +1,25 @@
 /**
- * Objetos de conhecimento da Matriz de Referência do ENEM (Anexo), por área e disciplina.
- * Ciências Humanas vem na matriz por eixos temáticos; aqui cada item foi colocado na disciplina mais próxima.
- * Chave de cada conteúdo: "<disciplina>.<tópico>.<item>".
+ * Assuntos da Matriz de Referência do ENEM (Anexo — objetos de conhecimento)
+ * de Matemática e Ciências da Natureza, por disciplina.
+ * Chave de cada assunto: "<disciplina>.<bloco>.<item>".
  */
 
 export interface MatrizTopic {
   title: string;
-  subtitle?: string;
   items: string[];
 }
 export interface MatrizDiscipline {
   key: string;
   name: string;
-  /** matéria correspondente na mentoria (cronograma, cronômetro) */
-  subject: string;
   topics: MatrizTopic[];
 }
 export interface MatrizArea {
-  area: "LC" | "MT" | "CN" | "CH";
+  area: "MT" | "CN";
   name: string;
   disciplines: MatrizDiscipline[];
 }
 
 export const MATRIZ: MatrizArea[] = [
-  {
-    area: "LC",
-    name: "Linguagens, Códigos e suas Tecnologias",
-    disciplines: [
-      {
-        key: "portugues",
-        name: "Português",
-        subject: "Português",
-        topics: [
-          {
-            title: "Estudo do texto",
-            subtitle:
-              "as sequências discursivas e os gêneros textuais no sistema de comunicação e informação",
-            items: [
-              "Modos de organização da composição textual",
-              "Atividades de produção escrita e de leitura de textos gerados nas diferentes esferas sociais - públicas e privadas",
-            ],
-          },
-          {
-            title: "Estudo dos aspectos linguísticos em diferentes textos",
-            subtitle:
-              "recursos expressivos da língua, procedimentos de construção e recepção de textos",
-            items: [
-              "Organização da macroestrutura semântica e a articulação entre idéias e proposições (relações lógico- semânticas)",
-            ],
-          },
-          {
-            title: "Estudo dos aspectos linguísticos da língua portuguesa",
-            subtitle: "usos da língua: norma culta e variação linguística",
-            items: [
-              "Uso dos recursos linguísticos em relação ao contexto em que o texto é constituído: elementos de referência pessoal, temporal, espacial, registro linguístico, grau de formalidade, seleção lexical, tempos e modos verbais",
-              "Uso dos recursos linguísticos em processo de coesão textual: elementos de articulação das sequências dos textos ou à construção da micro estrutura do texto",
-            ],
-          },
-          {
-            title: "Estudo dos gêneros digitais",
-            subtitle:
-              "tecnologia da comunicação e informação: impacto e função social",
-            items: [
-              "O texto literário típico da cultura de massa: o suporte textual em gêneros digitais",
-              "A caracterização dos interlocutores na comunicação tecnológica",
-              "Os recursos linguísticos e os gêneros digitais",
-              "A função social das novas tecnologias",
-            ],
-          },
-        ],
-      },
-      {
-        key: "literatura",
-        name: "Literatura",
-        subject: "Literatura",
-        topics: [
-          {
-            title: "Estudo do texto literário",
-            subtitle:
-              "relações entre produção literária e processo social, concepções artísticas, procedimentos de construção e recepção de textos",
-            items: [
-              "Produção literária e processo social",
-              "Processos de formação literária e de formação nacional",
-              "Produção de textos literários, sua recepção e a constituição do patrimônio literário nacional",
-              "Relações entre a dialética cosmopolitismo/localismo e a produção literária nacional",
-              "Elementos de continuidade e ruptura entre os diversos momentos da literatura brasileira",
-              "Associações entre concepções artísticas e procedimentos de construção do texto literário em seus gêneros (épico/narrativo, lírico e dramático) e formas diversas",
-              "Articulações entre os recursos expressivos e estruturais do texto literário e o processo social relacionado ao momento de sua produção",
-              "Representação literária: natureza, função, organização e estrutura do texto literário",
-              "Relações entre literatura, outras artes e outros saberes",
-            ],
-          },
-        ],
-      },
-      {
-        key: "redacao",
-        name: "Redação (texto argumentativo)",
-        subject: "Redação",
-        topics: [
-          {
-            title:
-              "Estudo do texto argumentativo, seus gêneros e recursos linguísticos",
-            subtitle: "argumentação: tipo, gêneros e usos em língua portuguesa",
-            items: [
-              "Formas de apresentação de diferentes pontos de vista",
-              "Organização e progressão textual",
-              "Papéis sociais e comunicativos dos interlocutores, relação entre usos e propósitos comunicativos, função sociocomunicativa do gênero, aspectos da dimensão espaçotemporal em que se produz o texto",
-            ],
-          },
-        ],
-      },
-      {
-        key: "lem",
-        name: "Inglês / Espanhol",
-        subject: "Inglês/Espanhol",
-        topics: [
-          {
-            title: "Leitura em língua estrangeira (Inglês ou Espanhol)",
-            items: [
-              "Associar vocábulos e expressões de um texto em língua estrangeira ao seu tema",
-              "Usar a língua estrangeira para ampliar o acesso a informações, tecnologias e culturas",
-              "Relacionar o texto em língua estrangeira, suas estruturas linguísticas, função e uso social",
-              "Reconhecer a produção cultural em língua estrangeira como representação da diversidade cultural e linguística",
-            ],
-          },
-        ],
-      },
-      {
-        key: "artes",
-        name: "Artes",
-        subject: "",
-        topics: [
-          {
-            title: "Produção e recepção de textos artísticos",
-            subtitle:
-              "interpretação e representação do mundo para o fortalecimento dos processos de identidade e cidadania",
-            items: [
-              "Artes Visuais: estrutura morfológica, sintática, o contexto da obra artística, o contexto da comunidade",
-              "Teatro: estrutura morfológica, sintática, o contexto da obra artística, o contexto da comunidade, as fontes de criação",
-              "Música: estrutura morfológica, sintática, o contexto da obra artística, o contexto da comunidade, as fontes de criação",
-              "Dança: estrutura morfológica, sintática, o contexto da obra artística, o contexto da comunidade, as fontes de criação",
-              "Conteúdos estruturantes das linguagens artísticas (Artes Visuais, Dança, Música, Teatro), elaborados a partir de suas estruturas morfológicas e sintáticas",
-              "Inclusão, diversidade e multiculturalidade: a valorização da pluralidade expressada nas produções estéticas e artísticas das minorias sociais e dos portadores de necessidades especiais educacionais",
-            ],
-          },
-        ],
-      },
-      {
-        key: "edfisica",
-        name: "Educação Física",
-        subject: "",
-        topics: [
-          {
-            title: "Estudo das práticas corporais",
-            subtitle:
-              "a linguagem corporal como integradora social e formadora de identidade",
-            items: [
-              "Performance corporal e identidades juvenis",
-              "Possibilidades de vivência crítica e emancipada do lazer",
-              "Mitos e verdades sobre os corpos masculino e feminino na sociedade atual",
-              "Exercício físico e saúde",
-              "O corpo e a expressão artística e cultural",
-              "O corpo no mundo dos símbolos e como produção da cultura",
-              "Práticas corporais e autonomia",
-              "Condicionamentos e esforços físicos",
-              "O esporte",
-              "A dança",
-              "As lutas",
-              "Os jogos",
-              "As brincadeiras",
-            ],
-          },
-        ],
-      },
-    ],
-  },
   {
     area: "MT",
     name: "Matemática e suas Tecnologias",
@@ -182,7 +27,6 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "matematica",
         name: "Matemática",
-        subject: "Matemática",
         topics: [
           {
             title: "Conhecimentos numéricos",
@@ -258,7 +102,6 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "fisica",
         name: "Física",
-        subject: "Física",
         topics: [
           {
             title: "Conhecimentos básicos e fundamentais",
@@ -386,7 +229,6 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "quimica",
         name: "Química",
-        subject: "Química",
         topics: [
           {
             title: "Transformações Químicas",
@@ -545,7 +387,6 @@ export const MATRIZ: MatrizArea[] = [
       {
         key: "biologia",
         name: "Biologia",
-        subject: "Biologia",
         topics: [
           {
             title: "Moléculas, células e tecidos",
@@ -652,151 +493,69 @@ export const MATRIZ: MatrizArea[] = [
       },
     ],
   },
-  {
-    area: "CH",
-    name: "Ciências Humanas e suas Tecnologias",
-    disciplines: [
-      {
-        key: "historia",
-        name: "História",
-        subject: "História",
-        topics: [
-          {
-            title: "Diversidade cultural, conflitos e vida em sociedade",
-            items: [
-              "A Conquista da América. Conflitos entre europeus e indígenas na América colonial. A escravidão e formas de resistência indígena e africana na América",
-              "História cultural dos povos africanos. A luta dos negros no Brasil e o negro na formação da sociedade brasileira",
-              "História dos povos indígenas e a formação sócio-cultural brasileira",
-              "Movimentos culturais no mundo ocidental e seus impactos na vida política e social",
-            ],
-          },
-          {
-            title:
-              "Formas de organização social, movimentos sociais, pensamento político e ação do Estado",
-            items: [
-              "Revoluções sociais e políticas na Europa Moderna",
-              "As lutas pela conquista da independência política das colônias da América",
-              "Grupos sociais em conflito no Brasil imperial e a construção da nação",
-              "A atuação dos grupos sociais e os grandes processos revolucionários do século XX: Revolução Bolchevique, Revolução Chinesa, Revolução Cubana",
-              "Geopolítica e conflitos entre os séculos XIX e XX: Imperialismo, a ocupação da Ásia e da África, as Guerras Mundiais e a Guerra Fria",
-              "Os sistemas totalitários na Europa do século XX: nazi-fascista, franquismo, salazarismo e stalinismo. Ditaduras políticas na América Latina: Estado Novo no Brasil e ditaduras na América",
-            ],
-          },
-          {
-            title: "Características e transformações das estruturas produtivas",
-            items: [
-              "Economia agro-exportadora brasileira: complexo açucareiro; a mineração no período colonial; a economia cafeeira; a borracha na Amazônia",
-              "Revolução Industrial: criação do sistema de fábrica na Europa e transformações no processo de produção. Formação do espaço urbano-industrial. Transformações na estrutura produtiva no século XX: o fordismo, o toyotismo, as novas técnicas de produção e seus impactos",
-              "A industrialização brasileira, a urbanização e as transformações sociais e trabalhistas",
-            ],
-          },
-        ],
-      },
-      {
-        key: "geografia",
-        name: "Geografia",
-        subject: "Geografia",
-        topics: [
-          {
-            title:
-              "Formas de organização social, movimentos sociais, pensamento político e ação do Estado",
-            items: [
-              "Formação territorial brasileira; as regiões brasileiras; políticas de reordenamento territorial",
-              "Políticas de colonização, migração, imigração e emigração no Brasil nos séculos XIX e XX",
-              "Conflitos político-culturais pós-Guerra Fria, reorganização política internacional e os organismos multilaterais nos séculos XX e XXI",
-              "Vida urbana: redes e hierarquia nas cidades, pobreza e segregação espacial",
-            ],
-          },
-          {
-            title: "Características e transformações das estruturas produtivas",
-            items: [
-              "A globalização e as novas tecnologias de telecomunicação e suas consequências econômicas, políticas e sociais",
-              "Produção e transformação dos espaços agrários. Modernização da agricultura e estruturas agrárias tradicionais. O agronegócio, a agricultura familiar, os assalariados do campo e as lutas sociais no campo. A relação campo-cidade",
-            ],
-          },
-          {
-            title:
-              "Os domínios naturais e a relação do ser humano com o ambiente",
-            items: [
-              "Relação homem-natureza, a apropriação dos recursos naturais pelas sociedades ao longo do tempo. Impacto ambiental das atividades econômicas no Brasil. Recursos minerais e energéticos: exploração e impactos. Recursos hídricos; bacias hidrográficas e seus aproveitamentos",
-              "As questões ambientais contemporâneas: mudança climática, ilhas de calor, efeito estufa, chuva ácida, a destruição da camada de ozônio. A nova ordem ambiental internacional; políticas territoriais ambientais; uso e conservação dos recursos naturais, unidades de conservação, corredores ecológicos, zoneamento ecológico e econômico",
-              "Origem e evolução do conceito de sustentabilidade",
-              "Estrutura interna da terra. Estruturas do solo e do relevo; agentes internos e externos modeladores do relevo",
-              "Situação geral da atmosfera e classificação climática. As características climáticas do território brasileiro",
-              "Os grandes domínios da vegetação no Brasil e no mundo",
-            ],
-          },
-          {
-            title: "Representação espacial",
-            items: [
-              "Projeções cartográficas; leitura de mapas temáticos, físicos e políticos; tecnologias modernas aplicadas à cartografia",
-            ],
-          },
-        ],
-      },
-      {
-        key: "filosofia",
-        name: "Filosofia",
-        subject: "Filosofia",
-        topics: [
-          {
-            title:
-              "Formas de organização social, movimentos sociais, pensamento político e ação do Estado",
-            items: [
-              "Cidadania e democracia na Antiguidade; Estado e direitos do cidadão a partir da Idade Moderna; democracia direta, indireta e representativa",
-              "O desenvolvimento do pensamento liberal na sociedade capitalista e seus críticos nos séculos XIX e XX",
-            ],
-          },
-        ],
-      },
-      {
-        key: "sociologia",
-        name: "Sociologia",
-        subject: "Sociologia",
-        topics: [
-          {
-            title: "Diversidade cultural, conflitos e vida em sociedade",
-            items: [
-              "Cultura Material e imaterial; patrimônio e diversidade cultural no Brasil",
-            ],
-          },
-          {
-            title:
-              "Formas de organização social, movimentos sociais, pensamento político e ação do Estado",
-            items: [
-              "A luta pela conquista de direitos pelos cidadãos: direitos civis, humanos, políticos e sociais. Direitos sociais nas constituições brasileiras. Políticas afirmativas",
-            ],
-          },
-          {
-            title: "Características e transformações das estruturas produtivas",
-            items: [
-              "Diferentes formas de organização da produção: escravismo antigo, feudalismo, capitalismo, socialismo e suas diferentes experiências",
-            ],
-          },
-        ],
-      },
-    ],
-  },
 ];
+
+export const DISCIPLINES = MATRIZ.flatMap((a) => a.disciplines);
 
 export const itemKey = (d: string, t: number, i: number) => `${d}.${t}.${i}`;
 
-export const ALL_ITEM_KEYS = MATRIZ.flatMap((a) =>
-  a.disciplines.flatMap((d) =>
-    d.topics.flatMap((t, ti) => t.items.map((_, ii) => itemKey(d.key, ti, ii))),
-  ),
-);
-
-/** Próximo tópico ainda não estudado de uma matéria (para o cronograma). */
-export function nextTopic(subject: string, status: Record<string, number>) {
-  for (const a of MATRIZ)
-    for (const d of a.disciplines) {
-      if (d.subject !== subject) continue;
-      for (let ti = 0; ti < d.topics.length; ti++) {
-        const t = d.topics[ti];
-        if (t.items.some((_, ii) => !status[itemKey(d.key, ti, ii)]))
-          return t.title;
-      }
-    }
-  return "";
+export interface Assunto {
+  key: string;
+  discipline: string; // chave
+  disciplineName: string;
+  block: string; // bloco da matriz
+  title: string;
+  /** posição na matriz (do primeiro ao último assunto) */
+  index: number;
+  /** 3 = mais cobrado, 2 = cobrado com frequência, 1 = demais */
+  priority: number;
 }
+
+/**
+ * Assuntos mais cobrados no ENEM (levantamentos de incidência 2009–2025: Aprova Total,
+ * Projeto Medicina, Vestibulando Web). Matemática básica, estatística, geometria e funções;
+ * eletrodinâmica, termologia, ondulatória, cinemática e óptica; estequiometria, propriedades
+ * das substâncias, soluções, orgânica e eletroquímica; ecologia, fisiologia humana, genética,
+ * biotecnologia e bioenergética.
+ */
+const HIGH: Record<string, RegExp> = {
+  matematica:
+    /porcentagem|raz(õ|o)es e propor|grandezas|escala|operações em conjuntos|médias|mediana|representação e análise de dados|comprimentos, áreas e volumes|figuras geométricas planas e espaciais|gráficos e funções|funções algébricas|probabilidade|princípios de contagem/i,
+  fisica:
+    /corrente|ohm|potência e consumo|circuitos|efeito joule|tensão, corrente|calor|temperatura|termodinâmica|mudanças de estado|ondas|ondulat|frequência|grandezas fundamentais da mecânica|descrições do movimento|casos especiais de movimentos|energia mecânica|trabalho, energia e potência|lentes e espelhos|reflexão e refração|leis de newton|força de atrito/i,
+  quimica:
+    /estequiom|mol, massa molar|balanceamento|forças intermoleculares|polaridade|ligação|misturas: tipos|concentração das soluções|solubilidade|funções orgânicas|polímeros|pilha|eletrólise|oxirredução|entalpia|\bph\b|poluição|química e ambiente|biocombust|petróleo/i,
+  biologia:
+    /ecossistem|teia alimentar|ciclos biogeoquímicos|fluxo de energia|biomas|problemas ambientais|interações entre os seres|dinâmica de populações|anatomia e fisiologia humana|fotossíntese e respiração|metabolismo energético|dna recombinante|biotecnologia|síntese protéica|transmissão de características hereditárias|grupos sanguíneos|principais doenças|darwin|teoria sintética|vírus/i,
+};
+const MEDIUM: Record<string, RegExp> = {
+  matematica:
+    /semelhança|tales|relações métricas|trigonometria|sequências e progressões|exponenciais|juros|plano cartesiano|desvios e variância/i,
+  fisica:
+    /hidrostática|empuxo|pascal|gravitação|kepler|campo elétrico|campo magnético|dilatação|gases ideais|máquinas térmicas|vetores|quantidade de movimento/i,
+  quimica:
+    /equilíbrio|velocidade de reação|catalisador|ácidos, bases|radioatividade|fissão|tabela periódica|modelo atômico|gases|propriedades coligativas|óleos e gorduras|sabões/i,
+  biologia:
+    /divisão celular|membrana|mutações|diferenciação celular|embriologia|sucessão|conservação|saneamento|evolução|tecidos|sistemática|antígenos/i,
+};
+
+export const ASSUNTOS: Assunto[] = DISCIPLINES.flatMap((d) => {
+  let index = 0;
+  return d.topics.flatMap((t, ti) =>
+    t.items.map((title, ii) => ({
+      key: itemKey(d.key, ti, ii),
+      discipline: d.key,
+      disciplineName: d.name,
+      block: t.title,
+      title,
+      index: index++,
+      priority: HIGH[d.key]?.test(title)
+        ? 3
+        : MEDIUM[d.key]?.test(title)
+          ? 2
+          : 1,
+    })),
+  );
+});
+
+export const ASSUNTO_BY_KEY = new Map(ASSUNTOS.map((a) => [a.key, a]));
