@@ -16,7 +16,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
   const [live, acc] = await Promise.all([sql.one<LiveSession>(`select * from live_sessions where id = $1`, [id]), getAccount()]);
   if (!live) notFound();
   const connected = oauthConfigured() && Boolean(acc.refresh_token);
-  const ready = connected || (Boolean(acc.stream_key) && Boolean(live.youtube_id));
+  const ready = connected;
   return (
     <div className="mx-auto max-w-5xl space-y-4">
       <Link href="/admin/ao-vivo" className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
@@ -28,13 +28,9 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         live={live.status === 'live'}
         ready={ready}
         hint={
-          ready
-            ? connected
-              ? `Vai transmitir no canal ${acc.channel_title || 'conectado'} como não listado.`
-              : 'Vai transmitir pela chave salva para a live do link desta transmissão.'
-            : connected || acc.stream_key
-              ? 'Cole o link da live do YouTube nesta transmissão (Editar) para usar a chave salva.'
-              : 'Conecte a conta do YouTube ou salve a chave da transmissão na tela Ao vivo.'
+          connected
+            ? `Transmite no canal ${acc.channel_title || 'conectado'} (não listado). Ao encerrar, o link vira aula na pasta “Lives”.`
+            : 'Conecte a conta do YouTube na tela Ao vivo para transmitir.'
         }
       />
     </div>

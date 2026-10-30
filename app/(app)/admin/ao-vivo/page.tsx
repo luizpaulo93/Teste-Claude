@@ -20,7 +20,7 @@ export default async function AdminLives({ searchParams }: { searchParams: Promi
     getCatalogData(),
     getAccount(),
   ]);
-  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', hasKey: Boolean(acc.stream_key), notice: notice ? NOTICES[notice] : undefined };
+  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', notice: notice ? NOTICES[notice] : undefined };
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>

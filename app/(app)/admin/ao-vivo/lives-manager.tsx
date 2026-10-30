@@ -1,16 +1,15 @@
 'use client';
 
-import { CheckCircle2, CircleStop, ExternalLink, FolderPlus, KeyRound, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video } from 'lucide-react';
+import { CheckCircle2, CircleStop, ExternalLink, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video } from 'lucide-react';
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload } from '@/components/admin/uploads';
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, buttonClass } from '@/components/ui';
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
 import type { Course, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
-import { deleteLive, disconnectYoutube, saveLive, saveLiveAsLesson, saveYoutubeKey, setLiveStatus } from '../live-actions';
-import { toast } from '@/components/toast';
+import { deleteLive, disconnectYoutube, saveLive, setLiveStatus } from '../live-actions';
 
 function toLocalInput(iso?: string) {
   const d = iso ? new Date(iso) : new Date(Date.now() + 3600_000);
@@ -26,7 +25,6 @@ function tzOffset() {
 export interface YoutubeState {
   oauth: boolean;
   channel: string;
-  hasKey: boolean;
   notice?: string;
 }
 
@@ -85,11 +83,6 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
                         <RotateCcw className="size-3.5" />
                       </ActionButton>
                     )}
-                    {l.status === 'ended' && l.youtube_id && (
-                      <ActionButton action={() => saveLiveAsLesson(l.id)} success='Salva na pasta "Lives" do banco de aulas' variant="ghost" size="sm" className="px-2" title="Salvar como aula (pasta Lives)">
-                        <FolderPlus className="size-4" />
-                      </ActionButton>
-                    )}
                     <Link href={`/ao-vivo/${l.id}`} target="_blank" className={buttonClass('ghost', 'sm', 'px-2')} aria-label="Abrir sala">
                       <ExternalLink className="size-4" />
                     </Link>
@@ -119,7 +112,7 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
             <Field label="Título">
               <Input name="title" defaultValue={edit.live?.title} required maxLength={160} placeholder="Ex.: Aulão de Física — Leis de Newton" autoFocus />
             </Field>
-            <Field label="Link da transmissão no YouTube" hint="Ex.: https://youtube.com/live/… ou https://youtu.be/… (pode deixar para depois)">
+            <Field label="Link do YouTube (opcional)" hint="Com a conta conectada, o Estúdio preenche sozinho.">
               <Input name="youtube" defaultValue={edit.live?.youtube_id ? `https://youtu.be/${edit.live.youtube_id}` : ''} placeholder="https://youtube.com/live/..." />
             </Field>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -144,9 +137,9 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
               <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
               <ImageUpload name="cover_url" defaultValue={edit.live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2">
               <Switch name="chat_enabled" defaultChecked={edit.live?.chat_enabled ?? true} label="Chat" />
-              <Switch name="show_replay" defaultChecked={edit.live?.show_replay ?? true} label="Mostrar gravação" />
+              <input type="hidden" name="show_replay" value="on" />
               <Switch name="is_published" defaultChecked={edit.live?.is_published ?? true} label="Visível" />
             </div>
             <div className="flex justify-end">
@@ -161,8 +154,6 @@ export function LivesManager({ lives, courses, yt }: { lives: LiveSession[]; cou
 
 /** Conta do YouTube: conectar (cria a live no canal sozinho) ou usar a chave HLS. */
 function YoutubeCard({ yt }: { yt: YoutubeState }) {
-  const [key, setKey] = useState('');
-  const [pending, start] = useTransition();
   return (
     <Card className="order-first space-y-4 p-5 xl:sticky xl:top-6 xl:order-none xl:self-start">
       <p className="flex items-center gap-2 text-sm font-bold text-ink">
@@ -179,37 +170,12 @@ function YoutubeCard({ yt }: { yt: YoutubeState }) {
             Desconectar
           </ActionButton>
         </div>
-      ) : yt.oauth ? (
+      ) : (
         <a href="/api/youtube/connect" className={buttonClass('primary', 'md', 'w-full !bg-red-600 hover:!bg-red-700')}>
           <MonitorPlay className="size-4" /> Conectar conta do YouTube
         </a>
-      ) : null}
-      {!yt.channel && (
-        <div className="space-y-2 border-t border-line pt-4">
-          <p className="flex items-center gap-2 text-xs font-semibold text-ink-2">
-            <KeyRound className="size-3.5" /> Chave da transmissão (HLS) {yt.hasKey && <Badge tone="success">salva</Badge>}
-          </p>
-          <p className="text-[11px] text-muted">YouTube Studio → Transmitir → Configurações da transmissão → Protocolo HLS. Copie a URL ou a chave.</p>
-          <div className="flex gap-2">
-            <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder={yt.hasKey ? '••••••••' : 'Cole aqui'} type="password" autoComplete="off" className="min-w-0 flex-1" />
-            <Button
-              disabled={pending || !key}
-              onClick={() =>
-                start(async () => {
-                  const r = await saveYoutubeKey(key);
-                  if (r.error) toast.error(r.error);
-                  else {
-                    toast('Chave salva');
-                    setKey('');
-                  }
-                })
-              }
-            >
-              Salvar
-            </Button>
-          </div>
-        </div>
       )}
+      {!yt.channel && <p className="text-xs text-muted">Conecte uma vez. No Estúdio, a live é criada no seu canal e, ao encerrar, o link vira aula na pasta “Lives”.</p>}
     </Card>
   );
 }

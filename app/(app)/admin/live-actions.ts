@@ -4,7 +4,7 @@ import { revalidatePath, updateTag } from 'next/cache';
 import { bool, fail, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
 import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
-import { createBroadcast, endBroadcast, getAccount, ingestFromKey, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
+import { createBroadcast, endBroadcast, getAccount, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
 
 function refresh(id?: string) {
   updateTag('lives');
@@ -64,6 +64,8 @@ export async function setLiveStatus(id: string, status: 'scheduled' | 'live' | '
     if (!live) return { error: 'Transmissão não encontrada.' };
     if (status === 'live' && !live.youtube_id) return { error: 'Cole o link da transmissão do YouTube antes de iniciar.' };
     await sql.exec(`update live_sessions set status = $2, updated_at = now() where id = $1`, [id, status]);
+    // Encerrou: o link vira aula normal do YouTube na pasta "Lives"
+    if (status === 'ended') await archiveAsLesson(id).catch(() => {});
     // Os alunos na sala percebem a mudança na próxima consulta (alguns segundos)
     refresh(id);
     return { ok: true };
@@ -88,49 +90,40 @@ export async function deleteLive(id: string): Promise<ActionResult> {
  * Salva a gravação da live como aula na pasta "Lives" do banco de aulas (como no MemberClass).
  * Depois é só adicionar essa aula em qualquer curso.
  */
+/** Guarda a live como aula normal do YouTube na pasta "Lives" do banco de aulas (sem repetir). */
+async function archiveAsLesson(id: string): Promise<ActionResult> {
+  const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string }>(
+    `select title, description, youtube_id, cover_url from live_sessions where id = $1`,
+    [id],
+  );
+  if (!live) return { error: 'Transmissão não encontrada.' };
+  if (!live.youtube_id) return { error: 'A live não tem link do YouTube.' };
+  if (await sql.one(`select 1 from lessons where youtube_id = $1`, [live.youtube_id])) return { ok: true };
+  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = 'lives' limit 1`);
+  if (!folder) {
+    folder = { id: newId() };
+    await sql.exec(`insert into lesson_folders (id, name, position) select $1, 'Lives', coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id]);
+  }
+  await sql.exec(
+    `insert into lessons (id, title, description, youtube_id, thumbnail_url, is_published, folder_id, position)
+     select $1, $2, $3, $4, $5, true, $6, coalesce(max(position), -1) + 1 from lessons where folder_id = $6`,
+    [newId(), live.title, live.description, live.youtube_id, live.cover_url, folder.id],
+  );
+  revalidatePath('/admin/aulas');
+  return { ok: true };
+}
+
 export async function saveLiveAsLesson(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string }>(
-      `select title, description, youtube_id, cover_url from live_sessions where id = $1`,
-      [id],
-    );
-    if (!live) return { error: 'Transmissão não encontrada.' };
-    if (!live.youtube_id) return { error: 'A live não tem link do YouTube.' };
-    const exists = await sql.one(`select 1 from lessons where youtube_id = $1`, [live.youtube_id]);
-    if (exists) return { error: 'Esta gravação já está no banco de aulas.' };
-    let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = 'lives' limit 1`);
-    if (!folder) {
-      folder = { id: newId() };
-      await sql.exec(`insert into lesson_folders (id, name, position) select $1, 'Lives', coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id]);
-    }
-    await sql.exec(
-      `insert into lessons (id, title, description, youtube_id, thumbnail_url, is_published, folder_id, position)
-       select $1, $2, $3, $4, $5, true, $6, coalesce(max(position), -1) + 1 from lessons where folder_id = $6`,
-      [newId(), live.title, live.description, live.youtube_id, live.cover_url, folder.id],
-    );
-    revalidatePath('/admin/aulas');
-    return { ok: true };
+    return await archiveAsLesson(id);
   } catch (e) {
     return fail(e);
   }
 }
 
 // ---------------- Estúdio: transmitir direto do app para o YouTube
-
-export async function saveYoutubeKey(key: string): Promise<ActionResult> {
-  try {
-    await requireAdminAction();
-    const v = String(key ?? '').trim();
-    if (v && !ingestFromKey(v)) return { error: 'Chave inválida. Copie a chave HLS no YouTube Studio.' };
-    await saveAccount({ stream_key: v });
-    revalidatePath('/admin/ao-vivo');
-    return { ok: true };
-  } catch (e) {
-    return fail(e);
-  }
-}
 
 export async function disconnectYoutube(): Promise<ActionResult> {
   try {
@@ -156,11 +149,8 @@ export async function startStudio(id: string): Promise<ActionResult & { videoId?
       const b = await createBroadcast(live.title, live.description);
       videoId = b.videoId;
       await setIngest(id, b.ingest);
-    } else if (acc.stream_key) {
-      if (!videoId) return { error: 'Cole o link da live do YouTube nesta transmissão (Editar) ou conecte a conta do YouTube.' };
-      await setIngest(id, ingestFromKey(acc.stream_key));
     } else {
-      return { error: 'Conecte a conta do YouTube ou salve a chave da transmissão em Ao vivo.' };
+      return { error: 'Conecte a conta do YouTube em Ao vivo.' };
     }
     await sql.exec(`update live_sessions set youtube_id = $2, status = 'live', updated_at = now() where id = $1`, [id, videoId]);
     refresh(id);
@@ -178,6 +168,7 @@ export async function stopStudio(id: string): Promise<ActionResult> {
     await sql.exec(`delete from integrations where id = $1`, [`ingest:${id}`]);
     const acc = await getAccount();
     if (live?.youtube_id && oauthConfigured() && acc.refresh_token) await endBroadcast(live.youtube_id);
+    await archiveAsLesson(id).catch(() => {});
     refresh(id);
     return { ok: true };
   } catch (e) {
