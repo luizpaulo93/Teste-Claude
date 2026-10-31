@@ -341,6 +341,14 @@ export default async function LandingPage() {
               <Logo className="size-6" />
               <span className="font-extrabold tracking-wide">{brand}</span>
             </div>
+            <div className="flex gap-4">
+              <a href="/site/privacidade" className="hover:text-white/80">
+                Privacidade
+              </a>
+              <a href="/site/termos" className="hover:text-white/80">
+                Termos
+              </a>
+            </div>
             <p>© {new Date().getFullYear()} {brand}. Todos os direitos reservados.</p>
           </div>
         </footer>
