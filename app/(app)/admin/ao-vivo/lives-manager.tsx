@@ -4,12 +4,12 @@ import { CheckCircle2, CircleStop, ExternalLink, Pencil, Plus, Radio, RotateCcw,
 import Link from 'next/link';
 import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
-import { ImageUpload } from '@/components/admin/uploads';
+import { ImageUpload, PdfDrop } from '@/components/admin/uploads';
 import { LiveMaterialsAdmin } from '@/components/live/live-materials';
 import { YoutubeGuide } from './youtube-guide';
 import { Badge, Button, Card, EmptyState, Field, Input, Select, Textarea, buttonClass } from '@/components/ui';
 import { ActionButton, Modal, SubmitButton, Switch } from '@/components/ui-client';
-import type { Course, LiveSession } from '@/lib/types';
+import type { Course, LessonMaterial, LiveSession } from '@/lib/types';
 import { cn, formatDateTime } from '@/lib/utils';
 import { deleteLive, disconnectYoutube, saveLive, setLiveStatus } from '../live-actions';
 
@@ -163,6 +163,7 @@ export function LivesManager({
             <Field label="Descrição">
               <Textarea name="description" defaultValue={edit.live?.description} rows={3} maxLength={2000} />
             </Field>
+            <FormPdfs initial={edit.live?.materials ?? []} />
             <div className="space-y-1.5">
               <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
               <ImageUpload name="cover_url" defaultValue={edit.live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
@@ -260,6 +261,33 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+/** PDFs da live no formulário: os alunos abrem e baixam na sala durante a transmissão (e na aula salva depois). */
+function FormPdfs({ initial }: { initial: LessonMaterial[] }) {
+  const [list, setList] = useState(initial);
+  return (
+    <div className="space-y-2">
+      <input type="hidden" name="materials" value={JSON.stringify(list)} />
+      <span className="text-xs font-semibold text-ink-2">PDFs para os alunos baixarem durante a live</span>
+      {list.map((m) => (
+        <div key={m.id} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2">
+          <FileText className="size-4 shrink-0 text-danger" />
+          <Input
+            value={m.title}
+            onChange={(e) => setList((l) => l.map((x) => (x.id === m.id ? { ...x, title: e.target.value } : x)))}
+            className="h-8 flex-1 border-0 bg-transparent px-1"
+            aria-label="Nome do PDF"
+          />
+          <span className="shrink-0 text-[10px] text-muted">{m.size_label}</span>
+          <button type="button" onClick={() => setList((l) => l.filter((x) => x.id !== m.id))} aria-label="Tirar PDF" className="text-muted hover:text-danger">
+            <X className="size-4" />
+          </button>
+        </div>
+      ))}
+      <PdfDrop folder="lives/pdfs" multiple label="Subir PDF" onUploaded={(r) => setList((l) => [...l, { id: crypto.randomUUID().slice(0, 12), title: r.title, file_path: r.path, size_label: r.size }])} />
     </div>
   );
 }

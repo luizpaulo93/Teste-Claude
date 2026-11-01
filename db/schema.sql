@@ -588,3 +588,9 @@ insert into course_tags (id, name, position)
   select 'tag-' || md5(lower(trim(category))), min(trim(category)), 0 from courses where trim(category) <> '' group by lower(trim(category))
   on conflict (id) do nothing;
 update courses set tag_ids = array['tag-' || md5(lower(trim(category)))], category = '' where trim(category) <> '' and cardinality(tag_ids) = 0;
+
+-- ============================================================================
+-- Versão 15: curso "Live" de cada turma (criado sozinho quando a turma recebe uma live).
+-- ============================================================================
+alter table courses add column if not exists live_class_id text;
+create unique index if not exists courses_live_class_idx on courses (live_class_id) where live_class_id is not null;

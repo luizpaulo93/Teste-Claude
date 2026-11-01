@@ -28,6 +28,17 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
     const courseId = '';
     const title = str(fd, 'title', 160);
     if (!title) return { error: 'Informe o título.' };
+    // PDFs escolhidos no formulário (os alunos baixam durante a live)
+    let mats: LessonMaterial[] = [];
+    try {
+      const raw = JSON.parse(String(fd.get('materials') ?? '[]')) as LessonMaterial[];
+      mats = (Array.isArray(raw) ? raw : [])
+        .filter((m) => typeof m?.file_path === 'string' && /^lives\/[\w/-]+\.pdf$/.test(m.file_path))
+        .slice(0, 30)
+        .map((m) => ({ id: String(m.id || newId()).slice(0, 40), title: String(m.title || 'Material').slice(0, 160), file_path: m.file_path, size_label: String(m.size_label ?? '').slice(0, 20) }));
+    } catch {
+      /* sem PDFs */
+    }
     const values = [
       title,
       str(fd, 'description', 2000),
@@ -46,11 +57,18 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
            show_replay = $8, chat_enabled = $9, is_published = $10, space = $11, audience = $12, updated_at = now() where id = $1`,
         [id, ...values, space, audience],
       );
+      if (fd.has('materials')) {
+        const old = await sql.one<{ materials: LessonMaterial[] }>(`select materials from live_sessions where id = $1`, [id]);
+        await sql.exec(`update live_sessions set materials = $2, material_paths = $3 where id = $1`, [id, JSON.stringify(mats), mats.map((m) => m.file_path)]);
+        const keep = new Set(mats.map((m) => m.file_path));
+        for (const gone of (old?.materials ?? []).filter((m) => !keep.has(m.file_path))) await syncLessonMaterials(id, gone.file_path);
+        await syncLessonMaterials(id);
+      }
     } else {
       await sql.exec(
-        `insert into live_sessions (id, title, description, youtube_id, cover_url, course_id, starts_at, show_replay, chat_enabled, is_published, space, audience)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-        [newId(), ...values, space, audience],
+        `insert into live_sessions (id, title, description, youtube_id, cover_url, course_id, starts_at, show_replay, chat_enabled, is_published, space, audience, materials, material_paths)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [newId(), ...values, space, audience, JSON.stringify(mats), mats.map((m) => m.file_path)],
       );
     }
     refresh(id || undefined);
@@ -90,35 +108,68 @@ export async function deleteLive(id: string): Promise<ActionResult> {
   }
 }
 
-/** Nome da pasta da live no banco de aulas: "Lives · <turma/aluno/mentoria>" (ou só "Lives" quando é para todos). */
-async function folderName(audience: string[]) {
-  if (!audience.length) return 'Lives';
-  const labels: string[] = [];
-  for (const t of audience.slice(0, 4)) {
-    const [kind, ...rest] = t.split(':');
-    const id = rest.join(':');
-    const row =
-      kind === 'c'
-        ? await sql.one<{ n: string }>(`select name as n from classes where id = $1`, [id])
-        : kind === 'g'
-          ? await sql.one<{ n: string }>(`select name as n from mentoria_groups where id = $1`, [id])
-          : kind === 'm'
-            ? await sql.one<{ n: string }>(`select 'Mentoria ' || coalesce(nullif(student_name, ''), student_email) as n from mentorias where id = $1`, [id])
-            : kind === 'u'
-              ? await sql.one<{ n: string }>(`select coalesce(nullif(name, ''), email) as n from students where id = $1`, [id])
-              : await sql.one<{ n: string }>(`select title as n from courses where id = $1`, [id]);
-    labels.push(row?.n || (kind === 'u' ? id : 'removido'));
-  }
-  return `Lives · ${labels.join(', ')}${audience.length > 4 ? ` +${audience.length - 4}` : ''}`.slice(0, 120);
+const LIVE_FOLDER = 'Live';
+
+/** "31/10/2026 às 23:14" no horário de Brasília. */
+function liveWhen(iso: string) {
+  const d = new Date(iso);
+  const date = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' }).format(d);
+  const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' }).format(d);
+  return { date, label: `${date} às ${time}` };
 }
 
 /**
- * Guarda a live como aula normal do YouTube no banco de aulas, numa pasta só daquele público
- * (ex.: "Lives · Turma Medicina"), com os PDFs da live. Depois dá para pôr a aula em qualquer curso.
+ * Curso "Live" da turma: criado sozinho na primeira live da turma (com o módulo "Aulas ao vivo")
+ * e liberado para ela. Devolve o módulo onde as gravações entram.
+ */
+async function liveModuleFor(classId: string) {
+  const cls = await sql.one<{ name: string; course_ids: string[] }>(`select name, course_ids from classes where id = $1`, [classId]);
+  if (!cls) return null;
+  let course = await sql.one<{ id: string }>(`select id from courses where live_class_id = $1`, [classId]);
+  if (!course) {
+    course = { id: newId() };
+    await sql.exec(
+      `insert into courses (id, title, subtitle, description, cover_url, is_published, position, live_class_id)
+       select $1, 'Live', $2, 'Gravações das aulas ao vivo da turma, da mais antiga para a mais recente.', 'color:3', true, coalesce(max(position), -1) + 1, $3 from courses
+       on conflict do nothing`,
+      [course.id, cls.name, classId],
+    );
+    course = (await sql.one<{ id: string }>(`select id from courses where live_class_id = $1`, [classId])) ?? course;
+  }
+  if (!(cls.course_ids ?? []).includes(course.id)) await sql.exec(`update classes set course_ids = array_append(course_ids, $2), updated_at = now() where id = $1`, [classId, course.id]);
+  let mod = await sql.one<{ id: string }>(`select id from modules where course_id = $1 order by position limit 1`, [course.id]);
+  if (!mod) {
+    mod = { id: newId() };
+    await sql.exec(`insert into modules (id, course_id, title, position, is_published) values ($1, $2, 'Aulas ao vivo', 0, true)`, [mod.id, course.id]);
+  }
+  return mod.id;
+}
+
+/** Coloca a gravação no curso "Live" de cada turma do público, em ordem de data (mais antiga no topo). */
+async function placeInClassCourses(lessonId: string, audience: string[]) {
+  for (const t of audience.filter((x) => x.startsWith('c:'))) {
+    const mod = await liveModuleFor(t.slice(2));
+    if (!mod) continue;
+    await sql.exec(`insert into module_lessons (module_id, lesson_id, position) values ($1, $2, 0) on conflict do nothing`, [mod, lessonId]);
+    await sql.exec(
+      `update module_lessons ml set position = r.rn
+         from (select ml2.lesson_id, (row_number() over (order by coalesce(s.starts_at, l.created_at)) - 1)::int as rn
+                 from module_lessons ml2 join lessons l on l.id = ml2.lesson_id
+                 left join live_sessions s on s.lesson_id = l.id
+                where ml2.module_id = $1) r
+        where ml.module_id = $1 and ml.lesson_id = r.lesson_id`,
+      [mod],
+    );
+  }
+}
+
+/**
+ * Guarda a live como aula normal do YouTube na pasta "Live" do banco de aulas, com o nome, a data e os
+ * PDFs da live, e coloca no curso "Live" de cada turma que recebeu a live.
  */
 async function archiveAsLesson(id: string): Promise<ActionResult> {
-  const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string; audience: string[]; materials: LessonMaterial[]; lesson_id: string | null }>(
-    `select title, description, youtube_id, cover_url, audience, materials, lesson_id from live_sessions where id = $1`,
+  const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string; audience: string[]; materials: LessonMaterial[]; lesson_id: string | null; starts_at: string }>(
+    `select title, description, youtube_id, cover_url, audience, materials, lesson_id, starts_at from live_sessions where id = $1`,
     [id],
   );
   if (!live) return { error: 'Transmissão não encontrada.' };
@@ -127,30 +178,35 @@ async function archiveAsLesson(id: string): Promise<ActionResult> {
     ? await sql.one<{ id: string }>(`select id from lessons where id = $1`, [live.lesson_id])
     : // gravação já salva antes (pasta de lives), sem repetir
       await sql.one<{ id: string }>(
-        `select l.id from lessons l join lesson_folders f on f.id = l.folder_id where l.youtube_id = $1 and lower(f.name) like 'lives%' limit 1`,
+        `select l.id from lessons l join lesson_folders f on f.id = l.folder_id where l.youtube_id = $1 and lower(f.name) like 'live%' limit 1`,
         [live.youtube_id],
       );
   if (existing) {
     await sql.exec(`update live_sessions set lesson_id = $2 where id = $1`, [id, existing.id]);
     await syncLessonMaterials(id);
+    await placeInClassCourses(existing.id, live.audience ?? []);
+    refreshCatalog();
     return { ok: true };
   }
-  const name = await folderName(live.audience ?? []);
-  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = lower($1) limit 1`, [name]);
+  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = lower($1) limit 1`, [LIVE_FOLDER]);
   if (!folder) {
     folder = { id: newId() };
-    await sql.exec(`insert into lesson_folders (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id, name]);
+    await sql.exec(`insert into lesson_folders (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id, LIVE_FOLDER]);
   }
   const lessonId = newId();
   const mats = live.materials ?? [];
+  const when = liveWhen(live.starts_at);
+  const description = [`Aula ao vivo de ${when.label}.`, live.description].filter(Boolean).join('\n\n');
   await sql.exec(
     `insert into lessons (id, title, description, youtube_id, thumbnail_url, is_published, folder_id, materials, material_paths, position)
      select $1, $2, $3, $4, $5, true, $6, $7, $8, coalesce(max(position), -1) + 1 from lessons where folder_id = $6`,
-    [lessonId, live.title, live.description, live.youtube_id, live.cover_url, folder.id, JSON.stringify(mats), mats.map((m) => m.file_path)],
+    [lessonId, `${live.title} · ${when.date}`.slice(0, 160), description, live.youtube_id, live.cover_url, folder.id, JSON.stringify(mats), mats.map((m) => m.file_path)],
   );
   await sql.exec(`update live_sessions set lesson_id = $2 where id = $1`, [id, lessonId]);
+  await placeInClassCourses(lessonId, live.audience ?? []);
   refreshCatalog();
   revalidatePath('/admin/aulas');
+  revalidatePath('/admin/cursos');
   return { ok: true };
 }
 
