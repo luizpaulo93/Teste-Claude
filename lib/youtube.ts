@@ -67,8 +67,8 @@ export async function exchangeCode(code: string, redirectUri: string) {
       grant_type: 'authorization_code',
     }),
   });
-  const j = (await res.json()) as { access_token?: string; refresh_token?: string; expires_in?: number; error_description?: string };
-  if (!res.ok || !j.access_token) throw new Error(j.error_description || 'Não foi possível conectar ao YouTube.');
+  const j = (await res.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
+  if (!res.ok || !j.access_token) throw new Error(`token:${j.error ?? res.status}:${j.error_description ?? ''}`);
   return j;
 }
 
@@ -101,6 +101,7 @@ async function yt<T>(path: string, init: RequestInit & { token?: string } = {}):
   const j = (await res.json().catch(() => ({}))) as T & { error?: { message?: string; errors?: { reason?: string }[] } };
   if (!res.ok) {
     const reason = j.error?.errors?.[0]?.reason;
+    if (reason === 'youtubeSignupRequired') throw new Error('youtubeSignupRequired');
     if (reason === 'liveStreamingNotEnabled') throw new Error('Ative a transmissão ao vivo no seu canal (YouTube Studio → Transmitir). A liberação pode levar até 24 h.');
     throw new Error(j.error?.message || 'O YouTube recusou o pedido.');
   }
@@ -152,4 +153,15 @@ export async function setIngest(liveId: string, ingest: string) {
 export async function getIngest(liveId: string) {
   const row = await sql.one<{ data: { ingest?: string } }>(`select data from integrations where id = $1`, [`ingest:${liveId}`]);
   return row?.data.ingest ?? '';
+}
+
+/** Traduz o erro do Google num código curto que a tela Ao vivo explica em português. */
+export function youtubeReason(msg: string) {
+  if (/invalid_client|unauthorized_client/.test(msg)) return 'cliente';
+  if (/redirect_uri_mismatch/.test(msg)) return 'redirect';
+  if (/invalid_grant/.test(msg)) return 'expirou';
+  if (/has not been used|is disabled|accessNotConfigured|SERVICE_DISABLED/i.test(msg)) return 'api';
+  if (/youtubeSignupRequired|channelNotFound/i.test(msg)) return 'canal';
+  if (/insufficient|scope/i.test(msg)) return 'permissao';
+  return msg.replace(/^token:/, '').slice(0, 160);
 }
