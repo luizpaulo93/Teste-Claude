@@ -23,7 +23,7 @@ import {
 export type BankLesson = Pick<
   Lesson,
   'id' | 'title' | 'description' | 'youtube_id' | 'duration' | 'thumbnail_url' | 'is_free' | 'is_published' | 'materials' | 'folder_id' | 'position'
-> & { uses: number };
+> & { uses: number; live_id?: string | null };
 
 export function LessonBank({ folders, lessons, current }: { folders: LessonFolder[]; lessons: BankLesson[]; current: string | null }) {
   const router = useRouter();
@@ -149,10 +149,18 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setLessonModal({ lesson: l })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
-                      {l.title}
-                    </button>
+                    {l.live_id ? (
+                      // Aula de live: abre a tela com o vídeo, o chat e os PDFs
+                      <Link href={`/admin/aulas/${l.id}`} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
+                        {l.title}
+                      </Link>
+                    ) : (
+                      <button type="button" onClick={() => setLessonModal({ lesson: l })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
+                        {l.title}
+                      </button>
+                    )}
                     <div className="mt-1 flex flex-wrap items-center gap-1">
+                      {l.live_id && <Badge tone="danger">live</Badge>}
                       {l.youtube_id && (
                         <Badge tone="brand">
                           <Video className="size-3" /> vídeo

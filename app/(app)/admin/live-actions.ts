@@ -188,7 +188,9 @@ async function archiveAsLesson(id: string): Promise<ActionResult> {
     refreshCatalog();
     return { ok: true };
   }
-  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) = lower($1) limit 1`, [LIVE_FOLDER]);
+  // Uma pasta só para as lives (a antiga "Lives" vira "Live")
+  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) in ('live', 'lives') order by (lower(name) = 'live') desc limit 1`);
+  if (folder) await sql.exec(`update lesson_folders set name = $2 where id = $1 and name <> $2`, [folder.id, LIVE_FOLDER]);
   if (!folder) {
     folder = { id: newId() };
     await sql.exec(`insert into lesson_folders (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id, LIVE_FOLDER]);
@@ -319,6 +321,42 @@ export async function stopStudio(id: string): Promise<ActionResult> {
     if (live?.youtube_id && oauthConfigured() && acc.refresh_token) await endBroadcast(live.youtube_id);
     await archiveAsLesson(id).catch(() => {});
     refresh(id);
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Tela da aula de live (Admin → Aulas): o mentor muda o nome e os PDFs. O link do YouTube fica travado.
+ * Os PDFs valem na aula salva e na sala da live.
+ */
+export async function saveLiveLesson(lessonId: string, data: { title: string; materials: LessonMaterial[] }): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(lessonId)) return { error: 'Inválido.' };
+    const title = String(data.title ?? '').trim().slice(0, 160);
+    if (!title) return { error: 'Dê um nome à aula.' };
+    const mats = (Array.isArray(data.materials) ? data.materials : [])
+      .filter((m) => typeof m?.file_path === 'string' && /^(lives|lessons|mentoria)\/[\w/-]+\.pdf$/.test(m.file_path))
+      .slice(0, 40)
+      .map((m) => ({ id: String(m.id || newId()).slice(0, 40), title: String(m.title || 'Material').slice(0, 160), file_path: m.file_path, size_label: String(m.size_label ?? '').slice(0, 20) }));
+    const n = await sql.exec(`update lessons set title = $2, materials = $3, material_paths = $4, updated_at = now() where id = $1`, [
+      lessonId,
+      title,
+      JSON.stringify(mats),
+      mats.map((m) => m.file_path),
+    ]);
+    if (!n) return { error: 'Aula não encontrada.' };
+    // a sala da live mostra os mesmos PDFs
+    const lives = await sql.query<{ id: string }>(`update live_sessions set materials = $2, material_paths = $3 where lesson_id = $1 returning id`, [
+      lessonId,
+      JSON.stringify(mats),
+      mats.map((m) => m.file_path),
+    ]);
+    lives.forEach((l) => updateTag(`live-${l.id}`));
+    refreshCatalog();
+    revalidatePath('/admin/aulas', 'layout');
     return { ok: true };
   } catch (e) {
     return fail(e);

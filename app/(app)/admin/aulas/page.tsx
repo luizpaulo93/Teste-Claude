@@ -12,7 +12,11 @@ export default async function AdminLessons({ searchParams }: { searchParams: Pro
     sql.query<LessonFolder>(`select id, name, position from lesson_folders order by position, created_at`),
     sql.query<BankLesson>(
       `select l.id, l.title, l.description, l.youtube_id, l.duration, l.thumbnail_url, l.is_free, l.is_published, l.materials, l.folder_id, l.position,
-              (select count(*)::int from module_lessons ml where ml.lesson_id = l.id) as uses
+              (select count(*)::int from module_lessons ml where ml.lesson_id = l.id) as uses,
+              (select s.id from live_sessions s where s.lesson_id = l.id
+                  or (s.youtube_id <> '' and s.youtube_id = l.youtube_id
+                      and exists (select 1 from lesson_folders f where f.id = l.folder_id and lower(f.name) in ('live', 'lives')))
+                order by (s.lesson_id = l.id) desc nulls last limit 1) as live_id
          from lessons l order by l.position, l.created_at`,
     ),
   ]);
