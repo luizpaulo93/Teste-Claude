@@ -22,7 +22,11 @@ export interface YoutubeAccount {
   stream_key?: string;
 }
 
-export const oauthConfigured = () => Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+// Tira espaços e aspas colados por engano junto com as chaves na Vercel
+const envClean = (v?: string) => (v ?? '').trim().replace(/^["']|["']$/g, '').trim();
+export const googleClientId = () => envClean(process.env.GOOGLE_CLIENT_ID);
+const googleClientSecret = () => envClean(process.env.GOOGLE_CLIENT_SECRET);
+export const oauthConfigured = () => Boolean(googleClientId() && googleClientSecret());
 
 export async function getAccount(): Promise<YoutubeAccount> {
   const row = await sql.one<{ data: YoutubeAccount }>(`select data from integrations where id = 'youtube'`);
@@ -61,8 +65,8 @@ export async function exchangeCode(code: string, redirectUri: string) {
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: googleClientId(),
+      client_secret: googleClientSecret(),
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
@@ -80,8 +84,8 @@ async function accessToken(): Promise<string> {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      client_id: process.env.GOOGLE_CLIENT_ID!,
-      client_secret: process.env.GOOGLE_CLIENT_SECRET!,
+      client_id: googleClientId(),
+      client_secret: googleClientSecret(),
       refresh_token: acc.refresh_token,
       grant_type: 'refresh_token',
     }),
