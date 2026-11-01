@@ -183,7 +183,7 @@ export function LivesManager({
 }
 
 export interface AudienceOptions {
-  classes: { key: string; label: string }[];
+  classes: { key: string; label: string; courseIds?: string[]; all?: boolean }[];
   mentorias: { key: string; label: string }[];
   students: { key: string; label: string; sub?: string }[];
   courses: { key: string; label: string }[];
@@ -191,7 +191,14 @@ export interface AudienceOptions {
 
 /** Quem assiste: turmas, alunos, mentorias (individual ou grupo) e cursos. Nada marcado = todos os alunos liberados. */
 function AudiencePicker({ options, initial }: { options: AudienceOptions; initial: string[] }) {
-  const [sel, setSel] = useState<string[]>(initial);
+  // Lives antigas com "turmas com acesso ao curso": viram as turmas que têm o curso
+  const [sel, setSel] = useState<string[]>(() => [
+    ...new Set(
+      initial.flatMap((t) =>
+        t.startsWith('course:') ? options.classes.filter((c) => c.all || c.courseIds?.includes(t.slice(7))).map((c) => c.key) : [t],
+      ),
+    ),
+  ]);
   const [q, setQ] = useState('');
   const all = [...options.classes, ...options.mentorias, ...options.students, ...options.courses];
   const toggle = (k: string) => setSel((l) => (l.includes(k) ? l.filter((x) => x !== k) : [...l, k]));
@@ -253,7 +260,6 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
           </ul>
         )}
       </div>
-      <Chips title="Turmas com acesso ao curso" list={options.courses} />
     </div>
   );
 }
