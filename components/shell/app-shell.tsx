@@ -78,7 +78,8 @@ export function AppShell({
   const inAdmin = pathname.startsWith('/admin');
 
   // Sempre 4 atalhos + "Mais": primeiro os preferidos, depois completa com os outros
-  const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/calendario', '/simulados'] : ['/', '/cursos', '/simulados', '/calendario', '/duvidas'];
+  // Dúvidas no menu de baixo; Calendário fica no "Mais" (entra só se faltar atalho)
+  const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/duvidas', '/simulados', '/calendario'] : ['/', '/cursos', '/simulados', '/duvidas', '/calendario'];
   const mobileMain = [
     ...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean),
     ...items.filter((i) => !preferred.includes(i.href)),
