@@ -191,6 +191,7 @@ export function Studio({
     caster.current?.setRange(r.min, r.max);
   }
   const [res, setRes] = useState<Res>('1080');
+  const [camInfo, setCamInfo] = useState<{ w: number; h: number; fps: number } | null>(null);
   useEffect(() => setRes(initialRes()), []);
   function pickRes(r: Res) {
     setRes(r);
@@ -256,6 +257,14 @@ export function Studio({
       gain.connect(dest);
       gain.connect(analyser);
       audio.current = { ctx, dest, analyser, gain };
+      // iPad/iPhone: o sistema pode pausar o som do site (notificação, Siri, ligação). Retoma sozinho.
+      const wake = () => {
+        if (ctx.state !== 'running' && ctx.state !== 'closed') void ctx.resume().catch(() => {});
+      };
+      ctx.addEventListener('statechange', () => window.setTimeout(wake, 300));
+      document.addEventListener('visibilitychange', wake);
+      document.addEventListener('touchend', wake, { passive: true });
+      document.addEventListener('click', wake);
     }
     return audio.current;
   }, []);
@@ -622,6 +631,14 @@ export function Studio({
         camTrack.current = t;
         comp.current?.setCamera(t);
         if (old && old !== t) old.stop();
+        // o que a câmera está entregando de verdade (a C922 vai até 1920×1080)
+        const read = () => {
+          if (cancelled) return;
+          const st = t.getSettings();
+          if (st.width && st.height) setCamInfo({ w: Math.max(st.width, st.height), h: Math.min(st.width, st.height), fps: Math.round(st.frameRate ?? 0) });
+        };
+        read();
+        window.setTimeout(read, 1500);
       })
       .catch(() => toast.error('Não foi possível abrir esta câmera.'));
     return () => {
@@ -1301,7 +1318,7 @@ export function Studio({
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="text-muted">Quadros</p>
-              <p className={cn('font-bold tabular-nums', (status?.lost ?? 0) >= 10 ? 'text-warning' : 'text-ink')}>{status?.fps ?? 0} fps</p>
+              <p className={cn('font-bold tabular-nums', (status?.lost ?? 0) >= 15 ? 'text-warning' : 'text-ink')}>{status?.fps ?? 0} fps</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="flex items-center justify-center gap-1 text-muted">
@@ -1311,7 +1328,7 @@ export function Studio({
             </div>
           </div>
         ) : null}
-        {onAir && (status?.lost ?? 0) >= 10 && (
+        {onAir && (status?.lost ?? 0) >= 15 && (
           <p className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
             O aparelho está perdendo {status?.lost}% dos quadros. Feche outros apps ou abas{res === '1080' ? '; se continuar, use 720p na próxima live' : ''}.
           </p>
@@ -1343,6 +1360,13 @@ export function Studio({
             ))}
             <option value="none">Sem câmera</option>
           </Select>
+          {cam !== 'none' && camInfo && (
+            <span className={cn('block text-[11px]', camInfo.h < RES[res].h ? 'text-warning' : 'text-muted')}>
+              Câmera entregando {camInfo.w}×{camInfo.h}
+              {camInfo.fps ? ` · ${camInfo.fps} fps` : ''}
+              {camInfo.h < RES[res].h ? ` — abaixo de ${res}p, a imagem não ganha detalhe` : ''}
+            </span>
+          )}
         </label>
         {scene !== 'pdf' && <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />}
 

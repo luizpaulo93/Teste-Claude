@@ -172,8 +172,11 @@ export class Broadcaster {
     let t = p;
     if (this.clockCtx) {
       const off = this.audioSec() - this.c0 - p;
-      // segue o áudio devagar (sem saltos); diferença grande (áudio parou/voltou) corrige na hora
-      this.drift = Math.abs(off - this.drift) > 0.25 ? off : this.drift + (off - this.drift) * 0.02;
+      // segue o áudio devagar (sem saltos)
+      if (Math.abs(off - this.drift) > 0.25) {
+        // salto grande = o iPad pausou o som (notificação, Siri, ligação): a imagem segue no relógio do sistema
+        this.c0 += off - this.drift;
+      } else this.drift += (off - this.drift) * 0.02;
       t = p + this.drift;
     }
     const us = Math.max(this.lastNow + 1, Math.round(t * 1e6));
@@ -339,12 +342,23 @@ export class Broadcaster {
     this.drift = 0;
     await this.setupAudio(ctx.sampleRate, 2);
     let samples = 0;
+    const lags: number[] = [];
     w.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
       if (!this.running || !this.aenc) return;
       if (this.audioFirstTs < 0) {
         this.audioFirstTs = 0;
         // começo deste bloco no relógio da live (o bloco tem 1024 amostras já capturadas)
         this.audioOffsetUs = this.now() - Math.round((1024 / ctx.sampleRate) * 1e6);
+      }
+      // Som voltou depois de uma pausa do sistema: recoloca no tempo certo (fica um silêncio, nunca atraso)
+      const blockUs = (1024 / ctx.sampleRate) * 1e6;
+      const lag = this.now() - blockUs - (this.audioOffsetUs + (samples / ctx.sampleRate) * 1e6);
+      lags.push(lag);
+      if (lags.length > 24) lags.shift();
+      const minLag = Math.min(...lags); // o menor atraso recente ignora mensagens que só chegaram tarde
+      if (lags.length >= 8 && minLag > 400_000) {
+        this.audioOffsetUs += Math.round(minLag);
+        lags.length = 0;
       }
       const data = new AudioData({
         format: 'f32-planar',
