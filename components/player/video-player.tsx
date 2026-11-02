@@ -531,15 +531,21 @@ export function VideoPlayer({
         isFull && !barVisible && playing && 'cursor-none',
       )}
     >
-      {/* Vídeo do YouTube (maior que a moldura para esconder título e logo do YouTube) */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+      {/* Vídeo do YouTube (maior que a moldura para esconder título e logo do YouTube).
+          Na tela cheia o vídeo fica inteiro em 16:9, com bordas pretas no que sobrar (como no YouTube). */}
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
         <div
-          ref={mountRef}
-          className={cn(
-            'w-full transition-all duration-200 [&>iframe]:pointer-events-none [&>iframe]:size-full',
-            cc ? 'h-full' : '-mt-[60px] h-[calc(100%+120px)] sm:-mt-[80px] sm:h-[calc(100%+160px)]',
-          )}
-        />
+          className="relative overflow-hidden"
+          style={isFull ? { width: 'min(100%, calc(100dvh * 16 / 9))', aspectRatio: '16 / 9' } : { position: 'absolute', inset: 0 }}
+        >
+          <div
+            ref={mountRef}
+            className={cn(
+              'w-full transition-all duration-200 [&>iframe]:pointer-events-none [&>iframe]:size-full',
+              cc ? 'h-full' : '-mt-[60px] h-[calc(100%+120px)] sm:-mt-[80px] sm:h-[calc(100%+160px)]',
+            )}
+          />
+        </div>
       </div>
 
       {/* Camada que recebe os cliques (o aluno nunca clica no YouTube) */}
