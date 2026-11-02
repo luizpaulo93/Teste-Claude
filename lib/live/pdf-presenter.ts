@@ -1,6 +1,7 @@
 /**
- * PDF na live: abre o PDF no próprio Estúdio e mostra a parte escolhida (página, zoom e posição).
- * Medidas em "larguras de página": a página tem largura 1 e altura `ratio`.
+ * PDF na live: abre o PDF no próprio Estúdio, com as páginas uma embaixo da outra (rolagem contínua),
+ * zoom por pinça e a parte escolhida aparecendo na transmissão.
+ * Medidas em "larguras de página": cada página tem largura 1 e altura = proporção dela (A4 ≈ 1,414).
  */
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
@@ -20,19 +21,26 @@ export interface PdfView {
   zoom: number;
 }
 
+const GAP = 0.025; // espaço entre as páginas
+const KEEP = 10; // páginas renderizadas guardadas na memória
+
 export class PdfPresenter {
   private doc: PDFDocumentProxy | null = null;
-  private canvas: HTMLCanvasElement | null = null; // página renderizada
-  private rendering = 0;
-  page = 1;
+  private ratios: number[] = [];
+  private tops: number[] = [];
+  private total = 0;
+  private cache = new Map<number, { canvas: HTMLCanvasElement; width: number; used: number }>();
+  private queue = new Set<number>();
+  private busy = false;
+  private docId = 0;
   pages = 0;
+  /** página que está no meio da tela */
+  page = 1;
   /** 1 = a largura da página ocupa a largura do quadro */
   zoom = 1;
-  /** canto de cima à esquerda da parte visível (em larguras de página) */
+  /** canto de cima à esquerda da parte visível, no documento inteiro (em larguras de página) */
   cx = 0;
   cy = 0;
-  ratio = 1.414;
-  /** tamanho do quadro da live (para calcular a parte visível) */
   frameW = 1280;
   frameH = 720;
   onChange?: () => void;
@@ -40,17 +48,46 @@ export class PdfPresenter {
   async load(data: ArrayBuffer) {
     const m = await pdfjs();
     void this.doc?.loadingTask.destroy();
-    this.doc = await m.getDocument({ data }).promise;
-    this.pages = this.doc.numPages;
+    this.cache.clear();
+    this.queue.clear();
+    const id = ++this.docId;
+    const doc = await m.getDocument({ data }).promise;
+    this.doc = doc;
+    this.pages = doc.numPages;
+    const first = (await doc.getPage(1)).getViewport({ scale: 1 });
+    this.ratios = Array.from({ length: this.pages }, () => first.height / first.width);
+    this.layout();
     this.page = 1;
     this.zoom = 1;
     this.cx = 0;
     this.cy = 0;
-    await this.render();
+    this.clamp();
+    this.onChange?.();
+    // proporção real de cada página, em segundo plano (PDFs com páginas de tamanhos diferentes)
+    void (async () => {
+      for (let i = 2; i <= this.pages && id === this.docId; i++) {
+        const v = (await doc.getPage(i)).getViewport({ scale: 1 });
+        const r = v.height / v.width;
+        if (Math.abs(r - this.ratios[i - 1]) > 0.001) {
+          this.ratios[i - 1] = r;
+          this.layout();
+        }
+      }
+    })().catch(() => {});
   }
 
   get view(): PdfView {
     return { page: this.page, pages: this.pages, zoom: this.zoom };
+  }
+
+  private layout() {
+    let y = 0;
+    this.tops = this.ratios.map((r) => {
+      const t = y;
+      y += r + GAP;
+      return t;
+    });
+    this.total = Math.max(0, y - GAP);
   }
 
   private get vw() {
@@ -64,51 +101,29 @@ export class PdfPresenter {
     const vw = this.vw;
     const vh = this.vh;
     this.cx = vw >= 1 ? (1 - vw) / 2 : Math.min(Math.max(0, this.cx), 1 - vw);
-    this.cy = vh >= this.ratio ? (this.ratio - vh) / 2 : Math.min(Math.max(0, this.cy), this.ratio - vh);
-  }
-
-  /** Renderiza a página na resolução certa para o zoom atual (nítida no vídeo). */
-  private async render() {
-    if (!this.doc) return;
-    const ticket = ++this.rendering;
-    const p = await this.doc.getPage(this.page);
-    const base = p.getViewport({ scale: 1 });
-    this.ratio = base.height / base.width;
-    // largura de página em pixels = largura do quadro × zoom (com folga para ficar nítido), limitado
-    let scale = ((this.frameW * Math.max(1, this.zoom) * 1.4) / base.width);
-    const maxSide = 4096;
-    scale = Math.min(scale, maxSide / base.width, maxSide / base.height);
-    const vp = p.getViewport({ scale });
-    const c = document.createElement('canvas');
-    c.width = Math.ceil(vp.width);
-    c.height = Math.ceil(vp.height);
-    await p.render({ canvas: c, canvasContext: c.getContext('2d')!, viewport: vp }).promise;
-    if (ticket !== this.rendering) return; // já pediram outra página/zoom
-    this.canvas = c;
-    this.clamp();
-    this.onChange?.();
+    this.cy = vh >= this.total ? (this.total - vh) / 2 : Math.min(Math.max(0, this.cy), this.total - vh);
+    // página atual = a que está no meio da tela
+    const mid = this.cy + vh / 2;
+    let p = 1;
+    for (let i = 0; i < this.tops.length; i++) if (this.tops[i] <= mid) p = i + 1;
+    this.page = p;
   }
 
   /** Menor zoom: a página inteira no quadro (bom para A4 em pé) */
   get minZoom() {
-    return Math.min(1, this.frameW / this.frameH / this.ratio);
+    const r = this.ratios[this.page - 1] ?? 1.414;
+    return Math.min(1, this.frameW / this.frameH / r);
   }
 
-  async goTo(page: number, atBottom = false) {
+  /** Vai para o começo da página (ou centraliza a página inteira, se ela couber) */
+  async goTo(page: number) {
     if (!this.doc) return;
     const n = Math.min(this.pages, Math.max(1, page));
-    if (n === this.page) return;
+    const r = this.ratios[n - 1] ?? 1.414;
+    this.cy = this.tops[n - 1] - (this.vh > r ? (this.vh - r) / 2 : 0);
+    this.clamp();
     this.page = n;
-    this.over = 0;
-    this.cy = atBottom ? this.ratio : 0; // clamp() leva para o fim da página
-    await this.render();
-  }
-
-  // Re-renderiza a página só quando o zoom para de mudar (a pinça fica leve)
-  private timer: ReturnType<typeof setTimeout> | undefined;
-  private scheduleRender() {
-    clearTimeout(this.timer);
-    this.timer = setTimeout(() => void this.render(), 160);
+    this.onChange?.();
   }
 
   /** Zoom mantendo parado o ponto sob os dedos (fx, fy = fração do quadro, 0..1). */
@@ -122,20 +137,23 @@ export class PdfPresenter {
     this.cy = py - fy * this.vh;
     this.clamp();
     this.onChange?.();
-    this.scheduleRender();
   }
 
   async setZoom(z: number) {
     this.zoomAt(z / this.zoom);
   }
 
-  /** Largura da página = largura do quadro */
+  /** Largura da página = largura do quadro (fica no começo da página atual) */
   fitWidth() {
-    this.zoomAt(1 / this.zoom, 0.5, 0);
+    const n = this.page;
+    this.zoom = 1;
+    void this.goTo(n);
   }
   /** Página inteira no quadro */
   fitPage() {
-    this.zoomAt(this.minZoom / this.zoom);
+    const n = this.page;
+    this.zoom = this.minZoom;
+    void this.goTo(n);
   }
   /** Dois toques: alterna entre largura e página inteira */
   toggleFit() {
@@ -143,46 +161,90 @@ export class PdfPresenter {
     else this.fitWidth();
   }
 
-  private over = 0;
-  /**
-   * Move a parte visível (dx, dy em fração do quadro). Passando do fim da página (rolando ou arrastando),
-   * vai para a próxima; passando do começo, volta para a anterior.
-   */
-  pan(dx: number, dy: number, turnPages = false) {
+  /** Move a parte visível (dx, dy em fração do quadro). As páginas seguem uma embaixo da outra. */
+  pan(dx: number, dy: number) {
     this.cx -= dx * this.vw;
-    const want = this.cy - dy * this.vh;
-    this.cy = want;
+    this.cy -= dy * this.vh;
+    const before = this.page;
     this.clamp();
-    if (turnPages) {
-      const diff = (want - this.cy) / this.vh; // quanto passou do limite (em quadros)
-      this.over = diff === 0 ? 0 : this.over + diff;
-      if (this.over > 0.35 && this.page < this.pages) void this.goTo(this.page + 1);
-      else if (this.over < -0.35 && this.page > 1) void this.goTo(this.page - 1, true);
+    if (this.page !== before) this.onChange?.();
+  }
+
+  // ---------------- renderização das páginas visíveis (nítidas para o zoom atual)
+  private wantWidth(i: number) {
+    const r = this.ratios[i - 1] ?? 1.414;
+    return Math.min(this.frameW * this.zoom * 1.3, 4096, 4096 / r);
+  }
+
+  private request(i: number) {
+    const c = this.cache.get(i);
+    if (c) c.used = performance.now();
+    const want = this.wantWidth(i);
+    if (c && c.width >= want * 0.75 && c.width <= want * 1.8) return;
+    if (this.queue.has(i)) return;
+    this.queue.add(i);
+    void this.pump();
+  }
+
+  private async pump() {
+    if (this.busy || !this.doc) return;
+    this.busy = true;
+    try {
+      while (this.queue.size && this.doc) {
+        const i = this.queue.values().next().value as number;
+        this.queue.delete(i);
+        const id = this.docId;
+        const p = await this.doc.getPage(i);
+        const base = p.getViewport({ scale: 1 });
+        const width = this.wantWidth(i);
+        const vp = p.getViewport({ scale: width / base.width });
+        const c = document.createElement('canvas');
+        c.width = Math.ceil(vp.width);
+        c.height = Math.ceil(vp.height);
+        await p.render({ canvas: c, canvasContext: c.getContext('2d')!, viewport: vp }).promise;
+        if (id !== this.docId) return;
+        this.cache.set(i, { canvas: c, width, used: performance.now() });
+        if (this.cache.size > KEEP) {
+          const old = [...this.cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, this.cache.size - KEEP);
+          old.forEach(([k]) => this.cache.delete(k));
+        }
+      }
+    } catch {
+      /* página com erro: segue */
+    } finally {
+      this.busy = false;
     }
-    this.onChange?.();
   }
 
   draw(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
     ctx.fillStyle = '#2b2f36';
     ctx.fillRect(x, y, w, h);
-    if (!this.canvas) return;
-    const px = this.canvas.width; // pixels por largura de página
-    const sx = this.cx * px;
-    const sy = this.cy * px;
-    const sw = this.vw * px;
-    const sh = this.vh * px;
-    // recorta o que estiver fora da página (fundo cinza aparece nas bordas)
-    const ix = Math.max(0, sx);
-    const iy = Math.max(0, sy);
-    const iw = Math.min(this.canvas.width, sx + sw) - ix;
-    const ih = Math.min(this.canvas.height, sy + sh) - iy;
-    if (iw <= 0 || ih <= 0) return;
-    ctx.drawImage(this.canvas, ix, iy, iw, ih, x + ((ix - sx) / sw) * w, y + ((iy - sy) / sh) * h, (iw / sw) * w, (ih / sh) * h);
+    if (!this.pages) return;
+    this.clamp();
+    const vh = this.vh;
+    const k = w / this.vw; // pixels do quadro por largura de página
+    for (let i = 1; i <= this.pages; i++) {
+      const top = this.tops[i - 1];
+      const r = this.ratios[i - 1];
+      if (top + r < this.cy) continue;
+      if (top > this.cy + vh) break;
+      const dx = x - this.cx * k;
+      const dy = y + (top - this.cy) * k;
+      const c = this.cache.get(i);
+      if (c) ctx.drawImage(c.canvas, dx, dy, k, r * k);
+      else {
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(dx, dy, k, r * k);
+      }
+      this.request(i);
+    }
+    // já prepara a próxima página
+    if (this.page < this.pages) this.request(this.page + 1);
   }
 
   destroy() {
     void this.doc?.loadingTask.destroy();
     this.doc = null;
-    this.canvas = null;
+    this.cache.clear();
   }
 }

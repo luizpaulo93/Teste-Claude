@@ -1,6 +1,6 @@
 'use client';
 
-import { AppWindow, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, RotateCw, Settings2, Video, Wifi } from 'lucide-react';
+import { AppWindow, Maximize2, Minimize2, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, RotateCw, Settings2, Video, Wifi } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDialog } from '@/components/confirm';
@@ -68,6 +68,10 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const lastTap = useRef(0);
   const [pageInput, setPageInput] = useState('');
   const [choosing, setChoosing] = useState(false);
+  const stage = useRef<HTMLDivElement>(null);
+  const [full, setFull] = useState(false);
+  const [camPortrait, setCamPortrait] = useState(false);
+  const [mobile, setMobile] = useState(false);
   const [level, setLevel] = useState(0);
   const [support, setSupport] = useState<{ ok: boolean; reason?: string } | null>(null);
   const [status, setStatus] = useState<BroadcastStatus | null>(null);
@@ -168,6 +172,48 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     };
   }, [onAir]);
 
+  // Câmera em pé (celular na vertical)? Mostra o aviso para deitar o aparelho
+  useEffect(() => {
+    setMobile(
+      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+        (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent)) ||
+        window.matchMedia('(pointer: coarse)').matches,
+    );
+    const t = window.setInterval(() => setCamPortrait(Boolean(comp.current?.cameraPortrait)), 800);
+    const onFs = () => {
+      if (!document.fullscreenElement) setFull(false);
+    };
+    document.addEventListener('fullscreenchange', onFs);
+    return () => {
+      window.clearInterval(t);
+      document.removeEventListener('fullscreenchange', onFs);
+    };
+  }, []);
+
+  /** Tela cheia deitada: a câmera passa a filmar na horizontal de verdade (celular deitado). */
+  async function enterFull() {
+    setFull(true);
+    try {
+      await stage.current?.requestFullscreen?.({ navigationUI: 'hide' });
+    } catch {
+      /* iPhone: sem tela cheia de página; o modo ocupa a tela mesmo assim */
+    }
+    try {
+      await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
+    } catch {
+      /* sem trava de orientação (iPhone/iPad): basta deitar o aparelho */
+    }
+  }
+  async function exitFull() {
+    setFull(false);
+    try {
+      screen.orientation?.unlock?.();
+    } catch {
+      /* */
+    }
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+  }
+
   /** Abre um PDF da live no Estúdio */
   async function openPdf(id: string) {
     const m = materials.find((x) => x.id === id);
@@ -190,6 +236,12 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
 
   // Na tela da transmissão: um dedo move o PDF, dois dedos dão zoom (pinça), dois toques alternam largura/página
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (scene === 'camera') {
+      // câmera: arrastar escolhe a parte da imagem que aparece no recorte
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      return;
+    }
     if (scene !== 'pdf') return;
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -202,10 +254,16 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const ps = pointers.current;
     const prev = ps.get(e.pointerId);
+    if (prev && scene === 'camera' && ps.size === 1) {
+      const rc = e.currentTarget.getBoundingClientRect();
+      comp.current?.moveCamera((e.clientX - prev.x) / rc.width, (e.clientY - prev.y) / rc.height);
+      ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      return;
+    }
     if (!prev || scene !== 'pdf' || !pdf.current) return;
     const r = e.currentTarget.getBoundingClientRect();
     if (ps.size === 1) {
-      pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height, true);
+      pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
     } else if (ps.size === 2) {
       const other = [...ps.entries()].find(([id]) => id !== e.pointerId)![1];
       const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
@@ -231,7 +289,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       e.preventDefault();
       const r = el.getBoundingClientRect();
       if (e.ctrlKey) pdf.current.zoomAt(Math.exp(-e.deltaY / 300), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
-      else pdf.current.pan(-e.deltaX / r.width, -e.deltaY / r.height, true);
+      else pdf.current.pan(-e.deltaX / r.width, -e.deltaY / r.height);
     };
     el.addEventListener('wheel', wheel, { passive: false });
     return () => el.removeEventListener('wheel', wheel);
@@ -253,7 +311,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     let cancelled = false;
     const q = QUALITIES[quality];
     navigator.mediaDevices
-      .getUserMedia({ video: { deviceId: { exact: cam }, width: { ideal: q.w }, height: { ideal: q.h }, frameRate: { ideal: 30 } } })
+      .getUserMedia({ video: { deviceId: { exact: cam }, width: { ideal: q.w }, height: { ideal: q.h }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } } })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         const t = s.getVideoTracks()[0];
@@ -417,7 +475,13 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="space-y-3">
-        <div className={cn('relative mx-auto overflow-hidden rounded-2xl border border-line bg-black', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full')}>
+        <div
+          ref={stage}
+          className={cn(
+            'relative mx-auto overflow-hidden bg-black',
+            full ? 'fixed inset-0 z-[90] flex items-center justify-center' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
+          )}
+        >
           <canvas
             ref={canvasRef}
             width={1280}
@@ -426,7 +490,9 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
-            className={cn('size-full object-contain', scene === 'pdf' && 'cursor-grab touch-none active:cursor-grabbing')}
+            className={cn(full ? 'max-h-full max-w-full' : 'size-full', 'object-contain', (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing')}
+            style={full ? { aspectRatio: '16 / 9', width: '100%', height: 'auto', maxHeight: '100%' } : undefined}
+            data-zoom={pdfView?.zoom.toFixed(2)}
             aria-label="Prévia da transmissão"
           />
           {onAir && (
@@ -434,19 +500,80 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
               <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
             </span>
           )}
-          {scene === 'pdf' && materials.length > 1 && (
-            <button
-              type="button"
-              onClick={() => setChoosing(true)}
-              aria-label="Trocar de PDF"
-              title="Trocar de PDF"
-              className={cn('absolute right-2 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}
-            >
-              <FileText className="size-3.5" /> Trocar
-            </button>
-          )}
+          <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
+            {scene === 'pdf' && materials.length > 1 && (
+              <button
+                type="button"
+                onClick={() => setChoosing(true)}
+                aria-label="Trocar de PDF"
+                title="Trocar de PDF"
+                className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75"
+              >
+                <FileText className="size-3.5" /> Trocar
+              </button>
+            )}
+            {full && (
+              <button type="button" onClick={exitFull} aria-label="Sair da tela cheia" className="grid size-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
+                <Minimize2 className="size-4" />
+              </button>
+            )}
+          </div>
           {status?.state === 'reconnecting' && <span className="absolute top-3 right-3 rounded-md bg-amber-500 px-2 py-1 text-[11px] font-bold text-black">Reconectando…</span>}
+
+          {/* Câmera em pé: avisa para deitar o celular */}
+          {camPortrait && scene === 'camera' && fit === 'cover' && !onAir && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center px-2">
+              <span className="rounded-full bg-black/65 px-3 py-1.5 text-center text-[11px] font-semibold text-white backdrop-blur">
+                Celular em pé: a live mostra um recorte horizontal. Arraste para escolher a parte.
+              </span>
+            </div>
+          )}
+
+          {/* Controles na tela cheia */}
+          {full && (
+            <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 pt-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
+                <button
+                  key={x.key}
+                  type="button"
+                  onClick={() => pickScene(x.key)}
+                  aria-pressed={scene === x.key}
+                  className={cn('flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold backdrop-blur', scene === x.key ? 'bg-red-600 text-white' : 'bg-black/55 text-white')}
+                >
+                  <x.icon className="size-4" /> {x.label}
+                </button>
+              ))}
+              {scene === 'pdf' && pdfView && pdfView.pages > 0 && (
+                <span className="flex items-center gap-1 rounded-full bg-black/55 px-1 py-1 text-xs font-semibold text-white backdrop-blur">
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} aria-label="Página anterior" className="grid size-7 place-items-center rounded-full">
+                    <ChevronLeft className="size-4" />
+                  </button>
+                  <span className="tabular-nums">
+                    {pdfView.page}/{pdfView.pages}
+                  </span>
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} aria-label="Próxima página" className="grid size-7 place-items-center rounded-full">
+                    <ChevronRight className="size-4" />
+                  </button>
+                </span>
+              )}
+              {onAir ? (
+                <button type="button" onClick={endLive} disabled={busy} className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-bold text-black">
+                  <CircleStop className="size-4" /> Encerrar
+                </button>
+              ) : (
+                <button type="button" onClick={goLive} disabled={busy || blocked} className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                  {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar
+                </button>
+              )}
+            </div>
+          )}
         </div>
+
+        {mobile && !full && (
+          <button type="button" onClick={enterFull} className={buttonClass('secondary', 'md', 'w-full')}>
+            <Maximize2 className="size-4" /> Tela cheia na horizontal
+          </button>
+        )}
 
         {/* Cenas */}
         <div className={cn('grid gap-2', canShare ? 'grid-cols-4' : 'grid-cols-2')}>
@@ -526,7 +653,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
                   <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
                 </label>
                 <p className="text-[11px] text-muted">
-                  Na tela da transmissão: <strong>um dedo</strong> move, <strong>dois dedos</strong> dão zoom, <strong>dois toques</strong> alternam entre a largura e a página inteira. Rolando até o fim, passa de página.
+                  Na tela da transmissão: <strong>um dedo</strong> rola as páginas (uma embaixo da outra) e move, <strong>pinça</strong> dá zoom, <strong>dois toques</strong> alternam entre a largura e a página inteira.
                 </p>
               </>
             )}

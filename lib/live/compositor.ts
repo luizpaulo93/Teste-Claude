@@ -52,6 +52,9 @@ export class Compositor {
   rotation = 0;
   mirror = false;
   fit: Fit = 'cover';
+  /** posição do recorte da câmera (-1 a 1): escolhe a parte da imagem em pé que aparece na live horizontal */
+  camX = 0;
+  camY = 0;
   /** câmera no canto nas cenas de tela e de PDF */
   pip = true;
   pdf: PdfPresenter | null = null;
@@ -90,6 +93,26 @@ export class Compositor {
   get hasCamera() {
     return Boolean(this.cam);
   }
+  /** Arrasta o recorte da câmera (dx, dy em fração do quadro). */
+  moveCamera(dx: number, dy: number) {
+    const f = this.cam?.frame;
+    if (!f) return;
+    const { width: W, height: H } = this.canvas;
+    const { w: cw, h: ch } = this.camSize(f);
+    const sc = Math.max(W / cw, H / ch);
+    const ex = Math.max(1, cw * sc - W) / 2;
+    const ey = Math.max(1, ch * sc - H) / 2;
+    this.camX = Math.max(-1, Math.min(1, this.camX - (dx * W) / ex));
+    this.camY = Math.max(-1, Math.min(1, this.camY - (dy * H) / ey));
+  }
+
+  /** A câmera está em pé? (celular na vertical: a imagem vem mais alta que larga) */
+  get cameraPortrait() {
+    const f = this.cam?.frame;
+    if (!f) return false;
+    const { w, h } = this.camSize(f);
+    return h > w * 1.05;
+  }
   get hasScreen() {
     return Boolean(this.screen);
   }
@@ -108,15 +131,18 @@ export class Compositor {
   }
 
   /** Desenha a câmera girada/espelhada dentro do retângulo (preenchendo ou inteira). */
-  private drawCam(f: VideoFrame, x: number, y: number, w: number, h: number, fit: Fit) {
+  private drawCam(f: VideoFrame, x: number, y: number, w: number, h: number, fit: Fit, shift = false) {
     const c = this.ctx;
     const { w: cw, h: ch } = this.camSize(f);
     const sc = fit === 'cover' ? Math.max(w / cw, h / ch) : Math.min(w / cw, h / ch);
+    // sobra da imagem fora do quadro (no recorte): o professor escolhe a parte que aparece
+    const ex = shift ? Math.max(0, cw * sc - w) / 2 : 0;
+    const ey = shift ? Math.max(0, ch * sc - h) / 2 : 0;
     c.save();
     c.beginPath();
     c.rect(x, y, w, h);
     c.clip();
-    c.translate(x + w / 2, y + h / 2);
+    c.translate(x + w / 2 - this.camX * ex, y + h / 2 - this.camY * ey);
     c.rotate((this.rotation * Math.PI) / 180);
     if (this.mirror) c.scale(-1, 1);
     const dw = f.displayWidth * sc;
@@ -133,7 +159,7 @@ export class Compositor {
     const cam = this.cam?.frame ?? null;
     const scr = this.screen?.frame ?? null;
     if (this.scene === 'camera') {
-      if (cam) this.drawCam(cam, 0, 0, W, H, this.fit);
+      if (cam) this.drawCam(cam, 0, 0, W, H, this.fit, true);
       else this.message('Sem câmera');
     } else if (this.scene === 'pdf') {
       if (this.pdf) {
