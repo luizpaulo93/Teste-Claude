@@ -711,6 +711,8 @@ export function Studio({
         fps: 30,
         videoBitrate: q.bitrate,
         onStatus: setStatus,
+        // Safari/iPad: o som vai direto do mixer (já com o silenciar aplicado)
+        audioSource: { ctx: m.ctx, node: m.gain },
       });
       caster.current = b;
       await b.start();

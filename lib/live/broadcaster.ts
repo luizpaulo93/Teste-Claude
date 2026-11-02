@@ -16,6 +16,8 @@ export interface BroadcastOptions {
   onStatus?: (s: BroadcastStatus) => void;
   /** Para testes: destino alternativo */
   endpoint?: string;
+  /** Safari (sem MediaStreamTrackProcessor): o som é lido direto do mixer por um AudioWorklet */
+  audioSource?: { ctx: AudioContext; node: AudioNode };
 }
 
 export interface BroadcastStatus {
@@ -36,12 +38,12 @@ declare const MediaStreamTrackProcessor: {
 
 /** O navegador consegue transmitir? (precisa de WebCodecs com H.264 e AAC) */
 export async function checkSupport(): Promise<{ ok: boolean; reason?: string }> {
-  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined' || typeof MediaStreamTrackProcessor === 'undefined')
-    return { ok: false, reason: 'Use o Google Chrome ou o Microsoft Edge atualizado (computador ou Android).' };
+  if (typeof VideoEncoder === 'undefined' || typeof AudioEncoder === 'undefined' || typeof AudioWorkletNode === 'undefined')
+    return { ok: false, reason: 'Atualize o navegador (Chrome, Edge ou Safari recentes) para transmitir.' };
   const v = await VideoEncoder.isConfigSupported({ codec: 'avc1.42E01F', width: 1280, height: 720, bitrate: 2_500_000, framerate: 30 }).catch(() => null);
   if (!v?.supported) return { ok: false, reason: 'Este navegador não codifica vídeo H.264.' };
   const a = await AudioEncoder.isConfigSupported({ codec: 'mp4a.40.2', sampleRate: 48000, numberOfChannels: 2, bitrate: 128000 }).catch(() => null);
-  if (!a?.supported) return { ok: false, reason: 'Este navegador não codifica áudio AAC. Use o Chrome ou Edge no Windows, Mac ou Android.' };
+  if (!a?.supported) return { ok: false, reason: 'Este navegador não codifica áudio AAC. Atualize o sistema ou use o Chrome/Edge no computador.' };
   return { ok: true };
 }
 
@@ -98,7 +100,8 @@ export class Broadcaster {
     const vt = this.o.stream.getVideoTracks()[0];
     const at = this.o.stream.getAudioTracks()[0];
     if (vt) this.setVideoTrack(vt);
-    if (at) void this.pumpAudio(at);
+    if (typeof MediaStreamTrackProcessor !== 'undefined' && at) void this.pumpAudio(at);
+    else if (this.o.audioSource) await this.captureAudio(this.o.audioSource);
     // Relógio de Worker: não para quando a aba do estúdio fica em segundo plano
     this.stopTick = workerTicker(200, () => {
       this.flush();
@@ -111,6 +114,7 @@ export class Broadcaster {
     if (!this.running) return;
     this.running = false;
     for (const r of this.readers) r.cancel().catch(() => {});
+    this.worklet?.disconnect();
     this.stopTick?.();
     try {
       await this.venc?.flush();
@@ -181,6 +185,63 @@ export class Broadcaster {
       this.venc.encode(out, { keyFrame: key });
       out.close();
     }
+  }
+
+  /** Safari/iPad: lê o som do mixer em blocos de 1024 amostras (AudioWorklet) e manda para o codificador AAC. */
+  private worklet?: AudioWorkletNode;
+  private async captureAudio({ ctx, node }: { ctx: AudioContext; node: AudioNode }) {
+    const code = `class Cap extends AudioWorkletProcessor {
+      constructor() { super(); this.n = 0; this.l = new Float32Array(1024); this.r = new Float32Array(1024); }
+      process(inputs) {
+        const i = inputs[0];
+        if (!i || !i.length) return true;
+        const L = i[0], R = i[1] || i[0];
+        for (let k = 0; k < L.length; k++) {
+          this.l[this.n] = L[k]; this.r[this.n] = R[k]; this.n++;
+          if (this.n === 1024) {
+            const buf = new Float32Array(2048); buf.set(this.l, 0); buf.set(this.r, 1024);
+            this.port.postMessage(buf, [buf.buffer]); this.n = 0;
+          }
+        }
+        return true;
+      }
+    }
+    registerProcessor('vertice-cap', Cap);`;
+    const url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+    await ctx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+    const w = new AudioWorkletNode(ctx, 'vertice-cap', { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'explicit' });
+    // precisa estar ligado a uma saída para processar; volume zero (não toca no alto-falante)
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
+    node.connect(w);
+    w.connect(mute);
+    mute.connect(ctx.destination);
+    this.worklet = w;
+    await this.setupAudio(ctx.sampleRate, 2);
+    let samples = 0;
+    w.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
+      if (!this.running || !this.aenc) return;
+      if (this.audioFirstTs < 0) {
+        this.audioFirstTs = 0;
+        this.audioOffsetUs = Math.round((performance.now() - this.t0) * 1000);
+      }
+      const data = new AudioData({
+        format: 'f32-planar',
+        sampleRate: ctx.sampleRate,
+        numberOfFrames: 1024,
+        numberOfChannels: 2,
+        timestamp: Math.round((samples / ctx.sampleRate) * 1e6),
+        data: e.data,
+      });
+      samples += 1024;
+      try {
+        this.aenc.encode(data);
+      } catch {
+        /* bloco inválido */
+      }
+      data.close();
+    };
   }
 
   private async pumpAudio(track: MediaStreamTrack) {

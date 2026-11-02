@@ -17,6 +17,36 @@ declare const MediaStreamTrackProcessor: {
   new (init: { track: MediaStreamTrack }): { readable: ReadableStream<VideoFrame> };
 };
 
+/** Quadro da câmera/tela: VideoFrame (Chrome) ou o próprio <video> (Safari, iPad, iPhone). */
+type Frame = VideoFrame | HTMLVideoElement;
+const fw = (f: Frame) => ('displayWidth' in f ? f.displayWidth : f.videoWidth);
+const fh = (f: Frame) => ('displayHeight' in f ? f.displayHeight : f.videoHeight);
+
+/** Safari não tem MediaStreamTrackProcessor: lê a câmera por um <video> escondido. */
+class ElSource {
+  private el: HTMLVideoElement;
+  constructor(public track: MediaStreamTrack) {
+    const el = document.createElement('video');
+    el.muted = true;
+    el.playsInline = true;
+    el.autoplay = true;
+    el.setAttribute('playsinline', '');
+    el.srcObject = new MediaStream([track]);
+    void el.play().catch(() => {});
+    this.el = el;
+  }
+  get frame(): Frame | null {
+    return this.el.readyState >= 2 && this.el.videoWidth > 0 ? this.el : null;
+  }
+  close() {
+    this.el.pause();
+    this.el.srcObject = null;
+  }
+}
+
+const hasProcessor = () => typeof (globalThis as { MediaStreamTrackProcessor?: unknown }).MediaStreamTrackProcessor !== 'undefined';
+const makeSource = (t: MediaStreamTrack) => (hasProcessor() ? new Source(t) : new ElSource(t));
+
 class Source {
   frame: VideoFrame | null = null;
   private reader: ReadableStreamDefaultReader<VideoFrame>;
@@ -62,8 +92,8 @@ export class Compositor {
   pipY = 0.55;
   pipW = 0.28;
   pdf: PdfPresenter | null = null;
-  private cam: Source | null = null;
-  private screen: Source | null = null;
+  private cam: Source | ElSource | null = null;
+  private screen: Source | ElSource | null = null;
   private ctx: CanvasRenderingContext2D;
   private stopTick: () => void;
   /** chamado a cada quadro desenhado (a transmissão codifica o canvas) */
@@ -87,12 +117,12 @@ export class Compositor {
   setCamera(track: MediaStreamTrack | null) {
     if (this.cam?.track === track) return;
     this.cam?.close();
-    this.cam = track ? new Source(track) : null;
+    this.cam = track ? makeSource(track) : null;
   }
   setScreen(track: MediaStreamTrack | null) {
     if (this.screen?.track === track) return;
     this.screen?.close();
-    this.screen = track ? new Source(track) : null;
+    this.screen = track ? makeSource(track) : null;
   }
   get hasCamera() {
     return Boolean(this.cam);
@@ -138,21 +168,21 @@ export class Compositor {
     return Boolean(this.screen);
   }
 
-  private fitFrame(f: VideoFrame, x: number, y: number, w: number, h: number) {
-    const sc = Math.min(w / f.displayWidth, h / f.displayHeight);
-    const dw = f.displayWidth * sc;
-    const dh = f.displayHeight * sc;
+  private fitFrame(f: Frame, x: number, y: number, w: number, h: number) {
+    const sc = Math.min(w / fw(f), h / fh(f));
+    const dw = fw(f) * sc;
+    const dh = fh(f) * sc;
     this.ctx.drawImage(f, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
   }
 
   /** Largura/altura da câmera depois do giro */
-  private camSize(f: VideoFrame) {
+  private camSize(f: Frame) {
     const side = this.rotation % 180 !== 0;
-    return side ? { w: f.displayHeight, h: f.displayWidth } : { w: f.displayWidth, h: f.displayHeight };
+    return side ? { w: fh(f), h: fw(f) } : { w: fw(f), h: fh(f) };
   }
 
   /** Desenha a câmera girada/espelhada dentro do retângulo (preenchendo ou inteira). */
-  private drawCam(f: VideoFrame, x: number, y: number, w: number, h: number, fit: Fit, shift = false) {
+  private drawCam(f: Frame, x: number, y: number, w: number, h: number, fit: Fit, shift = false) {
     const c = this.ctx;
     const { w: cw, h: ch } = this.camSize(f);
     const sc = fit === 'cover' ? Math.max(w / cw, h / ch) : Math.min(w / cw, h / ch);
@@ -166,8 +196,8 @@ export class Compositor {
     c.translate(x + w / 2 - this.camX * ex, y + h / 2 - this.camY * ey);
     c.rotate((this.rotation * Math.PI) / 180);
     if (this.mirror) c.scale(-1, 1);
-    const dw = f.displayWidth * sc;
-    const dh = f.displayHeight * sc;
+    const dw = fw(f) * sc;
+    const dh = fh(f) * sc;
     c.drawImage(f, -dw / 2, -dh / 2, dw, dh);
     c.restore();
   }
