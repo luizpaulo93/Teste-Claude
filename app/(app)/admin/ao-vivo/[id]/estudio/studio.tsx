@@ -99,6 +99,16 @@ function MirrorButton({ mirror, onToggle }: { mirror: boolean; onToggle: () => v
   );
 }
 
+/**
+ * Android: com o cancelamento de eco ligado, o Chrome abre o microfone em "modo chamada" e o sistema
+ * usa o microfone interno, escondendo o USB (Lark, Rode, Boya…). Fora desse modo o próprio Android
+ * passa a gravar pelo microfone USB quando ele está ligado. Esta opção usa esse caminho.
+ */
+const AUTO_MIC = 'auto-usb';
+const AUTO_MIC_NAME = 'Automático (usa o USB/Lark se estiver ligado)';
+/** Processamento de voz (eco, ruído, volume) só no microfone do próprio celular; microfone externo vai puro. */
+const phoneMic = (label: string) => /speakerphone|earpiece/i.test(label);
+
 /** Nomes que o Android dá aos microfones, em português (no computador vem o nome do aparelho). */
 function micName(d: MediaDeviceInfo, i: number) {
   const l = d.label.trim();
@@ -242,6 +252,9 @@ export function Studio({
   const [muted, setMuted] = useState(false);
   /** nome do microfone que está captando de verdade (o que o sistema entregou) */
   const [micLabel, setMicLabel] = useState('');
+  const [android, setAndroid] = useState(false);
+  const [micKick, setMicKick] = useState(0); // reabre o microfone (ex.: ligou o USB)
+  useEffect(() => setAndroid(/Android/i.test(navigator.userAgent)), []);
   const caster = useRef<Broadcaster | null>(null);
   const onAir = status?.state === 'live' || status?.state === 'starting' || status?.state === 'reconnecting';
 
@@ -322,9 +335,14 @@ export function Studio({
     knownMics.current = new Set(m.map((x) => x.deviceId));
     const added = before && !first ? m.filter((x) => !before.has(x.deviceId) && !/^(default|communications)$/.test(x.deviceId)) : [];
     if (added[0]) {
-      setMic(added[0].deviceId);
+      setMic((v) => (v === AUTO_MIC ? v : added[0].deviceId));
       toast(`Microfone conectado: ${micName(added[0], m.indexOf(added[0]))}`);
-    } else setMic((v) => (v && (v === 'none' || m.some((x) => x.deviceId === v)) ? v : m[0]?.deviceId || 'none'));
+    } else {
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      setMic((v) => (v && (v === 'none' || v === AUTO_MIC || m.some((x) => x.deviceId === v)) ? v : isAndroid ? AUTO_MIC : m[0]?.deviceId || 'none'));
+    }
+    // no Automático, um aparelho novo (USB ligado/desligado) reabre o microfone para o Android trocar a rota
+    if (before && !first && (m.length !== before.size || m.some((x) => !before.has(x.deviceId)))) setMicKick((k) => k + 1);
   }
 
   /** Botão "procurar": pede o microfone de novo (o Android só mostra o USB depois disso) e relê a lista. */
@@ -336,6 +354,7 @@ export function Studio({
       /* sem permissão */
     }
     await refreshDevices(false);
+    setMicKick((k) => k + 1);
     toast('Lista de microfones e câmeras atualizada');
   }
 
@@ -715,12 +734,16 @@ export function Studio({
     let cancelled = false;
     navigator.mediaDevices
       .getUserMedia({
-        audio: {
-          deviceId: { exact: mic },
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio:
+          mic === AUTO_MIC
+            ? // sem deviceId e sem processamento: o Android escolhe o USB se estiver ligado
+              { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: { ideal: 2 } }
+            : {
+                deviceId: { exact: mic },
+                echoCancellation: phoneMic(mics.find((x) => x.deviceId === mic)?.label ?? ''),
+                noiseSuppression: phoneMic(mics.find((x) => x.deviceId === mic)?.label ?? ''),
+                autoGainControl: phoneMic(mics.find((x) => x.deviceId === mic)?.label ?? ''),
+              },
       })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
@@ -734,7 +757,8 @@ export function Studio({
     return () => {
       cancelled = true;
     };
-  }, [mic, mixer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mic, mixer, micKick]);
 
   // Silenciar o microfone (a live continua, só sem som)
   useEffect(() => {
@@ -1023,6 +1047,7 @@ export function Studio({
                     </button>
                     <ul className="max-h-48 space-y-1 overflow-y-auto">
                       {[
+                        ...(android ? [{ id: AUTO_MIC, name: AUTO_MIC_NAME }] : []),
                         ...mics.map((m, i) => ({
                           id: m.deviceId,
                           name: micName(m, i),
@@ -1400,6 +1425,7 @@ export function Studio({
           </span>
           <div className="flex gap-2">
             <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone" className="min-w-0 flex-1">
+              {android && <option value={AUTO_MIC}>{AUTO_MIC_NAME}</option>}
               {mics.map((m, i) => (
                 <option key={m.deviceId || i} value={m.deviceId}>
                   {micName(m, i)}
@@ -1426,6 +1452,9 @@ export function Studio({
                 <span className={cn('block h-full rounded-full', level > 0.85 ? 'bg-danger' : 'bg-success')} style={{ width: `${Math.round(level * 100)}%` }} />
               </span>
             </div>
+          )}
+          {mic === AUTO_MIC && (
+            <p className="text-[11px] text-muted">Ligue o receptor USB e toque em ↻. Fale no microfone externo: a barra verde deve mexer.</p>
           )}
         </div>
         <label className="block space-y-1.5">
