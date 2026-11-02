@@ -13,6 +13,9 @@ export interface BroadcastOptions {
   height: number;
   fps: number;
   videoBitrate: number;
+  /** Taxa variável: começa no máximo e se ajusta à conexão (sem isso, fica fixa em videoBitrate) */
+  minBitrate?: number;
+  maxBitrate?: number;
   onStatus?: (s: BroadcastStatus) => void;
   /** Para testes: destino alternativo */
   endpoint?: string;
@@ -26,6 +29,8 @@ export interface BroadcastStatus {
   sent: number; // segmentos enviados
   queue: number;
   kbps: number;
+  /** taxa de vídeo atual (kbps) */
+  rate?: number;
   message?: string;
 }
 
@@ -74,9 +79,18 @@ export class Broadcaster {
   private nextFrame = 0;
   private audioFirstTs = -1;
   private audioOffsetUs = 0;
+  private cfg?: VideoEncoderConfig;
+  private rate = 0;
+  private pendingRate = 0;
+  private min = 0;
+  private max = 0;
+  private speed = 0; // velocidade de envio medida (bps, média)
 
   constructor(o: BroadcastOptions) {
     this.o = o;
+    this.rate = o.videoBitrate;
+    this.min = o.minBitrate ?? o.videoBitrate;
+    this.max = o.maxBitrate ?? o.videoBitrate;
     this.canvas = new OffscreenCanvas(o.width, o.height);
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
   }
@@ -88,7 +102,9 @@ export class Broadcaster {
       output: (chunk) => this.onVideo(chunk),
       error: (e) => this.fail(`Erro no vídeo: ${e.message}`),
     });
-    this.venc.configure(await this.bestVideoConfig());
+    this.cfg = await this.bestVideoConfig();
+    this.venc.configure(this.cfg);
+    this.status.rate = Math.round(this.rate / 1000);
     const vt = this.o.stream.getVideoTracks()[0];
     const at = this.o.stream.getAudioTracks()[0];
     if (vt) this.setVideoTrack(vt);
@@ -156,6 +172,47 @@ export class Broadcaster {
     this.emit();
   }
 
+  /** Muda a faixa de taxa no meio da live (ex.: Automático 4–8 Mbps ou Econômico travado em 4). */
+  setRange(min: number, max: number) {
+    this.min = min;
+    this.max = max;
+    this.want(Math.min(max, Math.max(min, max)));
+  }
+
+  private want(bps: number) {
+    const r = Math.round(Math.min(this.max, Math.max(this.min, bps)) / 250_000) * 250_000;
+    if (r !== this.rate) this.pendingRate = r;
+  }
+
+  /** Troca a taxa só no quadro-chave (começo de segmento): sem falhas na imagem. */
+  private applyRate() {
+    if (!this.pendingRate || !this.cfg || !this.venc) return;
+    try {
+      this.cfg = { ...this.cfg, bitrate: this.pendingRate };
+      this.venc.configure(this.cfg);
+      this.rate = this.pendingRate;
+      this.status.rate = Math.round(this.rate / 1000);
+    } catch {
+      /* aparelho não aceitou trocar: segue na taxa atual */
+    }
+    this.pendingRate = 0;
+  }
+
+  /**
+   * Ajuste pela conexão, a cada segmento enviado: fila crescendo → baixa na hora;
+   * envio sobrando → sobe aos poucos até o máximo.
+   */
+  private adapt(bytes: number, ms: number) {
+    if (this.min >= this.max) return;
+    const bps = (bytes * 8) / Math.max(0.05, ms / 1000);
+    this.speed = this.speed ? this.speed * 0.6 + bps * 0.4 : bps;
+    const q = this.uploads.length;
+    if (q >= 2) return this.want(Math.min(this.rate * 0.75, this.speed * 0.7));
+    const target = this.speed * 0.7;
+    if (target < this.rate * 0.85) this.want(target);
+    else if (target > this.rate * 1.15 && q === 0) this.want(Math.min(target, this.rate + 1_000_000));
+  }
+
   /** Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto. */
   pushFrame(canvas: HTMLCanvasElement) {
     if (!this.running || !this.venc) return;
@@ -165,6 +222,7 @@ export class Broadcaster {
     const out = new VideoFrame(canvas, { timestamp: ts });
     const key = ts - this.lastKeyAt >= SEGMENT_US;
     if (key) this.lastKeyAt = ts;
+    if (key) this.applyRate();
     this.venc.encode(out, { keyFrame: key });
     out.close();
   }
@@ -206,6 +264,7 @@ export class Broadcaster {
       const out = new VideoFrame(this.canvas, { timestamp: ts });
       const key = ts - this.lastKeyAt >= SEGMENT_US;
       if (key) this.lastKeyAt = ts;
+      if (key) this.applyRate();
       this.venc.encode(out, { keyFrame: key });
       out.close();
     }
@@ -368,9 +427,11 @@ export class Broadcaster {
         const seg = this.uploads[0];
         const list = [...this.playlist, { name: seg.name, dur: seg.dur }].slice(-5);
         const isLast = (end || this.ending) && this.uploads.length === 1;
+        const t = performance.now();
         const ok = await this.send(seg, playlistText(list, this.seqOf(list[0].name), isLast));
         if (ok) {
           this.uploads.shift();
+          this.adapt(seg.data.length, performance.now() - t);
           this.playlist.push({ name: seg.name, dur: seg.dur });
           this.playlist = this.playlist.slice(-5);
           this.sent++;
@@ -380,6 +441,7 @@ export class Broadcaster {
         } else {
           this.failures++;
           this.status.state = 'reconnecting';
+          this.want(this.rate * 0.75);
           this.emit();
           if (!this.running && this.failures > 3) break;
           await new Promise((r) => setTimeout(r, Math.min(4000, 500 * this.failures)));

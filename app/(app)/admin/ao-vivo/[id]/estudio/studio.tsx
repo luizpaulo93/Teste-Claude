@@ -38,17 +38,23 @@ import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
-const QUALITIES = {
-  '480': { w: 854, h: 480, bitrate: 2_000_000, label: '480p (internet fraca)' },
-  '720': { w: 1280, h: 720, bitrate: 4_000_000, label: '720p (recomendado)' },
-  '1080': {
-    w: 1920,
-    h: 1080,
-    bitrate: 10_000_000,
-    label: '1080p (internet boa)',
-  },
+// Live sempre em 720p (recomendado pelo YouTube). Taxa de vídeo pela conexão:
+// Automático (Wi‑Fi): começa em 8 Mbps e se ajusta entre 4 e 8; Econômico (dados móveis): travado em 4.
+const LIVE_W = 1280;
+const LIVE_H = 720;
+const NET = {
+  auto: { min: 4_000_000, max: 8_000_000, label: 'Automático (Wi‑Fi) · 4 a 8 Mbps' },
+  eco: { min: 4_000_000, max: 4_000_000, label: 'Econômico (dados móveis) · 4 Mbps' },
 } as const;
-type Quality = keyof typeof QUALITIES;
+type Net = keyof typeof NET;
+function initialNet(): Net {
+  try {
+    const saved = localStorage.getItem('studio-net');
+    if (saved === 'auto' || saved === 'eco') return saved;
+  } catch {}
+  const c = (navigator as Navigator & { connection?: { type?: string } }).connection;
+  return c?.type === 'cellular' ? 'eco' : 'auto';
+}
 
 const SCENES: {
   key: Scene;
@@ -162,7 +168,15 @@ export function Studio({
   const pipTouches = useRef(new Map<number, { x: number; y: number }>());
   const pipArea = useRef<HTMLDivElement>(null);
   const [screenOn, setScreenOn] = useState(false);
-  const [quality, setQuality] = useState<Quality>('720');
+  const [net, setNet] = useState<Net>('auto');
+  useEffect(() => setNet(initialNet()), []);
+  function pickNet(n: Net) {
+    setNet(n);
+    try {
+      localStorage.setItem('studio-net', n);
+    } catch {}
+    caster.current?.setRange(NET[n].min, NET[n].max);
+  }
   // a live é sempre horizontal (16:9)
   const vertical = false;
   const rotation = 0;
@@ -297,14 +311,13 @@ export function Studio({
 
   // Tamanho do quadro = qualidade e formato (horizontal 16:9 ou vertical 9:16)
   const dims = () => {
-    const q = QUALITIES[quality];
-    return vertical ? { w: q.h, h: q.w } : { w: q.w, h: q.h };
+    return vertical ? { w: LIVE_H, h: LIVE_W } : { w: LIVE_W, h: LIVE_H };
   };
   useEffect(() => {
     const d = dims();
     comp.current?.resize(d.w, d.h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quality, vertical]);
+  }, [vertical]);
 
   // Cena, canto, giro, espelho e encaixe da câmera
   useEffect(() => {
@@ -567,13 +580,12 @@ export function Studio({
       return;
     }
     let cancelled = false;
-    const q = QUALITIES[quality];
     navigator.mediaDevices
       .getUserMedia({
         video: {
           deviceId: { exact: cam },
-          width: { ideal: q.w },
-          height: { ideal: q.h },
+          width: { ideal: LIVE_W },
+          height: { ideal: LIVE_H },
           aspectRatio: { ideal: 16 / 9 },
           frameRate: { ideal: 30 },
         },
@@ -590,7 +602,7 @@ export function Studio({
     return () => {
       cancelled = true;
     };
-  }, [cam, quality]);
+  }, [cam]);
 
   /** Espelhar a tela inteira ou uma janela (o navegador mostra a lista para escolher). */
   async function shareScreen(surface: 'monitor' | 'window') {
@@ -722,7 +734,7 @@ export function Studio({
       if (r.error) return void toast.error(r.error);
       const m = mixer();
       await m.ctx.resume();
-      const q = QUALITIES[quality];
+      const n = NET[net];
       const d = dims();
       // Só o áudio vai pela trilha; o vídeo vem da mesa de cenas (quadro a quadro)
       const stream = new MediaStream([m.dest.stream.getAudioTracks()[0]]);
@@ -732,7 +744,9 @@ export function Studio({
         width: d.w,
         height: d.h,
         fps: 30,
-        videoBitrate: q.bitrate,
+        videoBitrate: n.max,
+        minBitrate: n.min,
+        maxBitrate: n.max,
         onStatus: setStatus,
         // Safari/iPad: o som vai direto do mixer (já com o silenciar aplicado)
         audioSource: { ctx: m.ctx, node: m.gain },
@@ -954,7 +968,11 @@ export function Studio({
                       <div className="h-full rounded-full bg-success" style={{ width: `${Math.round(level * 100)}%` }} />
                     </div>
                     {micLabel && <p className="truncate text-center text-[11px] text-muted">Captando: {micLabel}</p>}
-                    <button type="button" onClick={searchDevices} className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-brand">
+                    <button
+                      type="button"
+                      onClick={searchDevices}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-brand"
+                    >
                       <RefreshCw className="size-3.5" /> Procurar microfones
                     </button>
                     <ul className="max-h-48 space-y-1 overflow-y-auto">
@@ -1242,24 +1260,6 @@ export function Studio({
           </div>
         )}
 
-        {/* Microfone */}
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setMuted((v) => !v)}
-            aria-label={muted ? 'Ligar microfone' : 'Silenciar microfone'}
-            title={muted ? 'Ligar microfone' : 'Silenciar microfone'}
-            className={cn('grid size-9 shrink-0 place-items-center rounded-full', muted || mic === 'none' ? 'bg-red-600 text-white' : 'bg-brand/12 text-brand')}
-          >
-            {muted || mic === 'none' ? <MicOff className="size-4" /> : <Mic className="size-4" />}
-          </button>
-          <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <div
-              className={cn('h-full rounded-full transition-[width] duration-75', level > 0.85 ? 'bg-danger' : 'bg-success')}
-              style={{ width: `${Math.round(level * 100)}%` }}
-            />
-          </div>
-        </div>
         {onAir || status?.state === 'stopped' ? (
           <div className="grid grid-cols-3 gap-2 text-center text-xs">
             <div className="rounded-xl border border-line bg-surface p-2.5">
@@ -1267,8 +1267,8 @@ export function Studio({
               <p className="font-bold text-ink tabular-nums">{clock(status?.seconds ?? 0)}</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
-              <p className="text-muted">Envio</p>
-              <p className="font-bold text-ink tabular-nums">{status?.kbps ?? 0} kbps</p>
+              <p className="text-muted">Taxa</p>
+              <p className="font-bold text-ink tabular-nums">{((status?.rate ?? 0) / 1000).toFixed(1)} Mbps</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="flex items-center justify-center gap-1 text-muted">
@@ -1327,9 +1327,7 @@ export function Studio({
               )}
             </div>
           ) : (
-            <p className="text-xs text-muted">
-              Não saia do navegador durante a live.
-            </p>
+            <p className="text-xs text-muted">Não saia do navegador durante a live.</p>
           )}
           {screenOn && <p className="text-[11px] text-success">Tela espelhada. Pode trocar de janela: a live continua.</p>}
         </div>
@@ -1347,7 +1345,13 @@ export function Studio({
               ))}
               <option value="none">Sem microfone</option>
             </Select>
-            <button type="button" onClick={searchDevices} aria-label="Procurar microfones" title="Procurar microfones" className={buttonClass('secondary', 'icon', 'size-11 shrink-0')}>
+            <button
+              type="button"
+              onClick={searchDevices}
+              aria-label="Procurar microfones"
+              title="Procurar microfones"
+              className={buttonClass('secondary', 'icon', 'size-11 shrink-0')}
+            >
               <RefreshCw className="size-4" />
             </button>
           </div>
@@ -1364,17 +1368,16 @@ export function Studio({
         </div>
         <label className="block space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
-            <Settings2 className="size-3.5" /> Qualidade
+            <Settings2 className="size-3.5" /> Conexão
           </span>
-          <Select value={quality} onChange={(e) => setQuality(e.target.value as Quality)} disabled={onAir}>
-            {(Object.keys(QUALITIES) as Quality[]).map((k) => (
+          <Select value={net} onChange={(e) => pickNet(e.target.value as Net)} aria-label="Conexão">
+            {(Object.keys(NET) as Net[]).map((k) => (
               <option key={k} value={k}>
-                {QUALITIES[k].label}
+                {NET[k].label}
               </option>
             ))}
           </Select>
         </label>
-
       </div>
       {/* PDFs da live: embaixo da imagem no computador */}
       {pdfPanel && <div className="order-3 min-w-0 lg:col-start-1 lg:row-start-2">{pdfPanel}</div>}
