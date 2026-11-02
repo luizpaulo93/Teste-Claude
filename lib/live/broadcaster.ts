@@ -88,15 +88,7 @@ export class Broadcaster {
       output: (chunk) => this.onVideo(chunk),
       error: (e) => this.fail(`Erro no vídeo: ${e.message}`),
     });
-    this.venc.configure({
-      codec: this.o.height > 720 ? 'avc1.640028' : 'avc1.4D401F',
-      width: this.o.width,
-      height: this.o.height,
-      bitrate: this.o.videoBitrate,
-      framerate: this.o.fps,
-      latencyMode: 'realtime',
-      avc: { format: 'annexb' },
-    });
+    this.venc.configure(await this.bestVideoConfig());
     const vt = this.o.stream.getVideoTracks()[0];
     const at = this.o.stream.getAudioTracks()[0];
     if (vt) this.setVideoTrack(vt);
@@ -108,6 +100,35 @@ export class Broadcaster {
       this.emit();
     });
     this.emit();
+  }
+
+  /**
+   * Melhor configuração que o aparelho aceita: perfil High do H.264 (mais qualidade por bit), modo
+   * "qualidade" (o "tempo real" deixa rastros/fantasmas ao se mexer) e codificação por hardware.
+   */
+  private async bestVideoConfig(): Promise<VideoEncoderConfig> {
+    const big = this.o.height > 720;
+    const base = { width: this.o.width, height: this.o.height, bitrate: this.o.videoBitrate, framerate: this.o.fps, avc: { format: 'annexb' as const } };
+    const codecs = big ? ['avc1.640028', 'avc1.4D4028', 'avc1.42E028'] : ['avc1.64001F', 'avc1.4D401F', 'avc1.42E01F'];
+    for (const codec of codecs)
+      for (const extra of [
+        { latencyMode: 'quality' as const, hardwareAcceleration: 'prefer-hardware' as const },
+        { latencyMode: 'quality' as const },
+        { latencyMode: 'realtime' as const },
+      ]) {
+        const cfg = { ...base, codec, ...extra };
+        const r = await VideoEncoder.isConfigSupported(cfg).catch(() => null);
+        if (r?.supported) return cfg;
+      }
+    return { ...base, codec: big ? 'avc1.640028' : 'avc1.4D401F', latencyMode: 'realtime' };
+  }
+
+  /** Relógio da live em µs. No Safari usa o relógio do áudio: imagem e som andam juntos (sem atraso crescente). */
+  private clockCtx?: AudioContext;
+  private c0 = 0;
+  private now() {
+    if (this.clockCtx) return Math.round((this.clockCtx.currentTime - this.c0) * 1e6);
+    return Math.round((performance.now() - this.t0) * 1000);
   }
 
   async stop() {
@@ -135,7 +156,7 @@ export class Broadcaster {
   /** Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto. */
   pushFrame(canvas: HTMLCanvasElement) {
     if (!this.running || !this.venc) return;
-    const ts = Math.round((performance.now() - this.t0) * 1000);
+    const ts = this.now();
     if (ts < this.nextFrame || this.venc.encodeQueueSize > 3) return;
     this.nextFrame = ts + (1e6 / this.o.fps) * 0.9;
     const out = new VideoFrame(canvas, { timestamp: ts });
@@ -218,13 +239,17 @@ export class Broadcaster {
     w.connect(mute);
     mute.connect(ctx.destination);
     this.worklet = w;
+    // a partir daqui, a imagem usa o mesmo relógio do som
+    this.clockCtx = ctx;
+    this.c0 = ctx.currentTime - (performance.now() - this.t0) / 1000;
     await this.setupAudio(ctx.sampleRate, 2);
     let samples = 0;
     w.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
       if (!this.running || !this.aenc) return;
       if (this.audioFirstTs < 0) {
         this.audioFirstTs = 0;
-        this.audioOffsetUs = Math.round((performance.now() - this.t0) * 1000);
+        // começo deste bloco no relógio da live (o bloco tem 1024 amostras já capturadas)
+        this.audioOffsetUs = this.now() - Math.round((1024 / ctx.sampleRate) * 1e6);
       }
       const data = new AudioData({
         format: 'f32-planar',

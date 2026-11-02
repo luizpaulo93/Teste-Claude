@@ -39,12 +39,12 @@ import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
 const QUALITIES = {
-  '480': { w: 854, h: 480, bitrate: 1_200_000, label: '480p (internet fraca)' },
-  '720': { w: 1280, h: 720, bitrate: 2_500_000, label: '720p (recomendado)' },
+  '480': { w: 854, h: 480, bitrate: 1_500_000, label: '480p (internet fraca)' },
+  '720': { w: 1280, h: 720, bitrate: 3_500_000, label: '720p (recomendado)' },
   '1080': {
     w: 1920,
     h: 1080,
-    bitrate: 4_500_000,
+    bitrate: 6_000_000,
     label: '1080p (internet boa)',
   },
 } as const;
@@ -204,6 +204,8 @@ export function Studio({
     src?: MediaStreamAudioSourceNode;
   } | null>(null);
   const [muted, setMuted] = useState(false);
+  /** nome do microfone que está captando de verdade (o que o sistema entregou) */
+  const [micLabel, setMicLabel] = useState('');
   const caster = useRef<Broadcaster | null>(null);
   const onAir = status?.state === 'live' || status?.state === 'starting' || status?.state === 'reconnecting';
 
@@ -654,6 +656,7 @@ export function Studio({
     m.src?.disconnect();
     micStream.current?.getTracks().forEach((t) => t.stop());
     micStream.current = null;
+    setMicLabel('');
     if (mic === 'none') return;
     let cancelled = false;
     navigator.mediaDevices
@@ -668,6 +671,7 @@ export function Studio({
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         micStream.current = s;
+        setMicLabel(s.getAudioTracks()[0]?.label ?? '');
         const src = m.ctx.createMediaStreamSource(s);
         src.connect(m.gain);
         m.src = src;
@@ -949,6 +953,7 @@ export function Studio({
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
                       <div className="h-full rounded-full bg-success" style={{ width: `${Math.round(level * 100)}%` }} />
                     </div>
+                    {micLabel && <p className="truncate text-center text-[11px] text-muted">Captando: {micLabel}</p>}
                     <button type="button" onClick={searchDevices} className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-brand">
                       <RefreshCw className="size-3.5" /> Procurar microfones
                     </button>
@@ -1346,6 +1351,16 @@ export function Studio({
               <RefreshCw className="size-4" />
             </button>
           </div>
+          {mic !== 'none' && (
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                Captando: <strong className="text-ink-2">{micLabel || '…'}</strong>
+              </span>
+              <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-surface-3">
+                <span className={cn('block h-full rounded-full', level > 0.85 ? 'bg-danger' : 'bg-success')} style={{ width: `${Math.round(level * 100)}%` }} />
+              </span>
+            </div>
+          )}
         </div>
         <label className="block space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
