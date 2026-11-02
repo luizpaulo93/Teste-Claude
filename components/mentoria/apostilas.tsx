@@ -24,17 +24,21 @@ export const periodLabel = (from: string, to: string) => (from === to ? dm(from)
 export function FileRow({ f }: { f: ApostilaGroup['files'][number] }) {
   const [busy, setBusy] = useState(false);
   const owner = usePdfOwner();
+  // Baixa sem sair da página (a live/aula continua tocando): nada de aba nova
   async function open() {
     setBusy(true);
-    // Abre a aba antes (no celular o popup só abre no toque)
-    const w = window.open('', '_blank');
     try {
-      // Cada página sai com nome, e-mail, CPF e telefone de quem abriu
+      // Cada página sai com nome, e-mail, CPF e telefone de quem baixou
       const url = await stampedPdfUrl(await getFileUrl(f.file_path, f.title), owner);
-      if (w) w.location.href = url;
-      else window.location.href = url;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${f.title.replace(/[\\/:*?"<>|]/g, '')}.pdf`;
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast('Baixando o PDF…');
     } catch (e) {
-      w?.close();
       toast.error(e instanceof Error ? e.message : 'Arquivo indisponível.');
     }
     setBusy(false);
