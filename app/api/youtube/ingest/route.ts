@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
   if (!base.url) return NextResponse.json({ error: 'Transmissão não preparada. Toque em Iniciar de novo.' }, { status: 409 });
 
   const segment = await req.arrayBuffer();
-  if (!segment.byteLength || segment.byteLength > 4_000_000) return NextResponse.json({ error: 'Segmento inválido.' }, { status: 400 });
+  if (!segment.byteLength || segment.byteLength > 4_400_000) return NextResponse.json({ error: 'Segmento inválido.' }, { status: 400 });
   let playlist = '';
   try {
     playlist = atob(req.headers.get('x-hls-playlist') ?? '');

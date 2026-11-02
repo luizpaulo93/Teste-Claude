@@ -39,12 +39,12 @@ import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
 const QUALITIES = {
-  '480': { w: 854, h: 480, bitrate: 1_500_000, label: '480p (internet fraca)' },
-  '720': { w: 1280, h: 720, bitrate: 3_500_000, label: '720p (recomendado)' },
+  '480': { w: 854, h: 480, bitrate: 2_000_000, label: '480p (internet fraca)' },
+  '720': { w: 1280, h: 720, bitrate: 4_000_000, label: '720p (recomendado)' },
   '1080': {
     w: 1920,
     h: 1080,
-    bitrate: 6_000_000,
+    bitrate: 10_000_000,
     label: '1080p (internet boa)',
   },
 } as const;

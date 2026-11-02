@@ -103,19 +103,22 @@ export class Broadcaster {
   }
 
   /**
-   * Melhor configuração que o aparelho aceita: perfil High do H.264 (mais qualidade por bit), modo
-   * "qualidade" (o "tempo real" deixa rastros/fantasmas ao se mexer) e codificação por hardware.
+   * Configuração recomendada pelo YouTube/OBS: H.264 perfil High (nível 3.1 no 720p, 4.1 no 1080p),
+   * taxa constante (CBR), 30 fps e quadro-chave a cada 2 s (feito em pushFrame). Modo "qualidade" e chip
+   * de vídeo do aparelho quando disponível; se o aparelho não aceitar, vai baixando até uma que aceite.
    */
   private async bestVideoConfig(): Promise<VideoEncoderConfig> {
     const big = this.o.height > 720;
     const base = { width: this.o.width, height: this.o.height, bitrate: this.o.videoBitrate, framerate: this.o.fps, avc: { format: 'annexb' as const } };
-    const codecs = big ? ['avc1.640028', 'avc1.4D4028', 'avc1.42E028'] : ['avc1.64001F', 'avc1.4D401F', 'avc1.42E01F'];
-    for (const codec of codecs)
-      for (const extra of [
-        { latencyMode: 'quality' as const, hardwareAcceleration: 'prefer-hardware' as const },
-        { latencyMode: 'quality' as const },
-        { latencyMode: 'realtime' as const },
-      ]) {
+    const codecs = big ? ['avc1.640029', 'avc1.640028', 'avc1.4D4029', 'avc1.42E029'] : ['avc1.64001F', 'avc1.4D401F', 'avc1.42E01F'];
+    const extras = [
+      { bitrateMode: 'constant' as const, latencyMode: 'quality' as const, hardwareAcceleration: 'prefer-hardware' as const },
+      { bitrateMode: 'constant' as const, latencyMode: 'quality' as const },
+      { latencyMode: 'quality' as const },
+      { latencyMode: 'realtime' as const },
+    ];
+    for (const extra of extras)
+      for (const codec of codecs) {
         const cfg = { ...base, codec, ...extra };
         const r = await VideoEncoder.isConfigSupported(cfg).catch(() => null);
         if (r?.supported) return cfg;
