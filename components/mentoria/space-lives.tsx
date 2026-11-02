@@ -28,7 +28,7 @@ export async function SpaceLives({ spaces, admin }: { spaces: string[]; admin?: 
   return (
     <div className="space-y-6">
       <Section title="Ao vivo agora" list={now} />
-      <Section title="Próximas" list={next} />
+      <Section title="Agendamentos" list={next} />
       <Section title="Gravadas" list={past} />
     </div>
   );

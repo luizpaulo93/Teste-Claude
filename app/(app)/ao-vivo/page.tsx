@@ -4,6 +4,8 @@ import { LiveCard } from '@/components/live/live-card';
 import { EmptyState, PageHeader } from '@/components/ui';
 import { requireViewer } from '@/lib/session';
 import { visibleLives } from '@/lib/live';
+import { GoLiveButton } from '../admin/ao-vivo/lives-manager';
+import { liveAudienceOptions } from '../admin/ao-vivo/options';
 import type { LiveSession } from '@/lib/types';
 
 export const metadata: Metadata = { title: 'Ao vivo' };
@@ -19,6 +21,8 @@ export default async function LivesPage() {
       </>
     );
   }
+  // professor: botão "Fazer transmissão" no topo
+  const goLive = viewer.isAdmin ? (await liveAudienceOptions()).options : null;
   const now = all.filter((l) => l.status === 'live');
   const next = all.filter((l) => l.status === 'scheduled').reverse();
   const past = all.filter((l) => l.status === 'ended' && l.show_replay && l.youtube_id);
@@ -33,7 +37,12 @@ export default async function LivesPage() {
 
   return (
     <>
-      <PageHeader eyebrow="Transmissões" title="Ao vivo" subtitle="Aulões, plantões e revisões em tempo real com o professor." />
+      <PageHeader
+        eyebrow="Transmissões"
+        title="Ao vivo"
+        subtitle="Aulões, plantões e revisões em tempo real com o professor."
+        actions={goLive ? <GoLiveButton options={goLive} /> : undefined}
+      />
       {!all.length && <EmptyState icon={<Radio className="size-6" />} title="Nenhuma transmissão agendada" description="Quando uma aula ao vivo for marcada ela aparece aqui." />}
       <div className="space-y-10">
         {now.length > 0 && (
@@ -50,7 +59,7 @@ export default async function LivesPage() {
         )}
         {next.length > 0 && (
           <section>
-            <h2 className="mb-4 text-lg font-extrabold text-ink">Próximas transmissões</h2>
+            <h2 className="mb-4 text-lg font-extrabold text-ink">Agendamentos</h2>
             {grid(next)}
           </section>
         )}

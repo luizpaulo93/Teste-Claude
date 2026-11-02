@@ -2,6 +2,7 @@
 
 import { CheckCircle2, CircleStop, ExternalLink, Pencil, Plus, Radio, RotateCcw, Trash2, MonitorPlay, Video, X, FileText } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { ImageUpload, PdfDrop } from '@/components/admin/uploads';
@@ -61,8 +62,9 @@ export function LivesManager({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_340px]">
       <div>
-        <div className="mb-4 flex justify-end">
-          <Button onClick={() => setEdit({})}>
+        <div className="mb-4 flex flex-wrap justify-end gap-2">
+          <GoLiveButton options={options} />
+          <Button variant="secondary" onClick={() => setEdit({})}>
             <Plus className="size-4" /> Agendar transmissão
           </Button>
         </div>
@@ -140,41 +142,75 @@ export function LivesManager({
 
       <Modal open={Boolean(edit)} onClose={() => setEdit(null)} title={edit?.live ? 'Editar transmissão' : 'Agendar transmissão'} size="lg">
         {edit && (
-          <ActionForm action={saveLive} success="Transmissão salva" onSuccess={() => setEdit(null)} className="space-y-4">
-            {edit.live && <input type="hidden" name="id" value={edit.live.id} />}
-            <input type="hidden" name="tz_offset" value={tzOffset()} />
-            <Field label="Título">
-              <Input name="title" defaultValue={edit.live?.title} required maxLength={160} placeholder="Ex.: Aulão de Física — Leis de Newton" autoFocus />
-            </Field>
-            <Field label="Link do YouTube (opcional)" hint="Com a conta conectada, o Estúdio preenche sozinho.">
-              <Input name="youtube" defaultValue={edit.live?.youtube_id ? `https://youtu.be/${edit.live.youtube_id}` : ''} placeholder="https://youtube.com/live/..." />
-            </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Data e hora">
-                <Input name="starts_at" type="datetime-local" defaultValue={toLocalInput(edit.live?.starts_at)} required />
-              </Field>
-            </div>
-            <AudiencePicker options={options} initial={edit.live?.audience?.length ? edit.live.audience : edit.live?.space ? [edit.live.space] : edit.live?.course_id ? [`course:${edit.live.course_id}`] : []} />
-            <Field label="Descrição">
-              <Textarea name="description" defaultValue={edit.live?.description} rows={3} maxLength={2000} />
-            </Field>
-            <FormPdfs initial={edit.live?.materials ?? []} />
-            <div className="space-y-1.5">
-              <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
-              <ImageUpload name="cover_url" defaultValue={edit.live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Switch name="chat_enabled" defaultChecked={edit.live?.chat_enabled ?? true} label="Chat" />
-              <input type="hidden" name="show_replay" value="on" />
-              <Switch name="is_published" defaultChecked={edit.live?.is_published ?? true} label="Visível" />
-            </div>
-            <div className="flex justify-end">
-              <SubmitButton>Salvar</SubmitButton>
-            </div>
-          </ActionForm>
+          <LiveForm live={edit.live} options={options} onDone={() => setEdit(null)} />
         )}
       </Modal>
     </div>
+  );
+}
+
+/**
+ * Formulário da live: nome, capa, PDFs e turmas. O chat é sempre ligado e o link do YouTube é criado
+ * pelo Estúdio. now = "Fazer transmissão": começa agora e já abre o Estúdio.
+ */
+export function LiveForm({ live, options, onDone, now = false }: { live?: LiveSession; options: AudienceOptions; onDone?: () => void; now?: boolean }) {
+  const router = useRouter();
+  return (
+    <ActionForm
+      action={saveLive}
+      success={now ? 'Abrindo o Estúdio…' : 'Transmissão salva'}
+      onSuccess={(r) => {
+        onDone?.();
+        if (now && r.id) router.push(`/admin/ao-vivo/${r.id}/estudio`);
+      }}
+      className="space-y-4"
+    >
+      {live && <input type="hidden" name="id" value={live.id} />}
+      <input type="hidden" name="tz_offset" value={tzOffset()} />
+      <input type="hidden" name="chat_enabled" value="on" />
+      <input type="hidden" name="show_replay" value="on" />
+      <input type="hidden" name="is_published" value="on" />
+      <Field label="Nome da transmissão">
+        <Input name="title" defaultValue={live?.title} required maxLength={160} placeholder="Ex.: Aulão de Física — Leis de Newton" autoFocus />
+      </Field>
+      {now ? (
+        <input type="hidden" name="starts_at" value={toLocalInput(new Date().toISOString())} />
+      ) : (
+        <Field label="Data e hora">
+          <Input name="starts_at" type="datetime-local" defaultValue={toLocalInput(live?.starts_at)} required />
+        </Field>
+      )}
+      <div className="space-y-1.5">
+        <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
+        <ImageUpload name="cover_url" defaultValue={live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
+      </div>
+      <FormPdfs initial={live?.materials ?? []} />
+      <AudiencePicker
+        options={options}
+        initial={live?.audience?.length ? live.audience : live?.space ? [live.space] : live?.course_id ? [`course:${live.course_id}`] : []}
+      />
+      <Field label="Descrição (opcional)">
+        <Textarea name="description" defaultValue={live?.description} rows={2} maxLength={2000} />
+      </Field>
+      <div className="flex justify-end">
+        <SubmitButton>{now ? 'Ir para o Estúdio' : 'Salvar'}</SubmitButton>
+      </div>
+    </ActionForm>
+  );
+}
+
+/** Botão "Fazer transmissão": nome, capa, PDFs e turmas, e já abre o Estúdio. */
+export function GoLiveButton({ options }: { options: AudienceOptions }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <Button onClick={() => setOpen(true)} className="!bg-red-600 hover:!bg-red-700">
+        <Radio className="size-4" /> Fazer transmissão
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Fazer transmissão" size="lg">
+        {open && <LiveForm options={options} now onDone={() => setOpen(false)} />}
+      </Modal>
+    </>
   );
 }
 

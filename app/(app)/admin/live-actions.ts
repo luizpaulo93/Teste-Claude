@@ -27,7 +27,8 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
     const space = audience.find((t) => /^[mg]:/.test(t)) ?? null;
     const courseId = '';
     const title = str(fd, 'title', 160);
-    if (!title) return { error: 'Informe o título.' };
+    if (!title) return { error: 'Dê um nome à transmissão.' };
+    let newLive = '';
     // PDFs escolhidos no formulário (os alunos baixam durante a live)
     let mats: LessonMaterial[] = [];
     try {
@@ -42,7 +43,8 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
     const values = [
       title,
       str(fd, 'description', 2000),
-      extractYoutubeId(str(fd, 'youtube', 300)),
+      // o link do YouTube não é mais digitado: o Estúdio cria a live no canal (fica o que já existia)
+      fd.has('youtube') ? extractYoutubeId(str(fd, 'youtube', 300)) : null,
       str(fd, 'cover_url', 2000),
       isDocId(courseId) ? courseId : null,
       starts.toISOString(),
@@ -53,7 +55,7 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
       await sql.exec(
-        `update live_sessions set title = $2, description = $3, youtube_id = $4, cover_url = $5, course_id = $6, starts_at = $7,
+        `update live_sessions set title = $2, description = $3, youtube_id = coalesce($4, youtube_id), cover_url = $5, course_id = $6, starts_at = $7,
            show_replay = $8, chat_enabled = $9, is_published = $10, space = $11, audience = $12, updated_at = now() where id = $1`,
         [id, ...values, space, audience],
       );
@@ -65,14 +67,15 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
         await syncLessonMaterials(id);
       }
     } else {
+      newLive = newId();
       await sql.exec(
         `insert into live_sessions (id, title, description, youtube_id, cover_url, course_id, starts_at, show_replay, chat_enabled, is_published, space, audience, materials, material_paths)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-        [newId(), ...values, space, audience, JSON.stringify(mats), mats.map((m) => m.file_path)],
+         values ($1, $2, $3, coalesce($4, ''), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+        [newLive, ...values, space, audience, JSON.stringify(mats), mats.map((m) => m.file_path)],
       );
     }
     refresh(id || undefined);
-    return { ok: true };
+    return { ok: true, id: id || newLive };
   } catch (e) {
     return fail(e);
   }
