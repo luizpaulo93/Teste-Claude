@@ -39,6 +39,8 @@ export interface BroadcastStatus {
 }
 
 const SEGMENT_US = 2_000_000;
+/** limite de um pedaço no servidor (a Vercel aceita até 4,5 MB por envio) */
+const MAX_SEGMENT = 4_300_000;
 
 // API do Chrome/Edge que entrega os quadros da câmera e do microfone (ainda fora dos tipos padrão)
 declare const MediaStreamTrackProcessor: {
@@ -110,8 +112,10 @@ export class Broadcaster {
     const vt = this.o.stream.getVideoTracks()[0];
     const at = this.o.stream.getAudioTracks()[0];
     if (vt) this.setVideoTrack(vt);
-    if (typeof MediaStreamTrackProcessor !== 'undefined' && at) void this.pumpAudio(at);
-    else if (this.o.audioSource) await this.captureAudio(this.o.audioSource);
+    // Som direto do mixer sempre que possível (todos os navegadores): imagem e som no mesmo relógio,
+    // sem atraso acumulando em lives longas (como o OBS, que carimba tudo num relógio só)
+    if (this.o.audioSource) await this.captureAudio(this.o.audioSource);
+    else if (typeof MediaStreamTrackProcessor !== 'undefined' && at) void this.pumpAudio(at);
     // Relógio de Worker: não para quando a aba do estúdio fica em segundo plano
     let n = 0;
     this.stopTick = workerTicker(200, () => {
@@ -147,12 +151,34 @@ export class Broadcaster {
     return { ...base, codec: big ? 'avc1.640028' : 'avc1.4D401F', latencyMode: 'realtime' };
   }
 
-  /** Relógio da live em µs. No Safari usa o relógio do áudio: imagem e som andam juntos (sem atraso crescente). */
+  /**
+   * Relógio da live em µs. Segue o relógio do áudio (imagem e som nunca se afastam, mesmo em lives longas),
+   * mas andando liso: o relógio do áudio anda aos saltos, então usamos o do sistema corrigido aos poucos
+   * pela diferença entre os dois. Sem saltos = sem quadros descartados nem imagem "engasgando".
+   */
   private clockCtx?: AudioContext;
   private c0 = 0;
+  private drift = 0;
+  private lastNow = -1;
+  private audioSec() {
+    const ctx = this.clockCtx!;
+    const ts = ctx.getOutputTimestamp?.();
+    // contextTime + tempo desde que ele foi medido = posição exata do áudio agora
+    if (ts?.contextTime !== undefined && ts.performanceTime) return ts.contextTime + (performance.now() - ts.performanceTime) / 1000;
+    return ctx.currentTime;
+  }
   private now() {
-    if (this.clockCtx) return Math.round((this.clockCtx.currentTime - this.c0) * 1e6);
-    return Math.round((performance.now() - this.t0) * 1000);
+    const p = (performance.now() - this.t0) / 1000;
+    let t = p;
+    if (this.clockCtx) {
+      const off = this.audioSec() - this.c0 - p;
+      // segue o áudio devagar (sem saltos); diferença grande (áudio parou/voltou) corrige na hora
+      this.drift = Math.abs(off - this.drift) > 0.25 ? off : this.drift + (off - this.drift) * 0.02;
+      t = p + this.drift;
+    }
+    const us = Math.max(this.lastNow + 1, Math.round(t * 1e6));
+    this.lastNow = us;
+    return us;
   }
 
   async stop() {
@@ -309,7 +335,8 @@ export class Broadcaster {
     this.worklet = w;
     // a partir daqui, a imagem usa o mesmo relógio do som
     this.clockCtx = ctx;
-    this.c0 = ctx.currentTime - (performance.now() - this.t0) / 1000;
+    this.c0 = this.audioSec() - (performance.now() - this.t0) / 1000;
+    this.drift = 0;
     await this.setupAudio(ctx.sampleRate, 2);
     let samples = 0;
     w.port.onmessage = (e: MessageEvent<Float32Array<ArrayBuffer>>) => {
@@ -417,8 +444,9 @@ export class Broadcaster {
     this.segStart = at === Infinity ? -1 : at;
     const n = this.seq++;
     this.uploads.push({ n, name: `seg${n}.ts`, data, dur });
-    // Rede muito lenta: mantém no máximo 4 segmentos esperando (pula os mais antigos)
-    while (this.uploads.length > 4) this.settle(this.uploads.shift()!, false);
+    // Queda de internet: guarda até ~20 s de vídeo esperando e envia tudo quando voltar
+    // (acima disso pula os mais antigos, para a live não ficar muito atrasada)
+    while (this.uploads.length > 10) this.settle(this.uploads.shift()!, false);
     if (send) void this.drain(false);
   }
 
@@ -452,13 +480,22 @@ export class Broadcaster {
   }
 
   private async upload(seg: { n: number; name: string; data: Uint8Array; dur: number }) {
+    let tries = 0;
+    const firstTry = performance.now();
     for (;;) {
       const t = performance.now();
       // em ordem: já manda a playlist junto (um pedido só)
-      const inOrder = seg.n === this.nextInList;
+      // (só quando não há atualização de playlist pendente: ela nunca anda para trás)
+      const inOrder = seg.n === this.nextInList && !this.plPending;
       const list = inOrder ? this.windowWith({ name: seg.name, dur: seg.dur }) : null;
-      const ok = await this.send(seg, list ? playlistText(list.items, list.first, false) : '');
-      if (ok) {
+      // Pedaço maior que o servidor aceita (imagem pesada demais para a taxa): descarta e baixa a taxa
+      const r = seg.data.length > MAX_SEGMENT ? 'drop' : await this.send(seg, list ? playlistText(list.items, list.first, false) : '');
+      if (r === 'drop') {
+        this.want(this.rate * 0.6);
+        return this.settle(seg, false);
+      }
+      if (r === 'ok') {
+        this.lastOkAt = Math.max(this.lastOkAt, t); // quando começou um envio que deu certo
         this.sent++;
         this.sentBytes += seg.data.length;
         this.failures = 0;
@@ -471,7 +508,11 @@ export class Broadcaster {
       this.status.state = 'reconnecting';
       this.want(this.rate * 0.75);
       this.emit();
-      if (!this.running && this.failures > 3) return this.settle(seg, false);
+      // nunca fica preso num pedaço: depois de várias tentativas, segue para os próximos
+      // (se a internet caiu de vez, segura e envia quando voltar; a fila guarda ~20 s)
+      // só desiste se outro envio começado depois deste conseguiu passar (a rede está ok, o problema é este pedaço)
+      const othersGetThrough = this.lastOkAt > firstTry;
+      if (++tries >= 6 && (othersGetThrough || !this.running)) return this.settle(seg, false);
       await new Promise((r) => setTimeout(r, Math.min(4000, 500 * this.failures)));
     }
   }
@@ -505,17 +546,23 @@ export class Broadcaster {
     if (moved && !onlyPosted) void this.postPlaylist(false);
   }
 
+  private plPending = 0;
+  private lastOkAt = 0;
   private postPlaylist(end: boolean) {
-    this.plChain = this.plChain.then(async () => {
-      const { items, first } = this.windowWith();
-      if (!items.length) return;
-      const text = playlistText(items, first, end);
-      for (let i = 0; i < 4; i++) if (await this.send(null, text)) return;
-    });
+    this.plPending++;
+    this.plChain = this.plChain
+      .then(async () => {
+        const { items, first } = this.windowWith();
+        if (!items.length) return;
+        const text = playlistText(items, first, end);
+        for (let i = 0; i < 4; i++) if ((await this.send(null, text)) !== 'retry') return;
+      })
+      .finally(() => this.plPending--);
     return this.plChain;
   }
 
-  private async send(seg: { name: string; data: Uint8Array } | null, playlist: string) {
+  /** ok = chegou; retry = falha de rede (tenta de novo); drop = recusado (não adianta insistir) */
+  private async send(seg: { name: string; data: Uint8Array } | null, playlist: string): Promise<'ok' | 'retry' | 'drop'> {
     try {
       const url = `${this.o.endpoint ?? '/api/youtube/ingest'}?live=${encodeURIComponent(this.o.liveId)}${seg ? `&file=${seg.name}` : ''}`;
       const headers: Record<string, string> = { 'Content-Type': 'video/mp2t' };
@@ -524,11 +571,12 @@ export class Broadcaster {
       if (res.status === 401 || res.status === 403 || res.status === 409) {
         const msg = (await res.json().catch(() => ({}))).error;
         this.fail(msg || 'O YouTube recusou a transmissão. Confira a chave da transmissão.');
-        return true; // não insiste
+        return 'drop'; // não insiste
       }
-      return res.ok;
+      if (res.ok) return 'ok';
+      return res.status === 400 || res.status === 413 ? 'drop' : 'retry';
     } catch {
-      return false;
+      return 'retry';
     }
   }
 
