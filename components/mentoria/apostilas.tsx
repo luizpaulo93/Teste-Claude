@@ -85,7 +85,7 @@ export function DayFolder({ groups }: { groups: ApostilaGroup[] }) {
 export function ApostilasFolder({ groups, today }: { groups: ApostilaGroup[]; today: string }) {
   const list = groups.filter((g) => g.files.length);
   if (!list.length)
-    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda. Quando o mentor subir, elas aparecem aqui e no dia do cronograma.</p>;
+    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda.</p>;
   return (
     <div className="space-y-3">
       {list.map((g) => {

@@ -22,7 +22,7 @@ export default async function AdminCourses() {
   });
   return (
     <>
-      <PageHeader title="Cursos" subtitle="Crie cursos, organize em módulos e publique aulas." actions={<NewCourseButton tags={tags} />} />
+      <PageHeader title="Cursos" actions={<NewCourseButton tags={tags} />} />
       <TagsManager tags={tags} counts={tagCounts} />
       {courses.length ? (
         <CourseList courses={courses} counts={counts} />

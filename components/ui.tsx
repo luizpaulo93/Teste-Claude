@@ -133,6 +133,23 @@ export function PageHeader({
   );
 }
 
+/** Título de seção padrão em todo o app (com link opcional à direita, ex.: "Ver tudo"). */
+export function SectionHeader({ title, href, link, icon }: { title: ReactNode; href?: string; link?: string; icon?: ReactNode }) {
+  return (
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="flex min-w-0 items-center gap-2 text-base font-bold text-ink sm:text-lg">
+        {icon}
+        <span className="truncate">{title}</span>
+      </h2>
+      {href && (
+        <Link href={href} className="shrink-0 text-xs font-semibold text-brand">
+          {link ?? 'Ver tudo'}
+        </Link>
+      )}
+    </div>
+  );
+}
+
 export function EmptyState({
   icon,
   title,

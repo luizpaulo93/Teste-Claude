@@ -25,7 +25,6 @@ export default async function AdminLessons({ searchParams }: { searchParams: Pro
     <>
       <PageHeader
         title="Banco de aulas"
-        subtitle="Organize as aulas em pastas. Depois, em Cursos, monte cada módulo escolhendo as aulas daqui (a mesma aula pode estar em vários cursos)."
       />
       <LessonBank folders={folders} lessons={lessons as (BankLesson & Lesson)[]} current={current} />
     </>

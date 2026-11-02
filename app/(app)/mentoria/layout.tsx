@@ -18,7 +18,6 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
       <EmptyState
         icon={<Target className="size-6" />}
         title="Você ainda não participa da mentoria"
-        description="Na mentoria, seu cronograma é montado por assunto, com revisões até você dominar cada um."
         action={viewer.isAdmin ? <LinkButton href="/admin/mentoria">Gerenciar mentorias</LinkButton> : undefined}
       />
     );

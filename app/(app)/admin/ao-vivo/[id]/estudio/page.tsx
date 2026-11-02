@@ -36,14 +36,13 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         ready={ready}
         hint={
           connected
-            ? `Transmite no canal ${acc.channel_title || 'conectado'} (não listado). Ao encerrar, o link vira aula na pasta “Live”.`
+            ? `Canal: ${acc.channel_title || 'conectado'}`
             : 'Conecte a conta do YouTube na tela Ao vivo para transmitir.'
         }
       />
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
         <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
           <LiveMaterialsAdmin liveId={live.id} materials={live.materials ?? []} />
-          <p className="text-[11px] text-muted">Suba o PDF durante a live: ele aparece na hora para os alunos e fica salvo na aula depois.</p>
         </div>
         <LiveChat
           liveId={live.id}

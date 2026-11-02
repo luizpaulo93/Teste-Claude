@@ -37,7 +37,7 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader eyebrow="Comunidade" title="Dúvidas" subtitle="Pergunte, ajude colegas e tire dúvidas com os professores." />
+      <PageHeader eyebrow="Comunidade" title="Dúvidas" />
       <DoubtComposer userId={viewer.userId} name={viewer.profile.full_name || viewer.email} avatar={viewer.profile.avatar_url} />
       <div className="rail -mx-4 my-6 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
         {FILTERS.map((x) => (

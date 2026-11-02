@@ -42,7 +42,7 @@ export default async function CoursesPage({ searchParams }: { searchParams: Prom
           })}
         </div>
       ) : (
-        <EmptyState icon={<Compass className="size-6" />} title="Nenhum curso por aqui" description="Assim que novos cursos forem publicados eles aparecem nesta página." />
+        <EmptyState icon={<Compass className="size-6" />} title="Nenhum curso por aqui" />
       )}
     </>
   );

@@ -17,7 +17,7 @@ export default async function GroupStudents({ params }: { params: Promise<{ gid:
     [members.map((x) => emailKey(x.email))],
   );
   const by = new Map(stats.map((s) => [s.id, s]));
-  if (!members.length) return <p className="text-sm text-muted">Nenhum aluno no grupo. Toque em Editar para escolher alunos ou turmas.</p>;
+  if (!members.length) return <p className="text-sm text-muted">Nenhum aluno no grupo.</p>;
   return (
     <ul className="overflow-hidden rounded-2xl border border-line bg-surface">
       {members.map((mb) => {

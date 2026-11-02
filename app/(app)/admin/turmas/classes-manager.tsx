@@ -77,7 +77,7 @@ export function ClassesManager({
           })}
         </div>
       ) : (
-        <EmptyState icon={<UsersRound className="size-6" />} title="Nenhuma turma" description="Crie uma turma (ex.: “Extensivo 2027”) e escolha os cursos liberados." />
+        <EmptyState icon={<UsersRound className="size-6" />} title="Nenhuma turma" />
       )}
 
       <Modal open={Boolean(edit)} onClose={() => setEdit(null)} title={edit?.cls ? 'Editar turma' : 'Nova turma'} size="lg">

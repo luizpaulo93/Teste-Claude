@@ -1059,7 +1059,7 @@ export function Studio({
                 {confirmEnd ? (
                   <>
                     <p className="text-base font-bold text-ink">Encerrar a transmissão?</p>
-                    <p className="text-sm text-muted">Os alunos deixam de ver a live e a gravação vira aula na pasta Live.</p>
+                    <p className="text-sm text-muted">A gravação vira aula na pasta Live.</p>
                     <div className="grid grid-cols-2 gap-2">
                       <button type="button" onClick={() => setConfirmEnd(false)} className={buttonClass('secondary', 'md')}>
                         Continuar ao vivo
@@ -1148,7 +1148,7 @@ export function Studio({
                 ))}
               </Select>
             ) : (
-              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, logo abaixo. Ele aparece aqui para você mostrar.</p>
+              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, abaixo.</p>
             )}
             {pdfBusy && (
               <p className="flex items-center gap-2 text-xs text-muted">
@@ -1285,8 +1285,7 @@ export function Studio({
             </div>
           ) : (
             <p className="text-xs text-muted">
-              No celular e no tablet, mostre o PDF pela cena <strong>PDF + câmera</strong>. Não saia do navegador durante a live: o aparelho pausa a
-              transmissão.
+              Não saia do navegador durante a live.
             </p>
           )}
           {screenOn && <p className="text-[11px] text-success">Tela espelhada. Pode trocar de janela: a live continua.</p>}

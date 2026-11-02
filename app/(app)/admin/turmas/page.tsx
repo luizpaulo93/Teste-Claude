@@ -16,7 +16,7 @@ export default async function AdminClasses() {
 
   return (
     <>
-      <PageHeader title="Turmas" subtitle="Cada turma define quais cursos seus alunos podem acessar." />
+      <PageHeader title="Turmas" />
       <ClassesManager
         classes={classes}
         links={links}

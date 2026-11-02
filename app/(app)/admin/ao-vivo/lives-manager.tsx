@@ -135,7 +135,6 @@ export function LivesManager({
         {pdfLive && (
           <div className="space-y-2">
             <LiveMaterialsAdmin liveId={pdfLive.id} materials={pdfLive.materials ?? []} />
-            <p className="text-[11px] text-muted">Os PDFs aparecem na sala da live e na aula salva no banco de aulas.</p>
           </div>
         )}
       </Modal>
@@ -336,7 +335,6 @@ function YoutubeCard({ yt }: { yt: YoutubeState }) {
           <p className="flex items-center gap-2 text-sm text-ink">
             <CheckCircle2 className="size-4 text-success" /> Conectado: <strong className="truncate">{yt.channel}</strong>
           </p>
-          <p className="text-xs text-muted">No Estúdio, o app cria a live não listada no seu canal e transmite com a câmera e o microfone que você escolher.</p>
           <ActionButton action={disconnectYoutube} confirm="Desconectar a conta do YouTube?" success="Conta desconectada" size="sm" variant="ghost">
             Desconectar
           </ActionButton>
@@ -346,7 +344,6 @@ function YoutubeCard({ yt }: { yt: YoutubeState }) {
           <MonitorPlay className="size-4" /> Conectar conta do YouTube
         </a>
       )}
-      {!yt.channel && <p className="text-xs text-muted">Conecte uma vez. No Estúdio, a live é criada no seu canal e, ao encerrar, o link vira aula na pasta “Live”.</p>}
       {!yt.channel && <YoutubeGuide origin={yt.origin} open={!yt.oauth} />}
     </Card>
   );

@@ -31,7 +31,6 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
     <div className="space-y-4">
       <Card className="p-4 sm:p-5">
         <BlocksPanel space={`m:${m.id}`} blocks={blocks.filter((b) => b.space === `m:${m.id}`)} today={todayBR()} />
-        {m.group_id && <p className="mt-3 text-[11px] text-muted">Os períodos do grupo são editados na página do grupo e também aparecem para este aluno.</p>}
       </Card>
       {m.scope !== 'especifica' && (
       <Card className="p-4 sm:p-5">

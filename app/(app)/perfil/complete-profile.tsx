@@ -43,7 +43,7 @@ export function CompleteProfile({
           <ShieldCheck className="size-6" />
         </div>
         <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">Complete seu perfil</h1>
-        <p className="mt-1 text-sm text-ink-2">Para continuar usando a plataforma, preencha seus dados. Eles identificam os seus materiais e protegem o conteúdo do curso.</p>
+        <p className="mt-1 text-sm text-muted">Preencha para continuar.</p>
         <form action={action} className="mt-5 space-y-4">
           <Field label="Nome completo">
             <Input {...bind('full_name')} required maxLength={120} autoComplete="name" placeholder="Nome e sobrenome" />

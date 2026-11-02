@@ -11,7 +11,7 @@ export default async function AdminConfig() {
   const admins = [BOOTSTRAP_ADMIN, ...rows.map((r) => r.email)].filter((v, i, a) => a.indexOf(v) === i).sort();
   return (
     <>
-      <PageHeader title="Configurações" subtitle="Identidade da plataforma, regras de acesso e administradores." />
+      <PageHeader title="Configurações" />
       <SettingsForm settings={settings} admins={admins} />
     </>
   );

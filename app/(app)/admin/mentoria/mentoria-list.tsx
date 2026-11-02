@@ -140,7 +140,6 @@ export function MentoriaList({
           <EmptyState
             icon={<Target className="size-6" />}
             title="Nenhum mentorado"
-            description="Cadastre o e-mail do aluno para liberar a área de mentoria para ele."
           />
         )}
       </div>

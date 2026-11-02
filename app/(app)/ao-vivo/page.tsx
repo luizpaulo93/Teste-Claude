@@ -17,7 +17,7 @@ export default async function LivesPage() {
     return (
       <>
         <PageHeader title="Ao vivo" />
-        <EmptyState icon={<Radio className="size-6" />} title="Exclusivo para alunos" description="As aulas ao vivo ficam disponíveis para alunos com a turma liberada." />
+        <EmptyState icon={<Radio className="size-6" />} title="Exclusivo para alunos" />
       </>
     );
   }
@@ -40,14 +40,13 @@ export default async function LivesPage() {
       <PageHeader
         eyebrow="Transmissões"
         title="Ao vivo"
-        subtitle="Aulões, plantões e revisões em tempo real com o professor."
         actions={goLive ? <GoLiveButton options={goLive} /> : undefined}
       />
       {!all.length && <EmptyState icon={<Radio className="size-6" />} title="Nenhuma transmissão agendada" description="Quando uma aula ao vivo for marcada ela aparece aqui." />}
       <div className="space-y-10">
         {now.length > 0 && (
           <section>
-            <h2 className="mb-4 flex items-center gap-2 text-lg font-extrabold text-ink">
+            <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-ink sm:text-lg">
               <span className="relative flex size-2.5">
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-red-500 opacity-75" />
                 <span className="relative inline-flex size-2.5 rounded-full bg-red-500" />
@@ -59,13 +58,13 @@ export default async function LivesPage() {
         )}
         {next.length > 0 && (
           <section>
-            <h2 className="mb-4 text-lg font-extrabold text-ink">Agendamentos</h2>
+            <h2 className="mb-3 text-base font-bold text-ink sm:text-lg">Agendamentos</h2>
             {grid(next)}
           </section>
         )}
         {past.length > 0 && (
           <section>
-            <h2 className="mb-4 text-lg font-extrabold text-ink">Gravações</h2>
+            <h2 className="mb-3 text-base font-bold text-ink sm:text-lg">Gravações</h2>
             {grid(past)}
           </section>
         )}

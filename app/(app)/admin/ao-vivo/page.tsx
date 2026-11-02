@@ -40,7 +40,7 @@ export default async function AdminLives({ searchParams }: { searchParams: Promi
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>
-      <PageHeader title="Ao vivo" subtitle="Transmita do Estúdio direto para o seu canal (não listado). Só alunos com acesso assistem aqui dentro." />
+      <PageHeader title="Ao vivo" />
       <LivesManager lives={lives} courses={courses} yt={yt} spaces={spaces} options={options} />
     </>
   );

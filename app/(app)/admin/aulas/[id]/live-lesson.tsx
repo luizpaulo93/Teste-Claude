@@ -54,7 +54,7 @@ export function LiveLessonEditor({
           <Field label="Nome da aula">
             <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={160} aria-label="Nome da aula" />
           </Field>
-          <Field label="Link do YouTube" hint="O link da gravação não pode ser trocado.">
+          <Field label="Link do YouTube">
             <div className="relative">
               <Input value={lesson.youtube_id ? `https://youtu.be/${lesson.youtube_id}` : ''} disabled readOnly className="pr-9" />
               <Lock className="absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted" />

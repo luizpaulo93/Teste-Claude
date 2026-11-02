@@ -192,7 +192,6 @@ function AddDialog({ row, today, onClose }: { row: AssuntoRow; today: string; on
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-muted">Ele entra além do que o mentor montou para o dia. Seu mentor vê o que você acrescentou.</p>
       </div>
     </Modal>
   );

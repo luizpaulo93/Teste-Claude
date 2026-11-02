@@ -43,7 +43,7 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHeader eyebrow="ENEM" title="Simulados" subtitle="Faça as provas no tempo oficial e acompanhe sua nota estimada pela TRI." />
+      <PageHeader eyebrow="ENEM" title="Simulados" />
 
       {viewer.isAdmin && <AdminOverview kind={tab} />}
 
@@ -101,7 +101,7 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
         </section>
       )}
 
-      {toDo.length > 0 && <h2 className="mb-3 text-base font-bold text-ink">Para fazer</h2>}
+      {toDo.length > 0 && <h2 className="mb-3 text-base font-bold text-ink sm:text-lg">Para fazer</h2>}
 
       {toDo.length ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

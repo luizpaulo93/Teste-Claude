@@ -53,7 +53,7 @@ export function RankList({
   if (!items.length) return null;
   return (
     <section className="space-y-2.5">
-      <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+      <h2 className="flex items-center gap-2 text-base font-bold text-ink sm:text-lg">
         {icon === 'users' ? <Users className="size-4 text-brand" /> : <Trophy className="size-4 text-warning" />} {title}
       </h2>
       <ol className="overflow-hidden rounded-2xl border border-line bg-surface">

@@ -29,7 +29,7 @@ export default async function AdminSimulados({ searchParams }: { searchParams: P
   });
   return (
     <>
-      <PageHeader title="Simulados" subtitle="Crie provas no padrão ENEM, acompanhe entregas e libere a nota TRI." actions={<NewSimuladoButton />} />
+      <PageHeader title="Simulados" actions={<NewSimuladoButton />} />
       {released.length > 0 && (
         <section className="mb-8 space-y-3">
           <SegTabs

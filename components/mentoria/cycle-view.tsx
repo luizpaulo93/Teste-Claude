@@ -13,7 +13,7 @@ const period = (a: string | null, b: string | null) => [dmy(a), dmy(b)].filter(B
 /** Lista dos ciclos anteriores (salvos quando o mentor começou um novo). */
 export function CycleList({ list, base }: { list: Awaited<ReturnType<typeof cyclesOf>>; base: string }) {
   if (!list.length)
-    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior. Quando o mentor começar um ciclo novo, o atual fica salvo aqui.</p>;
+    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior.</p>;
   return (
     <ul className="space-y-2">
       {list.map((c) => (
@@ -83,13 +83,13 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
 
       {cycle.blocks.some((b) => b.files.length) && (
         <section className="space-y-2">
-          <h3 className="text-sm font-bold text-ink">Apostilas</h3>
+          <h3 className="text-base font-bold text-ink sm:text-lg">Apostilas</h3>
           <ApostilasFolder groups={cycle.blocks} today={today} />
         </section>
       )}
 
       <section className="space-y-2">
-        <h3 className="text-sm font-bold text-ink">O que foi feito</h3>
+        <h3 className="text-base font-bold text-ink sm:text-lg">O que foi feito</h3>
         {days.length ? (
           <div className="space-y-3">
             {days.map((d) => (
@@ -125,7 +125,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
 
       {disciplines.length > 0 && (
         <section className="space-y-2">
-          <h3 className="text-sm font-bold text-ink">Como ficaram os assuntos</h3>
+          <h3 className="text-base font-bold text-ink sm:text-lg">Como ficaram os assuntos</h3>
           <AssuntosView rows={rows} disciplines={disciplines} archived />
         </section>
       )}

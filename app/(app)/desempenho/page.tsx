@@ -55,7 +55,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
     return (
       <>
         <Header />
-        <EmptyState icon={<BarChart3 className="size-6" />} title="Ainda sem resultados" description="O painel aparece quando as notas de algum simulado forem liberadas." />
+        <EmptyState icon={<BarChart3 className="size-6" />} title="Ainda sem resultados" />
       </>
     );
   }

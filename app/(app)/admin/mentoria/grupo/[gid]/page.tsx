@@ -29,10 +29,6 @@ export default async function GroupPlan({ params }: { params: Promise<{ gid: str
       {g.scope !== 'especifica' && (
       <Card className="p-4 sm:p-5">
         <PlanBuilder groupId={g.id} disciplines={disciplines} chosen={g.plan_disciplines} order={g.plan_order} hasSchedule />
-        <p className="mt-4 rounded-xl bg-surface-2/60 p-3 text-xs text-ink-2">
-          Todos começam com os mesmos {g.plan_keys.length} assuntos{g.end_date ? `, fechando em ${formatDate(g.end_date)}` : ''}. Depois, o cronograma de cada aluno é só
-          dele: revisões e ritmo mudam pelo acerto e pelo que ele sentiu em cada assunto. Para ajustar um aluno, abra-o na aba Alunos.
-        </p>
       </Card>
       )}
       <Card className="p-4 sm:p-5">

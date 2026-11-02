@@ -50,7 +50,7 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHeader title="Alunos" subtitle="Alunos das turmas. Busque por nome ou turma." />
+      <PageHeader title="Alunos" />
       <StudentsManager
         students={students}
         classes={classes}

@@ -38,7 +38,6 @@ export default async function AdminCourseEdit({ params }: { params: Promise<{ id
       </Link>
       <PageHeader
         title={course.title}
-        subtitle="Crie os módulos e adicione as aulas do banco de aulas (por pasta). Use as setas para reordenar."
         actions={
           <Link href={`/cursos/${id}`} target="_blank" className={buttonClass('secondary')}>
             <ExternalLink className="size-4" /> Ver como aluno

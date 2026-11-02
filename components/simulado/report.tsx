@@ -75,7 +75,7 @@ export function ClassCards({
   if (!items.length) return null;
   return (
     <section className="space-y-2.5">
-      <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+      <h2 className="flex items-center gap-2 text-base font-bold text-ink sm:text-lg">
         <Users className="size-4 text-brand" /> Turmas
       </h2>
       <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
@@ -118,7 +118,7 @@ export function StudentRanking({
 }) {
   return (
     <section className="space-y-2.5">
-      <h2 className="flex items-center gap-2 text-base font-bold text-ink">
+      <h2 className="flex items-center gap-2 text-base font-bold text-ink sm:text-lg">
         <Trophy className="size-4 text-warning" /> {title}
       </h2>
       {rows.length ? (

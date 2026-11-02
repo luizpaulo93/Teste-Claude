@@ -55,7 +55,7 @@ export function ScheduleForm({ availability, mentoriaId, next }: { availability:
             </label>
           ))}
         </div>
-        <p className="text-[11px] text-muted">Cada assunto novo ocupa 1h (estudar + questões) e cada revisão, 30 min.</p>
+        <p className="text-[11px] text-muted">Assunto novo: 1h · revisão: 30 min.</p>
       </div>
       <button type="submit" disabled={busy} className={buttonClass('primary', 'lg', 'w-full sm:w-auto')}>
         {busy && <Spinner />} Salvar horários

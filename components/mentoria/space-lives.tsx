@@ -17,7 +17,7 @@ export async function SpaceLives({ spaces, admin }: { spaces: string[]; admin?: 
   const Section = ({ title, list }: { title: string; list: LiveSession[] }) =>
     list.length ? (
       <section className="space-y-2.5">
-        <h2 className="text-sm font-bold text-ink">{title}</h2>
+        <h2 className="text-base font-bold text-ink sm:text-lg">{title}</h2>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {list.map((l) => (
             <LiveCard key={l.id} live={l} />

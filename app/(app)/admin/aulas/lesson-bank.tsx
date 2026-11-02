@@ -91,7 +91,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
       {/* Conteúdo da pasta */}
       <div className="min-w-0 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="mr-auto flex min-w-0 items-center gap-2 text-lg font-extrabold text-ink">
+          <h2 className="mr-auto flex min-w-0 items-center gap-2 text-base font-bold text-ink sm:text-lg">
             {current ? <Folder className="size-5 text-brand" /> : <Inbox className="size-5 text-brand" />}
             <span className="truncate">{currentName}</span>
             <span className="text-sm font-medium text-muted">({list.length})</span>

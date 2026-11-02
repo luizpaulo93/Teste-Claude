@@ -49,7 +49,7 @@ export default async function AdminMentoria() {
   );
   return (
     <>
-      <PageHeader title="Mentoria" subtitle="Monte o cronograma por assuntos e acompanhe em que parte cada aluno está." />
+      <PageHeader title="Mentoria" />
       <MentoriaList
         mentorias={list}
         groupMeetings={meetings}

@@ -27,7 +27,7 @@ export default async function MyLessonsPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHeader title="Minhas aulas" subtitle="Suas aulas favoritas e o histórico do que você já concluiu." />
+      <PageHeader title="Minhas aulas" />
       <div className="mb-6 inline-flex rounded-xl border border-line bg-surface-2 p-1">
         {tabs.map((t) => (
           <Link

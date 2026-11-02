@@ -46,7 +46,6 @@ export function ModulesManager({
         <EmptyState
           icon={<FolderPlus className="size-6" />}
           title="Nenhum módulo ainda"
-          description="Crie um módulo (ex.: “Cinemática”) e depois adicione as aulas do banco de aulas (Admin → Aulas)."
         />
       )}
 
@@ -235,7 +234,7 @@ function LessonPicker({
               <FolderRow key={f.id} name={f.name} count={inFolder(f.id).length} onClick={() => setFolder(f.id)} />
             ))}
             {inFolder(null).length > 0 && <FolderRow name="Sem pasta" count={inFolder(null).length} onClick={() => setFolder(null)} inbox />}
-            {!available.length && <p className="py-8 text-center text-sm text-muted">Todas as aulas do banco já estão neste módulo. Crie aulas novas em Admin → Aulas.</p>}
+            {!available.length && <p className="py-8 text-center text-sm text-muted">Todas as aulas do banco já estão neste módulo.</p>}
           </>
         ) : shown.length ? (
           shown.map((l) => {

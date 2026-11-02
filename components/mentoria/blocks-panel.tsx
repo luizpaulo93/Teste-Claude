@@ -52,7 +52,6 @@ export function BlocksPanel({ space, blocks, today }: { space: string; blocks: B
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-ink">Assuntos por dia ou período</p>
-          <p className="text-xs text-muted">Ligue assuntos e apostilas a um dia, uma semana, um mês ou às datas que quiser.</p>
         </div>
         <Button size="sm" onClick={() => setEdit('new')} className="shrink-0">
           <Plus className="size-4" /> Novo período

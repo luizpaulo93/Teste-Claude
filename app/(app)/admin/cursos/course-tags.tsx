@@ -31,7 +31,6 @@ export function TagsManager({ tags, counts }: { tags: CourseTag[]; counts: Recor
         <p className="flex items-center gap-1.5 text-sm font-bold text-ink">
           <Tag className="size-4 text-brand" /> Tags de disciplina
         </p>
-        <p className="text-xs text-muted">Viram o filtro da página Cursos, nesta ordem. Escolha as tags de cada curso ao editá-lo.</p>
       </div>
       {tags.length > 0 && (
         <ul className="divide-y divide-line rounded-xl border border-line">

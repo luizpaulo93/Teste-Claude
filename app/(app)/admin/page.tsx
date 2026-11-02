@@ -28,7 +28,7 @@ export default async function AdminHome() {
 
   return (
     <>
-      <PageHeader title="Visão geral" subtitle="Números da plataforma em tempo real." />
+      <PageHeader title="Visão geral" />
       {catalog.courses.length === 0 && (
         <Card className="mb-6 flex flex-col gap-3 border-brand/30 bg-brand-soft p-5 sm:flex-row sm:items-center">
           <div className="flex-1">
