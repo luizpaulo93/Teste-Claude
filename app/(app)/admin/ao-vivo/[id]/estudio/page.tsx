@@ -32,6 +32,7 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         liveId={live.id}
         live={live.status === 'live'}
         materials={live.materials ?? []}
+        chat={{ initial: messages, me: { id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role } }}
         ready={ready}
         hint={
           connected

@@ -1,6 +1,26 @@
 'use client';
 
-import { AppWindow, Maximize2, Minimize2, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Settings2, Video, Wifi } from 'lucide-react';
+import {
+  AppWindow,
+  MessageSquare,
+  Maximize2,
+  Minimize2,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  CircleStop,
+  FileText,
+  FlipHorizontal2,
+  Mic,
+  MicOff,
+  Monitor,
+  MonitorOff,
+  PictureInPicture2,
+  Radio,
+  Settings2,
+  Video,
+  Wifi,
+} from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDialog } from '@/components/confirm';
@@ -11,27 +31,49 @@ import { Broadcaster, checkSupport, type BroadcastStatus } from '@/lib/live/broa
 import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
 import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
 import { getFileUrl } from '@/lib/storage/client';
-import type { LessonMaterial } from '@/lib/types';
+import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
+import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
 const QUALITIES = {
   '480': { w: 854, h: 480, bitrate: 1_200_000, label: '480p (internet fraca)' },
   '720': { w: 1280, h: 720, bitrate: 2_500_000, label: '720p (recomendado)' },
-  '1080': { w: 1920, h: 1080, bitrate: 4_500_000, label: '1080p (internet boa)' },
+  '1080': {
+    w: 1920,
+    h: 1080,
+    bitrate: 4_500_000,
+    label: '1080p (internet boa)',
+  },
 } as const;
 type Quality = keyof typeof QUALITIES;
 
-const SCENES: { key: Scene; label: string; icon: typeof Video; desktop?: boolean }[] = [
+const SCENES: {
+  key: Scene;
+  label: string;
+  icon: typeof Video;
+  desktop?: boolean;
+}[] = [
   { key: 'camera', label: 'Câmera', icon: Video },
   { key: 'pdf', label: 'PDF + câmera', icon: FileText },
   { key: 'screen', label: 'Só tela', icon: Monitor, desktop: true },
-  { key: 'both', label: 'Tela + câmera', icon: PictureInPicture2, desktop: true },
+  {
+    key: 'both',
+    label: 'Tela + câmera',
+    icon: PictureInPicture2,
+    desktop: true,
+  },
 ];
 
 function MirrorButton({ mirror, onToggle }: { mirror: boolean; onToggle: () => void }) {
   return (
-    <button type="button" onClick={onToggle} aria-pressed={mirror} className={buttonClass(mirror ? 'primary' : 'secondary', 'sm', 'w-full')} aria-label="Espelhar câmera">
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={mirror}
+      className={buttonClass(mirror ? 'primary' : 'secondary', 'sm', 'w-full')}
+      aria-label="Espelhar câmera"
+    >
       <FlipHorizontal2 className="size-4" /> Espelhar
     </button>
   );
@@ -60,14 +102,30 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
   return same.length > 1 ? `${base} ${n + 1}` : base;
 }
 
-const clock = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+const clock = (s: number) =>
+  `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 /**
  * Estúdio: escolhe câmera, microfone e a tela (inteira ou uma janela), monta a cena e transmite direto
  * para o YouTube. Três cenas, como no OBS: só a câmera, só a tela, ou a tela com a câmera no canto.
  * Dá para trocar de cena no meio da live. O áudio passa por um mixer: trocar o microfone não corta o som.
  */
-export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: string; live: boolean; ready: boolean; hint: string; materials?: LessonMaterial[] }) {
+export function Studio({
+  liveId,
+  live,
+  ready,
+  hint,
+  materials = [],
+  chat,
+}: {
+  liveId: string;
+  live: boolean;
+  ready: boolean;
+  hint: string;
+  materials?: LessonMaterial[];
+  /** chat ao lado na tela cheia (só o professor vê assim) */
+  chat?: { initial: LiveMessage[]; me: ProfileCard };
+}) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const comp = useRef<Compositor | null>(null);
@@ -88,7 +146,14 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   });
   const [pipSel, setPipSel] = useState(false);
   const [pipRect, setPipRect] = useState({ x: 0.7, y: 0.55, w: 0.28, h: 0.28 });
-  const pipDrag = useRef<{ mode: 'move' | 'size'; sx: number; sy: number; box: { x: number; y: number; w: number }; moved: boolean; t: number } | null>(null);
+  const pipDrag = useRef<{
+    mode: 'move' | 'size';
+    sx: number;
+    sy: number;
+    box: { x: number; y: number; w: number };
+    moved: boolean;
+    t: number;
+  } | null>(null);
   const pipTouches = useRef(new Map<number, { x: number; y: number }>());
   const pipArea = useRef<HTMLDivElement>(null);
   const [screenOn, setScreenOn] = useState(false);
@@ -111,8 +176,13 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const [full, setFull] = useState(false);
   const [camPortrait, setCamPortrait] = useState(false);
   const [mobile, setMobile] = useState(false);
+  const [pop, setPop] = useState<'mic' | 'cam' | null>(null);
+  const [chatOpen, setChatOpen] = useState(true);
   const [level, setLevel] = useState(0);
-  const [support, setSupport] = useState<{ ok: boolean; reason?: string } | null>(null);
+  const [support, setSupport] = useState<{
+    ok: boolean;
+    reason?: string;
+  } | null>(null);
   const [status, setStatus] = useState<BroadcastStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [permError, setPermError] = useState('');
@@ -121,7 +191,14 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const camTrack = useRef<MediaStreamTrack | null>(null);
   const screenTrack = useRef<MediaStreamTrack | null>(null);
   const micStream = useRef<MediaStream | null>(null);
-  const audio = useRef<{ ctx: AudioContext; dest: MediaStreamAudioDestinationNode; analyser: AnalyserNode; src?: MediaStreamAudioSourceNode } | null>(null);
+  const audio = useRef<{
+    ctx: AudioContext;
+    dest: MediaStreamAudioDestinationNode;
+    analyser: AnalyserNode;
+    gain: GainNode;
+    src?: MediaStreamAudioSourceNode;
+  } | null>(null);
+  const [muted, setMuted] = useState(false);
   const caster = useRef<Broadcaster | null>(null);
   const onAir = status?.state === 'live' || status?.state === 'starting' || status?.state === 'reconnecting';
 
@@ -132,7 +209,11 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       const dest = ctx.createMediaStreamDestination();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
-      audio.current = { ctx, dest, analyser };
+      // microfone → volume (silenciar) → live; o medidor mostra o que vai para a live
+      const gain = ctx.createGain();
+      gain.connect(dest);
+      gain.connect(analyser);
+      audio.current = { ctx, dest, analyser, gain };
     }
     return audio.current;
   }, []);
@@ -146,7 +227,10 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     void checkSupport().then(setSupport);
     (async () => {
       try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        const s = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
         s.getTracks().forEach((t) => t.stop());
       } catch {
         setPermError('Libere o acesso à câmera e ao microfone no navegador para usar o estúdio.');
@@ -231,7 +315,14 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     e.stopPropagation();
     e.currentTarget.setPointerCapture(e.pointerId);
     pipTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    pipDrag.current = { mode, sx: e.clientX, sy: e.clientY, box: { ...pipBox, x: pipRect.x, y: pipRect.y }, moved: false, t: Date.now() };
+    pipDrag.current = {
+      mode,
+      sx: e.clientX,
+      sy: e.clientY,
+      box: { ...pipBox, x: pipRect.x, y: pipRect.y },
+      moved: false,
+      t: Date.now(),
+    };
   };
   const pipMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = pipDrag.current;
@@ -246,7 +337,11 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       const other = [...ts.entries()].find(([id]) => id !== e.pointerId)![1];
       const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
       const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
-      if (d0 > 0) setPipBox((b) => ({ ...b, w: Math.min(0.6, Math.max(0.12, b.w * (d1 / d0))) }));
+      if (d0 > 0)
+        setPipBox((b) => ({
+          ...b,
+          w: Math.min(0.6, Math.max(0.12, b.w * (d1 / d0))),
+        }));
       d.moved = true;
       return;
     }
@@ -264,7 +359,11 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     if (pipTouches.current.size === 0) {
       pipDrag.current = null;
       setPipBox((b) => {
-        const fixed = { x: Math.min(Math.max(0, b.x), 1 - pipRect.w), y: Math.min(Math.max(0, b.y), 1 - pipRect.h), w: b.w };
+        const fixed = {
+          x: Math.min(Math.max(0, b.x), 1 - pipRect.w),
+          y: Math.min(Math.max(0, b.y), 1 - pipRect.h),
+          w: b.w,
+        };
         savePip(fixed);
         return fixed;
       });
@@ -276,7 +375,13 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     if (!onAir || !('wakeLock' in navigator)) return;
     let lock: { release: () => Promise<void> } | null = null;
     const get = () =>
-      (navigator as Navigator & { wakeLock: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock
+      (
+        navigator as Navigator & {
+          wakeLock: {
+            request: (t: 'screen') => Promise<{ release: () => Promise<void> }>;
+          };
+        }
+      ).wakeLock
         .request('screen')
         .then((l) => (lock = l))
         .catch(() => {});
@@ -316,7 +421,11 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       /* iPhone: sem tela cheia de página; o modo ocupa a tela mesmo assim */
     }
     try {
-      await (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape');
+      await (
+        screen.orientation as ScreenOrientation & {
+          lock?: (o: string) => Promise<void>;
+        }
+      ).lock?.('landscape');
     } catch {
       /* sem trava de orientação (iPhone/iPad): basta deitar o aparelho */
     }
@@ -428,7 +537,15 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     let cancelled = false;
     const q = QUALITIES[quality];
     navigator.mediaDevices
-      .getUserMedia({ video: { deviceId: { exact: cam }, width: { ideal: q.w }, height: { ideal: q.h }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } } })
+      .getUserMedia({
+        video: {
+          deviceId: { exact: cam },
+          width: { ideal: q.w },
+          height: { ideal: q.h },
+          aspectRatio: { ideal: 16 / 9 },
+          frameRate: { ideal: 30 },
+        },
+      })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         const t = s.getVideoTracks()[0];
@@ -447,7 +564,10 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   async function shareScreen(surface: 'monitor' | 'window') {
     try {
       const s = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: 30, displaySurface: surface } as MediaTrackConstraints,
+        video: {
+          frameRate: 30,
+          displaySurface: surface,
+        } as MediaTrackConstraints,
         audio: false,
       });
       const t = s.getVideoTracks()[0];
@@ -507,13 +627,19 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     if (mic === 'none') return;
     let cancelled = false;
     navigator.mediaDevices
-      .getUserMedia({ audio: { deviceId: { exact: mic }, echoCancellation: true, noiseSuppression: true, autoGainControl: true } })
+      .getUserMedia({
+        audio: {
+          deviceId: { exact: mic },
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         micStream.current = s;
         const src = m.ctx.createMediaStreamSource(s);
-        src.connect(m.dest);
-        src.connect(m.analyser);
+        src.connect(m.gain);
         m.src = src;
       })
       .catch(() => toast.error('Não foi possível abrir este microfone.'));
@@ -521,6 +647,12 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       cancelled = true;
     };
   }, [mic, mixer]);
+
+  // Silenciar o microfone (a live continua, só sem som)
+  useEffect(() => {
+    const g = mixer().gain;
+    g.gain.setTargetAtTime(muted ? 0 : 1, g.context.currentTime, 0.02);
+  }, [muted, mixer]);
 
   // Medidor do microfone
   useEffect(() => {
@@ -560,7 +692,15 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       const d = dims();
       // Só o áudio vai pela trilha; o vídeo vem da mesa de cenas (quadro a quadro)
       const stream = new MediaStream([m.dest.stream.getAudioTracks()[0]]);
-      const b = new Broadcaster({ liveId, stream, width: d.w, height: d.h, fps: 30, videoBitrate: q.bitrate, onStatus: setStatus });
+      const b = new Broadcaster({
+        liveId,
+        stream,
+        width: d.w,
+        height: d.h,
+        fps: 30,
+        videoBitrate: q.bitrate,
+        onStatus: setStatus,
+      });
       caster.current = b;
       await b.start();
       if (comp.current) comp.current.onFrame = (c) => b.pushFrame(c);
@@ -596,130 +736,292 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
           ref={stage}
           className={cn(
             'relative mx-auto overflow-hidden bg-black',
-            full ? 'fixed inset-0 z-[90] flex items-center justify-center' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
+            full ? 'fixed inset-0 z-[90] flex' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
           )}
         >
-          <canvas
-            ref={canvasRef}
-            width={1280}
-            height={720}
-            onPointerDown={onDown}
-            onPointerMove={onMove}
-            onPointerUp={onUp}
-            onPointerCancel={onUp}
-            className={cn(full ? 'max-h-full max-w-full' : 'size-full', 'object-contain', (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing')}
-            style={full ? { aspectRatio: '16 / 9', width: '100%', height: 'auto', maxHeight: '100%' } : undefined}
-            data-zoom={pdfView?.zoom.toFixed(2)}
-            aria-label="Prévia da transmissão"
-          />
-          {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
-          {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
+          <div className={full ? 'relative flex h-full min-w-0 flex-1 items-center justify-center' : 'absolute inset-0'}>
             <div
-              ref={pipArea}
-              className="pointer-events-none absolute"
+              className="relative"
               style={
                 full
-                  ? { left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 'min(100vw, calc(100dvh * 16 / 9))', aspectRatio: '16 / 9' }
-                  : { inset: 0 }
+                  ? {
+                      width: 'min(100%, calc(100dvh * 16 / 9))',
+                      aspectRatio: '16 / 9',
+                    }
+                  : { position: 'absolute', inset: 0 }
               }
             >
-              <div
-                role="button"
-                aria-label="Quadradinho da câmera"
-                onPointerDown={(e) => pipDown(e, 'move')}
-                onPointerMove={pipMove}
-                onPointerUp={pipUp}
-                onPointerCancel={pipUp}
-                className={cn('pointer-events-auto absolute cursor-move touch-none rounded-[6%]', pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent')}
-                style={{ left: `${pipRect.x * 100}%`, top: `${pipRect.y * 100}%`, width: `${pipRect.w * 100}%`, height: `${pipRect.h * 100}%` }}
-              >
-                {pipSel && (
+              <canvas
+                ref={canvasRef}
+                width={1280}
+                height={720}
+                onPointerDown={onDown}
+                onPointerMove={onMove}
+                onPointerUp={onUp}
+                onPointerCancel={onUp}
+                className={cn(
+                  'size-full object-contain',
+                  (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing',
+                )}
+                data-zoom={pdfView?.zoom.toFixed(2)}
+                aria-label="Prévia da transmissão"
+              />
+              {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
+              {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
+                <div ref={pipArea} className="pointer-events-none absolute inset-0">
                   <div
                     role="button"
-                    aria-label="Mudar o tamanho da câmera"
-                    onPointerDown={(e) => pipDown(e, 'size')}
+                    aria-label="Quadradinho da câmera"
+                    onPointerDown={(e) => pipDown(e, 'move')}
                     onPointerMove={pipMove}
                     onPointerUp={pipUp}
                     onPointerCancel={pipUp}
-                    className="absolute -right-2.5 -bottom-2.5 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
+                    className={cn(
+                      'pointer-events-auto absolute cursor-move touch-none rounded-[6%]',
+                      pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
+                    )}
+                    style={{
+                      left: `${pipRect.x * 100}%`,
+                      top: `${pipRect.y * 100}%`,
+                      width: `${pipRect.w * 100}%`,
+                      height: `${pipRect.h * 100}%`,
+                    }}
                   >
-                    <Maximize2 className="size-3.5 text-white" />
+                    {pipSel && (
+                      <div
+                        role="button"
+                        aria-label="Mudar o tamanho da câmera"
+                        onPointerDown={(e) => pipDown(e, 'size')}
+                        onPointerMove={pipMove}
+                        onPointerUp={pipUp}
+                        onPointerCancel={pipUp}
+                        className="absolute -right-2.5 -bottom-2.5 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
+                      >
+                        <Maximize2 className="size-3.5 text-white" />
+                      </div>
+                    )}
                   </div>
+                </div>
+              )}
+            </div>
+            {onAir && (
+              <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
+                <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
+              </span>
+            )}
+            <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
+              {scene === 'pdf' && materials.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setChoosing(true)}
+                  aria-label="Trocar de PDF"
+                  title="Trocar de PDF"
+                  className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75"
+                >
+                  <FileText className="size-3.5" /> Trocar
+                </button>
+              )}
+              {full && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setPop((v) => (v === 'mic' ? null : 'mic'))}
+                    aria-label="Escolher microfone"
+                    className={cn(
+                      'grid size-9 place-items-center rounded-full text-white backdrop-blur',
+                      muted || mic === 'none' ? 'bg-red-600' : 'bg-black/55',
+                    )}
+                  >
+                    {muted || mic === 'none' ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPop((v) => (v === 'cam' ? null : 'cam'))}
+                    aria-label="Escolher câmera"
+                    className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+                  >
+                    <Camera className="size-4" />
+                  </button>
+                  {chat && (
+                    <button
+                      type="button"
+                      onClick={() => setChatOpen((v) => !v)}
+                      aria-label={chatOpen ? 'Esconder chat' : 'Mostrar chat'}
+                      className={cn('grid size-9 place-items-center rounded-full text-white backdrop-blur', chatOpen ? 'bg-brand' : 'bg-black/55')}
+                    >
+                      <MessageSquare className="size-4" />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={exitFull}
+                    aria-label="Sair da tela cheia"
+                    className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+                  >
+                    <Minimize2 className="size-4" />
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Popups de microfone e câmera (tela cheia) */}
+            {full && pop && (
+              <div className="absolute top-14 right-2 z-10 w-64 max-w-[calc(100%-1rem)] space-y-2 rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur">
+                {pop === 'mic' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMuted((v) => !v)}
+                      className={cn(
+                        'flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-sm font-bold',
+                        muted ? 'bg-red-600 text-white' : 'bg-surface-3 text-ink',
+                      )}
+                    >
+                      {muted ? <MicOff className="size-4" /> : <Mic className="size-4" />} {muted ? 'Microfone silenciado' : 'Silenciar microfone'}
+                    </button>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+                      <div className="h-full rounded-full bg-success" style={{ width: `${Math.round(level * 100)}%` }} />
+                    </div>
+                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                      {[
+                        ...mics.map((m, i) => ({
+                          id: m.deviceId,
+                          name: micName(m, i),
+                        })),
+                        { id: 'none', name: 'Sem microfone' },
+                      ].map((o) => (
+                        <li key={o.id}>
+                          <button
+                            type="button"
+                            onClick={() => setMic(o.id)}
+                            className={cn(
+                              'w-full truncate rounded-lg px-2.5 py-2 text-left text-xs',
+                              mic === o.id ? 'bg-brand text-white' : 'text-ink hover:bg-surface-2',
+                            )}
+                          >
+                            {o.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <>
+                    <ul className="max-h-48 space-y-1 overflow-y-auto">
+                      {[
+                        ...cams.map((c, i) => ({
+                          id: c.deviceId,
+                          name: camName(c, i, cams),
+                        })),
+                        { id: 'none', name: 'Sem câmera' },
+                      ].map((o) => (
+                        <li key={o.id}>
+                          <button
+                            type="button"
+                            onClick={() => setCam(o.id)}
+                            className={cn(
+                              'w-full truncate rounded-lg px-2.5 py-2 text-left text-xs',
+                              cam === o.id ? 'bg-brand text-white' : 'text-ink hover:bg-surface-2',
+                            )}
+                          >
+                            {o.name}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
+                  </>
                 )}
               </div>
-            </div>
-          )}
-          {onAir && (
-            <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
-              <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
-            </span>
-          )}
-          <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
-            {scene === 'pdf' && materials.length > 1 && (
-              <button
-                type="button"
-                onClick={() => setChoosing(true)}
-                aria-label="Trocar de PDF"
-                title="Trocar de PDF"
-                className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75"
-              >
-                <FileText className="size-3.5" /> Trocar
-              </button>
             )}
+            {status?.state === 'reconnecting' && (
+              <span className="absolute top-3 right-3 rounded-md bg-amber-500 px-2 py-1 text-[11px] font-bold text-black">Reconectando…</span>
+            )}
+
+            {/* Câmera em pé: avisa para deitar o celular */}
+            {camPortrait && scene === 'camera' && fit === 'cover' && !onAir && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center px-2">
+                <span className="rounded-full bg-black/65 px-3 py-1.5 text-center text-[11px] font-semibold text-white backdrop-blur">
+                  Celular em pé: a live mostra um recorte horizontal. Arraste para escolher a parte.
+                </span>
+              </div>
+            )}
+
+            {/* Controles na tela cheia */}
             {full && (
-              <button type="button" onClick={exitFull} aria-label="Sair da tela cheia" className="grid size-8 place-items-center rounded-full bg-black/55 text-white backdrop-blur">
-                <Minimize2 className="size-4" />
-              </button>
+              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 pt-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
+                  <button
+                    key={x.key}
+                    type="button"
+                    onClick={() => pickScene(x.key)}
+                    aria-pressed={scene === x.key}
+                    className={cn(
+                      'flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold backdrop-blur',
+                      scene === x.key ? 'bg-red-600 text-white' : 'bg-black/55 text-white',
+                    )}
+                  >
+                    <x.icon className="size-4" /> {x.label}
+                  </button>
+                ))}
+                {scene === 'pdf' && pdfView && pdfView.pages > 0 && (
+                  <span className="flex items-center gap-1 rounded-full bg-black/55 px-1 py-1 text-xs font-semibold text-white backdrop-blur">
+                    <button
+                      type="button"
+                      onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
+                      aria-label="Página anterior"
+                      className="grid size-7 place-items-center rounded-full"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                    <span className="tabular-nums">
+                      {pdfView.page}/{pdfView.pages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
+                      aria-label="Próxima página"
+                      className="grid size-7 place-items-center rounded-full"
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </span>
+                )}
+                {onAir ? (
+                  <button
+                    type="button"
+                    onClick={endLive}
+                    disabled={busy}
+                    className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-bold text-black"
+                  >
+                    <CircleStop className="size-4" /> Encerrar
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={goLive}
+                    disabled={busy || blocked}
+                    className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar
+                  </button>
+                )}
+              </div>
             )}
           </div>
-          {status?.state === 'reconnecting' && <span className="absolute top-3 right-3 rounded-md bg-amber-500 px-2 py-1 text-[11px] font-bold text-black">Reconectando…</span>}
-
-          {/* Câmera em pé: avisa para deitar o celular */}
-          {camPortrait && scene === 'camera' && fit === 'cover' && !onAir && (
-            <div className="pointer-events-none absolute inset-x-0 bottom-2 flex justify-center px-2">
-              <span className="rounded-full bg-black/65 px-3 py-1.5 text-center text-[11px] font-semibold text-white backdrop-blur">
-                Celular em pé: a live mostra um recorte horizontal. Arraste para escolher a parte.
-              </span>
-            </div>
-          )}
-
-          {/* Controles na tela cheia */}
-          {full && (
-            <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 pt-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
-                <button
-                  key={x.key}
-                  type="button"
-                  onClick={() => pickScene(x.key)}
-                  aria-pressed={scene === x.key}
-                  className={cn('flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-semibold backdrop-blur', scene === x.key ? 'bg-red-600 text-white' : 'bg-black/55 text-white')}
-                >
-                  <x.icon className="size-4" /> {x.label}
-                </button>
-              ))}
-              {scene === 'pdf' && pdfView && pdfView.pages > 0 && (
-                <span className="flex items-center gap-1 rounded-full bg-black/55 px-1 py-1 text-xs font-semibold text-white backdrop-blur">
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} aria-label="Página anterior" className="grid size-7 place-items-center rounded-full">
-                    <ChevronLeft className="size-4" />
-                  </button>
-                  <span className="tabular-nums">
-                    {pdfView.page}/{pdfView.pages}
-                  </span>
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} aria-label="Próxima página" className="grid size-7 place-items-center rounded-full">
-                    <ChevronRight className="size-4" />
-                  </button>
-                </span>
-              )}
-              {onAir ? (
-                <button type="button" onClick={endLive} disabled={busy} className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-bold text-black">
-                  <CircleStop className="size-4" /> Encerrar
-                </button>
-              ) : (
-                <button type="button" onClick={goLive} disabled={busy || blocked} className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                  {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar
-                </button>
-              )}
-            </div>
+          {/* Chat ao lado, só para o professor, na tela cheia horizontal */}
+          {full && chat && chatOpen && (
+            <aside className="h-full w-[min(34%,340px)] shrink-0 border-l border-white/10 bg-surface">
+              <LiveChat
+                liveId={liveId}
+                initial={chat.initial}
+                me={chat.me}
+                isAdmin
+                canSend
+                isLive
+                className="flex h-full flex-col overflow-hidden rounded-none border-0"
+              />
+            </aside>
           )}
         </div>
 
@@ -751,7 +1053,12 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
         {scene === 'pdf' && (
           <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
             {materials.length ? (
-              <Select value={pdfId} onChange={(e) => void openPdf(e.target.value)} aria-label="PDF para mostrar" className={materials.length > 1 ? 'hidden' : ''}>
+              <Select
+                value={pdfId}
+                onChange={(e) => void openPdf(e.target.value)}
+                aria-label="PDF para mostrar"
+                className={materials.length > 1 ? 'hidden' : ''}
+              >
                 <option value="" disabled>
                   Escolha o PDF
                 </option>
@@ -772,7 +1079,13 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             {pdfView && pdfView.pages > 0 && (
               <>
                 <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} disabled={pdfView.page <= 1} aria-label="Página anterior" className={buttonClass('secondary', 'icon', 'size-11')}>
+                  <button
+                    type="button"
+                    onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
+                    disabled={pdfView.page <= 1}
+                    aria-label="Página anterior"
+                    className={buttonClass('secondary', 'icon', 'size-11')}
+                  >
                     <ChevronLeft className="size-5" />
                   </button>
                   <form
@@ -799,7 +1112,13 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
                     />
                     <span className="tabular-nums">de {pdfView.pages}</span>
                   </form>
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} disabled={pdfView.page >= pdfView.pages} aria-label="Próxima página" className={buttonClass('secondary', 'icon', 'size-11')}>
+                  <button
+                    type="button"
+                    onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
+                    disabled={pdfView.page >= pdfView.pages}
+                    aria-label="Próxima página"
+                    className={buttonClass('secondary', 'icon', 'size-11')}
+                  >
                     <ChevronRight className="size-5" />
                   </button>
                 </div>
@@ -814,9 +1133,20 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
 
         {/* Microfone */}
         <div className="flex items-center gap-2">
-          {mic === 'none' ? <MicOff className="size-4 text-muted" /> : <Mic className="size-4 text-brand" />}
+          <button
+            type="button"
+            onClick={() => setMuted((v) => !v)}
+            aria-label={muted ? 'Ligar microfone' : 'Silenciar microfone'}
+            title={muted ? 'Ligar microfone' : 'Silenciar microfone'}
+            className={cn('grid size-9 shrink-0 place-items-center rounded-full', muted || mic === 'none' ? 'bg-red-600 text-white' : 'bg-brand/12 text-brand')}
+          >
+            {muted || mic === 'none' ? <MicOff className="size-4" /> : <Mic className="size-4" />}
+          </button>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-            <div className={cn('h-full rounded-full transition-[width] duration-75', level > 0.85 ? 'bg-danger' : 'bg-success')} style={{ width: `${Math.round(level * 100)}%` }} />
+            <div
+              className={cn('h-full rounded-full transition-[width] duration-75', level > 0.85 ? 'bg-danger' : 'bg-success')}
+              style={{ width: `${Math.round(level * 100)}%` }}
+            />
           </div>
         </div>
         {onAir || status?.state === 'stopped' ? (
@@ -876,7 +1206,8 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             </div>
           ) : (
             <p className="text-xs text-muted">
-              No celular e no tablet, mostre o PDF pela cena <strong>PDF + câmera</strong>. Não saia do navegador durante a live: o aparelho pausa a transmissão.
+              No celular e no tablet, mostre o PDF pela cena <strong>PDF + câmera</strong>. Não saia do navegador durante a live: o aparelho pausa a
+              transmissão.
             </p>
           )}
           {screenOn && <p className="text-[11px] text-success">Tela espelhada. Pode trocar de janela: a live continua.</p>}
@@ -929,7 +1260,10 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
                   setChoosing(false);
                   void openPdf(m.id);
                 }}
-                className={cn('flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2', pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line')}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2',
+                  pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line',
+                )}
               >
                 <FileText className="size-5 shrink-0 text-danger" />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>

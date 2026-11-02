@@ -54,7 +54,14 @@ export function LiveRoom({
           {live.status === 'scheduled' ? (
             <Countdown startsAt={live.starts_at} serverNow={serverNow} label={scheduledLabel} icon={icons.scheduled} cover={live.cover_url} />
           ) : live.youtube_id ? (
-            <VideoPlayer key={live.status} videoId={live.youtube_id} title={live.title} live={live.status === 'live'} poster={live.cover_url || youtubeThumb(live.youtube_id)} watermark={watermark} />
+            <VideoPlayer
+              key={live.status}
+              videoId={live.youtube_id}
+              title={live.title}
+              live={live.status === 'live'}
+              poster={live.cover_url || youtubeThumb(live.youtube_id)}
+              watermark={watermark}
+            />
           ) : (
             <div className="grid aspect-video place-items-center bg-surface-2 text-center sm:rounded-2xl">
               <p className="px-6 text-sm text-muted">Transmissão encerrada. A gravação não está disponível.</p>
@@ -64,9 +71,7 @@ export function LiveRoom({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             {live.status === 'live' && (
-              <span className="flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">
-                {icons.live} AO VIVO
-              </span>
+              <span className="flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-bold text-white">{icons.live} AO VIVO</span>
             )}
             {live.status === 'ended' && <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[11px] font-bold text-ink-2">GRAVAÇÃO</span>}
           </div>
@@ -76,7 +81,14 @@ export function LiveRoom({
         <LiveMaterialsList materials={live.materials ?? []} />
       </div>
       {showChat && (
-        <LiveChat liveId={live.id} initial={messages} me={me} isAdmin={isAdmin} canSend={live.chat_enabled && live.status !== 'ended'} isLive={live.status === 'live'} />
+        <LiveChat
+          liveId={live.id}
+          initial={messages}
+          me={me}
+          isAdmin={isAdmin}
+          canSend={live.chat_enabled && live.status !== 'ended'}
+          isLive={live.status === 'live'}
+        />
       )}
     </div>
   );
@@ -129,6 +141,7 @@ export function LiveChat({
   isAdmin,
   canSend,
   isLive,
+  className,
 }: {
   liveId: string;
   initial: LiveMessage[];
@@ -136,6 +149,8 @@ export function LiveChat({
   isAdmin: boolean;
   canSend: boolean;
   isLive: boolean;
+  /** troca o tamanho/visual do quadro (ex.: chat ao lado no estúdio) */
+  className?: string;
 }) {
   const [list, setList] = useState(initial);
   const [text, setText] = useState('');
@@ -182,7 +197,13 @@ export function LiveChat({
     const body = text.trim();
     if (!body) return;
     setSending(true);
-    const r = await sendLiveMessage(liveId, body).catch(() => ({ error: 'Não foi possível enviar.' }) as { error?: string; message?: LiveMessage });
+    const r = await sendLiveMessage(liveId, body).catch(
+      () =>
+        ({ error: 'Não foi possível enviar.' }) as {
+          error?: string;
+          message?: LiveMessage;
+        },
+    );
     setSending(false);
     if (r.error || !r.message) return toast.error(r.error || 'Não foi possível enviar.');
     stick.current = true;
@@ -200,7 +221,7 @@ export function LiveChat({
   }
 
   return (
-    <Card className="flex h-[60dvh] flex-col overflow-hidden lg:sticky lg:top-6 lg:h-[calc(100dvh-120px)]">
+    <Card className={className ?? 'flex h-[60dvh] flex-col overflow-hidden lg:sticky lg:top-6 lg:h-[calc(100dvh-120px)]'}>
       <div className="border-b border-line px-4 py-3">
         <p className="text-sm font-bold text-ink">Chat da aula</p>
         <p className="text-xs text-muted">{isLive ? 'Converse com a turma em tempo real' : 'Mensagens da transmissão'}</p>
@@ -227,7 +248,12 @@ export function LiveChat({
                 <span className="break-words text-ink-2">{m.text}</span>
               </div>
               {(m.author_id === me.id || isAdmin) && (
-                <button type="button" onClick={() => remove(m.id)} aria-label="Excluir" className="self-start text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger">
+                <button
+                  type="button"
+                  onClick={() => remove(m.id)}
+                  aria-label="Excluir"
+                  className="self-start text-muted opacity-0 transition group-hover:opacity-100 hover:text-danger"
+                >
                   <Trash2 className="size-3.5" />
                 </button>
               )}
@@ -244,7 +270,12 @@ export function LiveChat({
             placeholder="Envie sua mensagem…"
             className="h-10 min-w-0 flex-1 rounded-xl border border-line-strong bg-bg-elev px-3 text-sm text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none"
           />
-          <button type="submit" disabled={sending || !text.trim()} aria-label="Enviar" className="grid size-10 place-items-center rounded-xl bg-brand text-white disabled:opacity-40">
+          <button
+            type="submit"
+            disabled={sending || !text.trim()}
+            aria-label="Enviar"
+            className="grid size-10 place-items-center rounded-xl bg-brand text-white disabled:opacity-40"
+          >
             {sending ? <Spinner /> : <Send className="size-4" />}
           </button>
         </form>
