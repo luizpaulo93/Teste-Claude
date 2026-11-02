@@ -38,14 +38,26 @@ import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
-// Live sempre em 720p (recomendado pelo YouTube). Taxa de vídeo pela conexão:
-// Automático (Wi‑Fi): começa em 8 Mbps e se ajusta entre 4 e 8; Econômico (dados móveis): travado em 4.
-const LIVE_W = 1280;
-const LIVE_H = 720;
-const NET = {
-  auto: { min: 4_000_000, max: 8_000_000, label: 'Automático (Wi‑Fi) · 4 a 8 Mbps' },
-  eco: { min: 4_000_000, max: 4_000_000, label: 'Econômico (dados móveis) · 4 Mbps' },
+// Resolução (a C922 vai até 1080p) e taxa de vídeo pela conexão, como a "taxa dinâmica" do OBS:
+// Automático (Wi‑Fi) começa no máximo e se ajusta à velocidade de envio; Econômico (dados móveis) fica travado em 4 Mbps.
+const RES = {
+  '1080': { w: 1920, h: 1080, min: 4_500_000, max: 10_000_000, label: '1080p (mais detalhes)' },
+  '720': { w: 1280, h: 720, min: 4_000_000, max: 8_000_000, label: '720p' },
 } as const;
+type Res = keyof typeof RES;
+const NET = { auto: 'Automático (Wi‑Fi)', eco: 'Econômico (dados móveis)' } as const;
+const mbps = (b: number) => (b / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+const rangeOf = (res: Res, net: Net) => (net === 'eco' ? { min: 4_000_000, max: 4_000_000 } : { min: RES[res].min, max: RES[res].max });
+const netLabel = (res: Res, net: Net) => {
+  const r = rangeOf(res, net);
+  return `${NET[net]} · ${r.min === r.max ? mbps(r.max) : `${mbps(r.min)} a ${mbps(r.max)}`} Mbps`;
+};
+function initialRes(): Res {
+  try {
+    if (localStorage.getItem('studio-res') === '720') return '720';
+  } catch {}
+  return '1080';
+}
 type Net = keyof typeof NET;
 function initialNet(): Net {
   try {
@@ -175,7 +187,16 @@ export function Studio({
     try {
       localStorage.setItem('studio-net', n);
     } catch {}
-    caster.current?.setRange(NET[n].min, NET[n].max);
+    const r = rangeOf(res, n);
+    caster.current?.setRange(r.min, r.max);
+  }
+  const [res, setRes] = useState<Res>('1080');
+  useEffect(() => setRes(initialRes()), []);
+  function pickRes(r: Res) {
+    setRes(r);
+    try {
+      localStorage.setItem('studio-res', r);
+    } catch {}
   }
   // a live é sempre horizontal (16:9)
   const vertical = false;
@@ -311,13 +332,14 @@ export function Studio({
 
   // Tamanho do quadro = qualidade e formato (horizontal 16:9 ou vertical 9:16)
   const dims = () => {
-    return vertical ? { w: LIVE_H, h: LIVE_W } : { w: LIVE_W, h: LIVE_H };
+    const q = RES[res];
+    return vertical ? { w: q.h, h: q.w } : { w: q.w, h: q.h };
   };
   useEffect(() => {
     const d = dims();
     comp.current?.resize(d.w, d.h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vertical]);
+  }, [res, vertical]);
 
   // Cena, canto, giro, espelho e encaixe da câmera
   useEffect(() => {
@@ -336,7 +358,10 @@ export function Studio({
 
   // o retângulo do quadradinho acompanha o formato da câmera
   useEffect(() => {
-    const t = window.setInterval(() => comp.current && setPipRect(comp.current.pipRect()), 700);
+    const t = window.setInterval(() => {
+      const r = comp.current?.pipRect();
+      if (r) setPipRect((o) => (o.x === r.x && o.y === r.y && o.w === r.w && o.h === r.h ? o : r));
+    }, 700);
     return () => window.clearInterval(t);
   }, []);
 
@@ -584,8 +609,8 @@ export function Studio({
       .getUserMedia({
         video: {
           deviceId: { exact: cam },
-          width: { ideal: LIVE_W },
-          height: { ideal: LIVE_H },
+          width: { ideal: RES[res].w },
+          height: { ideal: RES[res].h },
           aspectRatio: { ideal: 16 / 9 },
           frameRate: { ideal: 30 },
         },
@@ -602,7 +627,7 @@ export function Studio({
     return () => {
       cancelled = true;
     };
-  }, [cam]);
+  }, [cam, res]);
 
   /** Espelhar a tela inteira ou uma janela (o navegador mostra a lista para escolher). */
   async function shareScreen(surface: 'monitor' | 'window') {
@@ -703,14 +728,18 @@ export function Studio({
   // Medidor do microfone
   useEffect(() => {
     let raf = 0;
+    let last = 0;
     const buf = new Uint8Array(256);
-    const loop = () => {
+    const loop = (t: number) => {
       const a = audio.current?.analyser;
-      if (a) {
+      // poucas atualizações por segundo: redesenhar o estúdio 60x/s rouba tempo da imagem da live
+      if (a && t - last > 80) {
+        last = t;
         a.getByteTimeDomainData(buf);
         let peak = 0;
         for (const v of buf) peak = Math.max(peak, Math.abs(v - 128));
-        setLevel(Math.min(1, peak / 90));
+        const v = Math.round(Math.min(1, peak / 90) * 20) / 20;
+        setLevel((o) => (o === v ? o : v));
       }
       raf = requestAnimationFrame(loop);
     };
@@ -734,7 +763,7 @@ export function Studio({
       if (r.error) return void toast.error(r.error);
       const m = mixer();
       await m.ctx.resume();
-      const n = NET[net];
+      const n = rangeOf(res, net);
       const d = dims();
       // Só o áudio vai pela trilha; o vídeo vem da mesa de cenas (quadro a quadro)
       const stream = new MediaStream([m.dest.stream.getAudioTracks()[0]]);
@@ -1261,7 +1290,7 @@ export function Studio({
         )}
 
         {onAir || status?.state === 'stopped' ? (
-          <div className="grid grid-cols-3 gap-2 text-center text-xs">
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="text-muted">Tempo</p>
               <p className="font-bold text-ink tabular-nums">{clock(status?.seconds ?? 0)}</p>
@@ -1271,6 +1300,10 @@ export function Studio({
               <p className="font-bold text-ink tabular-nums">{((status?.rate ?? 0) / 1000).toFixed(1)} Mbps</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
+              <p className="text-muted">Quadros</p>
+              <p className={cn('font-bold tabular-nums', (status?.lost ?? 0) >= 10 ? 'text-warning' : 'text-ink')}>{status?.fps ?? 0} fps</p>
+            </div>
+            <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="flex items-center justify-center gap-1 text-muted">
                 <Wifi className="size-3" /> Fila
               </p>
@@ -1278,6 +1311,11 @@ export function Studio({
             </div>
           </div>
         ) : null}
+        {onAir && (status?.lost ?? 0) >= 10 && (
+          <p className="rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+            O aparelho está perdendo {status?.lost}% dos quadros. Feche outros apps ou abas{res === '1080' ? '; se continuar, use 720p na próxima live' : ''}.
+          </p>
+        )}
         {status?.state === 'error' && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{status.message}</p>}
       </div>
 
@@ -1373,7 +1411,19 @@ export function Studio({
           <Select value={net} onChange={(e) => pickNet(e.target.value as Net)} aria-label="Conexão">
             {(Object.keys(NET) as Net[]).map((k) => (
               <option key={k} value={k}>
-                {NET[k].label}
+                {netLabel(res, k)}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="block space-y-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+            <Settings2 className="size-3.5" /> Resolução
+          </span>
+          <Select value={res} onChange={(e) => pickRes(e.target.value as Res)} disabled={onAir} aria-label="Resolução">
+            {(Object.keys(RES) as Res[]).reverse().map((k) => (
+              <option key={k} value={k}>
+                {RES[k].label}
               </option>
             ))}
           </Select>

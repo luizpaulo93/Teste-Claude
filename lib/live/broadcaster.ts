@@ -31,6 +31,10 @@ export interface BroadcastStatus {
   kbps: number;
   /** taxa de vídeo atual (kbps) */
   rate?: number;
+  /** quadros por segundo realmente codificados */
+  fps?: number;
+  /** % de quadros perdidos porque o aparelho não deu conta (últimos segundos) */
+  lost?: number;
   message?: string;
 }
 
@@ -67,8 +71,7 @@ export class Broadcaster {
   private lastKeyAt = -Infinity;
   private seq = 0;
   private playlist: { name: string; dur: number }[] = [];
-  private uploads: { name: string; data: Uint8Array; dur: number }[] = [];
-  private uploading = false;
+  private uploads: { n: number; name: string; data: Uint8Array; dur: number }[] = [];
   private sentBytes = 0;
   private sent = 0;
   private failures = 0;
@@ -84,7 +87,6 @@ export class Broadcaster {
   private pendingRate = 0;
   private min = 0;
   private max = 0;
-  private speed = 0; // velocidade de envio medida (bps, média)
 
   constructor(o: BroadcastOptions) {
     this.o = o;
@@ -111,27 +113,30 @@ export class Broadcaster {
     if (typeof MediaStreamTrackProcessor !== 'undefined' && at) void this.pumpAudio(at);
     else if (this.o.audioSource) await this.captureAudio(this.o.audioSource);
     // Relógio de Worker: não para quando a aba do estúdio fica em segundo plano
+    let n = 0;
     this.stopTick = workerTicker(200, () => {
       this.flush();
-      this.emit();
+      if (++n % 5 === 0) this.emit();
     });
     this.emit();
   }
 
   /**
    * Configuração recomendada pelo YouTube/OBS: H.264 perfil High (nível 3.1 no 720p, 4.1 no 1080p),
-   * taxa constante (CBR), 30 fps e quadro-chave a cada 2 s (feito em pushFrame). Modo "qualidade" e chip
-   * de vídeo do aparelho quando disponível; se o aparelho não aceitar, vai baixando até uma que aceite.
+   * taxa constante (CBR), 30 fps e quadro-chave a cada 2 s (feito em pushFrame). Chip de vídeo do aparelho
+   * em tempo real quando disponível; se o aparelho não aceitar, vai baixando até uma que aceite.
    */
   private async bestVideoConfig(): Promise<VideoEncoderConfig> {
     const big = this.o.height > 720;
     const base = { width: this.o.width, height: this.o.height, bitrate: this.o.videoBitrate, framerate: this.o.fps, avc: { format: 'annexb' as const } };
     const codecs = big ? ['avc1.640029', 'avc1.640028', 'avc1.4D4029', 'avc1.42E029'] : ['avc1.64001F', 'avc1.4D401F', 'avc1.42E01F'];
+    // Tempo real primeiro: o codificador nunca fica para trás (é o que evita quadros perdidos no 1080p)
     const extras = [
-      { bitrateMode: 'constant' as const, latencyMode: 'quality' as const, hardwareAcceleration: 'prefer-hardware' as const },
-      { bitrateMode: 'constant' as const, latencyMode: 'quality' as const },
-      { latencyMode: 'quality' as const },
+      { bitrateMode: 'constant' as const, latencyMode: 'realtime' as const, hardwareAcceleration: 'prefer-hardware' as const },
+      { bitrateMode: 'constant' as const, latencyMode: 'realtime' as const },
+      { latencyMode: 'realtime' as const, hardwareAcceleration: 'prefer-hardware' as const },
       { latencyMode: 'realtime' as const },
+      { latencyMode: 'quality' as const },
     ];
     for (const extra of extras)
       for (const codec of codecs) {
@@ -199,26 +204,26 @@ export class Broadcaster {
   }
 
   /**
-   * Ajuste pela conexão, a cada segmento enviado: fila crescendo → baixa na hora;
-   * envio sobrando → sobe aos poucos até o máximo.
+   * Taxa dinâmica (como no OBS): só baixa quando o envio fica para trás (fila crescendo ou o envio
+   * demorando mais que o próprio vídeo) e sobe aos poucos quando sobra folga, até o máximo.
+   * Mede pelo tempo, não pela velocidade: segmentos pequenos (imagem parada) não enganam a conta.
    */
-  private adapt(bytes: number, ms: number) {
+  private adapt(ms: number, dur: number) {
     if (this.min >= this.max) return;
-    const bps = (bytes * 8) / Math.max(0.05, ms / 1000);
-    this.speed = this.speed ? this.speed * 0.6 + bps * 0.4 : bps;
-    const q = this.uploads.length;
-    if (q >= 2) return this.want(Math.min(this.rate * 0.75, this.speed * 0.7));
-    const target = this.speed * 0.7;
-    if (target < this.rate * 0.85) this.want(target);
-    else if (target > this.rate * 1.15 && q === 0) this.want(Math.min(target, this.rate + 1_000_000));
+    const load = ms / 1000 / Math.max(0.5, dur); // 1 = demorou o mesmo que o vídeo
+    const behind = this.uploads.length >= 1;
+    if (behind || load > 1.6) this.want(this.rate * 0.75);
+    else if (load < 0.6 && !this.uploads.length) this.want(this.rate + 1_000_000);
   }
 
   /** Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto. */
   pushFrame(canvas: HTMLCanvasElement) {
     if (!this.running || !this.venc) return;
     const ts = this.now();
-    if (ts < this.nextFrame || this.venc.encodeQueueSize > 3) return;
+    if (ts < this.nextFrame) return;
     this.nextFrame = ts + (1e6 / this.o.fps) * 0.9;
+    if (this.venc.encodeQueueSize > 3) return; // codificador atrasado: pula este quadro
+    this.encFrames++;
     const out = new VideoFrame(canvas, { timestamp: ts });
     const key = ts - this.lastKeyAt >= SEGMENT_US;
     if (key) this.lastKeyAt = ts;
@@ -250,6 +255,7 @@ export class Broadcaster {
         frame.close();
         continue;
       }
+      this.encFrames++;
       next = ts + frameUs * 0.9;
       // desenha centralizado num quadro fixo (troca de câmera/tela não muda o tamanho do vídeo)
       const fw = frame.displayWidth;
@@ -409,61 +415,112 @@ export class Broadcaster {
     const dur = Math.max(0.1, (end - v[0].pts) / 1e6);
     const data = this.muxer.segment(v, a);
     this.segStart = at === Infinity ? -1 : at;
-    const name = `seg${this.seq++}.ts`;
-    this.uploads.push({ name, data, dur });
-    // Rede lenta: mantém no máximo 5 segmentos na fila (descarta os mais antigos)
-    while (this.uploads.length > 5) this.uploads.shift();
+    const n = this.seq++;
+    this.uploads.push({ n, name: `seg${n}.ts`, data, dur });
+    // Rede muito lenta: mantém no máximo 4 segmentos esperando (pula os mais antigos)
+    while (this.uploads.length > 4) this.settle(this.uploads.shift()!, false);
     if (send) void this.drain(false);
   }
 
+  /**
+   * Envio em paralelo (2 de cada vez), como o buffer de rede do OBS: um segmento lento não segura os outros.
+   * A playlist só anda em ordem: um segmento entra nela quando todos os anteriores já chegaram.
+   */
+  private inflight = 0;
+  private arrived = new Map<number, { name: string; dur: number } | null>();
+  private nextInList = 0;
+  private plRemoved = 0;
+  private plChain: Promise<unknown> = Promise.resolve();
+
   private async drain(end: boolean) {
-    if (this.uploading) {
-      if (!end) return;
-      while (this.uploading) await new Promise((r) => setTimeout(r, 100));
-    }
-    this.uploading = true;
-    try {
-      while (this.uploads.length) {
-        const seg = this.uploads[0];
-        const list = [...this.playlist, { name: seg.name, dur: seg.dur }].slice(-5);
-        const isLast = (end || this.ending) && this.uploads.length === 1;
-        const t = performance.now();
-        const ok = await this.send(seg, playlistText(list, this.seqOf(list[0].name), isLast));
-        if (ok) {
-          this.uploads.shift();
-          this.adapt(seg.data.length, performance.now() - t);
-          this.playlist.push({ name: seg.name, dur: seg.dur });
-          this.playlist = this.playlist.slice(-5);
-          this.sent++;
-          this.sentBytes += seg.data.length;
-          this.failures = 0;
-          if (this.status.state !== 'live' && this.running) this.status.state = 'live';
-        } else {
-          this.failures++;
-          this.status.state = 'reconnecting';
-          this.want(this.rate * 0.75);
-          this.emit();
-          if (!this.running && this.failures > 3) break;
-          await new Promise((r) => setTimeout(r, Math.min(4000, 500 * this.failures)));
-        }
-      }
-    } finally {
-      this.uploading = false;
-    }
+    this.pump();
+    if (!end) return;
+    while (this.uploads.length || this.inflight) await new Promise((r) => setTimeout(r, 100));
+    await this.plChain;
+    await this.postPlaylist(true);
   }
 
-  private seqOf(name: string) {
-    return Number(name.replace(/\D/g, '')) || 0;
-  }
-
-  private async send(seg: { name: string; data: Uint8Array }, playlist: string) {
-    try {
-      const url = `${this.o.endpoint ?? '/api/youtube/ingest'}?live=${encodeURIComponent(this.o.liveId)}&file=${seg.name}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        body: seg.data as BodyInit,
-        headers: { 'Content-Type': 'video/mp2t', 'X-Hls-Playlist': btoa(playlist) },
+  private pump() {
+    while (this.inflight < 2 && this.uploads.length) {
+      const seg = this.uploads.shift()!;
+      this.inflight++;
+      void this.upload(seg).finally(() => {
+        this.inflight--;
+        this.pump();
       });
+    }
+  }
+
+  private async upload(seg: { n: number; name: string; data: Uint8Array; dur: number }) {
+    for (;;) {
+      const t = performance.now();
+      // em ordem: já manda a playlist junto (um pedido só)
+      const inOrder = seg.n === this.nextInList;
+      const list = inOrder ? this.windowWith({ name: seg.name, dur: seg.dur }) : null;
+      const ok = await this.send(seg, list ? playlistText(list.items, list.first, false) : '');
+      if (ok) {
+        this.sent++;
+        this.sentBytes += seg.data.length;
+        this.failures = 0;
+        if (this.status.state !== 'live' && this.running) this.status.state = 'live';
+        this.adapt(performance.now() - t, seg.dur);
+        this.settle(seg, true, Boolean(list));
+        return;
+      }
+      this.failures++;
+      this.status.state = 'reconnecting';
+      this.want(this.rate * 0.75);
+      this.emit();
+      if (!this.running && this.failures > 3) return this.settle(seg, false);
+      await new Promise((r) => setTimeout(r, Math.min(4000, 500 * this.failures)));
+    }
+  }
+
+  private windowWith(extra?: { name: string; dur: number }) {
+    const all = extra ? [...this.playlist, extra] : this.playlist;
+    const cut = Math.max(0, all.length - 5);
+    return { items: all.slice(cut), first: this.plRemoved + cut };
+  }
+
+  /** Segmento chegou (ou foi pulado): avança a playlist na ordem. */
+  private settle(seg: { n: number; name: string; dur: number }, ok: boolean, posted = false) {
+    this.arrived.set(seg.n, ok ? { name: seg.name, dur: seg.dur } : null);
+    let moved = false;
+    let onlyPosted = true;
+    while (this.arrived.has(this.nextInList)) {
+      const it = this.arrived.get(this.nextInList)!;
+      this.arrived.delete(this.nextInList);
+      if (it) {
+        this.playlist.push(it);
+        moved = true;
+        if (!(posted && it.name === seg.name)) onlyPosted = false;
+      }
+      this.nextInList++;
+    }
+    while (this.playlist.length > 5) {
+      this.playlist.shift();
+      this.plRemoved++;
+    }
+    // a playlist que foi junto com o segmento já está certa; senão, atualiza só ela
+    if (moved && !onlyPosted) void this.postPlaylist(false);
+  }
+
+  private postPlaylist(end: boolean) {
+    this.plChain = this.plChain.then(async () => {
+      const { items, first } = this.windowWith();
+      if (!items.length) return;
+      const text = playlistText(items, first, end);
+      for (let i = 0; i < 4; i++) if (await this.send(null, text)) return;
+    });
+    return this.plChain;
+  }
+
+  private async send(seg: { name: string; data: Uint8Array } | null, playlist: string) {
+    try {
+      const url = `${this.o.endpoint ?? '/api/youtube/ingest'}?live=${encodeURIComponent(this.o.liveId)}${seg ? `&file=${seg.name}` : ''}`;
+      const headers: Record<string, string> = { 'Content-Type': 'video/mp2t' };
+      if (playlist) headers['X-Hls-Playlist'] = btoa(playlist);
+      const res = await fetch(url, { method: 'POST', body: (seg ? seg.data : new Uint8Array(0)) as BodyInit, headers });
       if (res.status === 401 || res.status === 403 || res.status === 409) {
         const msg = (await res.json().catch(() => ({}))).error;
         this.fail(msg || 'O YouTube recusou a transmissão. Confira a chave da transmissão.');
@@ -483,6 +540,20 @@ export class Broadcaster {
     this.stopTick?.();
   }
 
+  private encFrames = 0;
+  private frameWin: { t: number; e: number }[] = [];
+  private frameStats() {
+    const now = performance.now();
+    this.frameWin.push({ t: now, e: this.encFrames });
+    this.frameWin = this.frameWin.filter((w) => now - w.t <= 5000);
+    const a = this.frameWin[0];
+    const secs = Math.max(0.5, (now - a.t) / 1000);
+    const e = this.encFrames - a.e;
+    if (this.frameWin.length < 2) return { fps: this.o.fps, lost: 0 };
+    const fps = e / secs;
+    return { fps: Math.round(fps), lost: Math.max(0, Math.round((1 - fps / this.o.fps) * 100)) };
+  }
+
   private emit() {
     const seconds = Math.round((performance.now() - this.t0) / 1000);
     this.status = {
@@ -490,6 +561,7 @@ export class Broadcaster {
       seconds,
       sent: this.sent,
       queue: this.uploads.length,
+      ...this.frameStats(),
       kbps: seconds ? Math.round((this.sentBytes * 8) / 1000 / seconds) : 0,
     };
     this.o.onStatus?.({ ...this.status });

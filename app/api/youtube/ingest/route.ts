@@ -3,6 +3,8 @@ import { getViewer } from '@/lib/session';
 import { getIngest } from '@/lib/youtube';
 
 export const maxDuration = 20;
+// Perto do professor (Brasil) e do YouTube: o segmento não atravessa até os EUA e volta
+export const preferredRegion = 'gru1';
 
 // Endereço de envio por live (cache curto na memória da função)
 const cache = new Map<string, { url: string; at: number }>();
@@ -16,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (!viewer?.isAdmin) return NextResponse.json({ error: 'Acesso negado.' }, { status: 403 });
   const live = req.nextUrl.searchParams.get('live') ?? '';
   const file = req.nextUrl.searchParams.get('file') ?? '';
-  if (!/^[\w-]{1,64}$/.test(live) || !/^seg\d{1,7}\.ts$/.test(file)) return NextResponse.json({ error: 'Pedido inválido.' }, { status: 400 });
+  if (!/^[\w-]{1,64}$/.test(live) || (file && !/^seg\d{1,7}\.ts$/.test(file))) return NextResponse.json({ error: 'Pedido inválido.' }, { status: 400 });
 
   let base = cache.get(live);
   if (!base || Date.now() - base.at > 60_000) {
@@ -26,20 +28,26 @@ export async function POST(req: NextRequest) {
   if (!base.url) return NextResponse.json({ error: 'Transmissão não preparada. Toque em Iniciar de novo.' }, { status: 409 });
 
   const segment = await req.arrayBuffer();
-  if (!segment.byteLength || segment.byteLength > 4_400_000) return NextResponse.json({ error: 'Segmento inválido.' }, { status: 400 });
+  // sem arquivo = só atualiza a playlist (segmentos chegaram fora de ordem)
+  if ((file && !segment.byteLength) || segment.byteLength > 4_400_000) return NextResponse.json({ error: 'Segmento inválido.' }, { status: 400 });
   let playlist = '';
   try {
     playlist = atob(req.headers.get('x-hls-playlist') ?? '');
   } catch {
     /* sem playlist */
   }
-  if (!playlist.startsWith('#EXTM3U') || playlist.length > 4000) return NextResponse.json({ error: 'Playlist inválida.' }, { status: 400 });
+  // segmento fora de ordem vem sem playlist (ela é atualizada quando os anteriores chegarem)
+  if ((playlist || !file) && (!playlist.startsWith('#EXTM3U') || playlist.length > 4000))
+    return NextResponse.json({ error: 'Playlist inválida.' }, { status: 400 });
 
   const headers = { 'User-Agent': 'CursoVertice / Estudio / 1.0' };
-  const seg = await fetch(base.url + file, { method: 'PUT', body: segment, headers: { ...headers, 'Content-Type': 'video/mp2t' } }).catch(() => null);
+  const seg = !file
+    ? new Response(null)
+    : await fetch(base.url + file, { method: 'PUT', body: segment, headers: { ...headers, 'Content-Type': 'video/mp2t' } }).catch(() => null);
   if (!seg) return NextResponse.json({ error: 'Sem conexão com o YouTube.' }, { status: 502 });
   if (seg.status === 401 || seg.status === 403) return NextResponse.json({ error: 'O YouTube recusou a chave da transmissão.' }, { status: 401 });
   if (!seg.ok) return NextResponse.json({ error: `YouTube respondeu ${seg.status}.` }, { status: 502 });
+  if (!playlist) return NextResponse.json({ ok: true });
   const pl = await fetch(base.url + 'live.m3u8', {
     method: 'PUT',
     body: playlist,
