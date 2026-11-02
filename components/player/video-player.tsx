@@ -518,6 +518,25 @@ export function VideoPlayer({
   const shownTime = seeking ?? time;
   const pct = duration ? Math.min(100, (shownTime / duration) * 100) : 0;
   const isFull = fs || pseudoFs;
+  // Tela cheia: mede a tela e monta uma área exatamente 16:9 (o resto fica preto, como no YouTube)
+  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!isFull || !el) return setBox(null);
+    const fit = () => {
+      const r = el.getBoundingClientRect();
+      const w = Math.min(r.width, (r.height * 16) / 9);
+      setBox({ w: Math.floor(w), h: Math.floor((w * 9) / 16) });
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    window.addEventListener('orientationchange', fit);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('orientationchange', fit);
+    };
+  }, [isFull]);
   const barVisible = ready && !ytError && (controls || ended) && !speedOpen;
 
   return (
@@ -534,15 +553,13 @@ export function VideoPlayer({
       {/* Vídeo do YouTube (maior que a moldura para esconder título e logo do YouTube).
           Na tela cheia o vídeo fica inteiro em 16:9, com bordas pretas no que sobrar (como no YouTube). */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-        <div
-          className="relative overflow-hidden"
-          style={isFull ? { width: 'min(100%, calc(100dvh * 16 / 9))', aspectRatio: '16 / 9' } : { position: 'absolute', inset: 0 }}
-        >
+        <div className="relative overflow-hidden" style={isFull ? (box ? { width: box.w, height: box.h } : { width: '100%', aspectRatio: '16 / 9' }) : { position: 'absolute', inset: 0 }}>
           <div
             ref={mountRef}
             className={cn(
               'w-full transition-all duration-200 [&>iframe]:pointer-events-none [&>iframe]:size-full',
-              cc ? 'h-full' : '-mt-[60px] h-[calc(100%+120px)] sm:-mt-[80px] sm:h-[calc(100%+160px)]',
+              // na tela cheia o vídeo ocupa a área 16:9 inteira: nada é cortado
+              cc || isFull ? 'h-full' : '-mt-[60px] h-[calc(100%+120px)] sm:-mt-[80px] sm:h-[calc(100%+160px)]',
             )}
           />
         </div>
