@@ -198,6 +198,24 @@ export function LiveForm({ live, options, onDone, now = false }: { live?: LiveSe
   );
 }
 
+/** Na sala de uma live agendada (só o professor vê): iniciar pelo Estúdio e editar. */
+export function LiveRoomAdmin({ live, options }: { live: LiveSession; options: AudienceOptions }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Link href={`/admin/ao-vivo/${live.id}/estudio`} className={buttonClass('primary', 'md', '!bg-red-600 hover:!bg-red-700')}>
+        <Radio className="size-4" /> {live.status === 'live' ? 'Abrir o Estúdio' : 'Iniciar live'}
+      </Link>
+      <Button variant="secondary" onClick={() => setOpen(true)}>
+        <Pencil className="size-4" /> Editar
+      </Button>
+      <Modal open={open} onClose={() => setOpen(false)} title="Editar transmissão" size="lg">
+        {open && <LiveForm live={live} options={options} onDone={() => setOpen(false)} />}
+      </Modal>
+    </div>
+  );
+}
+
 /** Botão "Fazer transmissão": nome, capa, PDFs e turmas, e já abre o Estúdio. */
 export function GoLiveButton({ options }: { options: AudienceOptions }) {
   const [open, setOpen] = useState(false);

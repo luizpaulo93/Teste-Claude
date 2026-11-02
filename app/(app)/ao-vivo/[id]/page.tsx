@@ -9,6 +9,8 @@ import { sql } from '@/lib/db';
 import { canSeeLive } from '@/lib/live';
 import type { LiveMessage, LiveSession } from '@/lib/types';
 import { formatDateTime } from '@/lib/utils';
+import { LiveRoomAdmin } from '../../admin/ao-vivo/lives-manager';
+import { liveAudienceOptions } from '../../admin/ao-vivo/options';
 import { LiveRoom } from './live-room';
 
 export const metadata: Metadata = { title: 'Ao vivo' };
@@ -36,6 +38,9 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
     await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at desc limit 80`, [id])
   ).reverse();
 
+  // professor: iniciar e editar direto daqui (agendada ou no ar)
+  const adminBar = viewer.isAdmin && live.status !== 'ended' ? <LiveRoomAdmin live={live} options={(await liveAudienceOptions()).options} /> : null;
+
   return (
     <>
       <Link href="/ao-vivo" className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
@@ -50,6 +55,7 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
         serverNow={Date.now()}
         scheduledLabel={formatDateTime(live.starts_at)}
         icons={{ scheduled: <CalendarClock className="size-7" />, live: <Radio className="size-4" /> }}
+        adminBar={adminBar}
       />
     </>
   );

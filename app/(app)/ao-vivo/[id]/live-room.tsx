@@ -22,6 +22,7 @@ export function LiveRoom({
   serverNow,
   scheduledLabel,
   icons,
+  adminBar,
 }: {
   live: LiveSession;
   messages: LiveMessage[];
@@ -31,6 +32,8 @@ export function LiveRoom({
   serverNow: number;
   scheduledLabel: string;
   icons: { scheduled: ReactNode; live: ReactNode };
+  /** botões do professor (iniciar e editar) */
+  adminBar?: ReactNode;
 }) {
   const router = useRouter();
   // Confere o status a cada poucos segundos e recarrega quando o professor inicia/encerra
@@ -76,6 +79,7 @@ export function LiveRoom({
             {live.status === 'ended' && <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[11px] font-bold text-ink-2">GRAVAÇÃO</span>}
           </div>
           <h1 className="mt-2 text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
+          {adminBar && <div className="mt-3">{adminBar}</div>}
           {live.description && <p className="mt-2 text-sm whitespace-pre-line text-ink-2">{live.description}</p>}
         </div>
         <LiveMaterialsList materials={live.materials ?? []} />
