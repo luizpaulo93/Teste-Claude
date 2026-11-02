@@ -2,6 +2,7 @@
 
 import {
   AppWindow,
+  RefreshCw,
   X,
   MessageSquare,
   Maximize2,
@@ -245,7 +246,13 @@ export function Studio({
     // Conectou ou tirou um microfone/câmera (USB, Bluetooth, fio): a lista atualiza sozinha
     const onChange = () => void refreshDevices(false);
     navigator.mediaDevices.addEventListener?.('devicechange', onChange);
+    // Alguns celulares (Android) não avisam quando um microfone USB é ligado: confere a lista a cada 3 s
+    const poll = window.setInterval(onChange, 3000);
+    const onVisible = () => document.visibilityState === 'visible' && onChange();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
+      window.clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisible);
       navigator.mediaDevices.removeEventListener?.('devicechange', onChange);
       comp.current?.destroy();
       pdf.current?.destroy();
@@ -272,6 +279,18 @@ export function Studio({
       setMic(added[0].deviceId);
       toast(`Microfone conectado: ${micName(added[0], m.indexOf(added[0]))}`);
     } else setMic((v) => (v && (v === 'none' || m.some((x) => x.deviceId === v)) ? v : m[0]?.deviceId || 'none'));
+  }
+
+  /** Botão "procurar": pede o microfone de novo (o Android só mostra o USB depois disso) e relê a lista. */
+  async function searchDevices() {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* sem permissão */
+    }
+    await refreshDevices(false);
+    toast('Lista de microfones e câmeras atualizada');
   }
 
   // Tamanho do quadro = qualidade e formato (horizontal 16:9 ou vertical 9:16)
@@ -930,6 +949,9 @@ export function Studio({
                     <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
                       <div className="h-full rounded-full bg-success" style={{ width: `${Math.round(level * 100)}%` }} />
                     </div>
+                    <button type="button" onClick={searchDevices} className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-brand">
+                      <RefreshCw className="size-3.5" /> Procurar microfones
+                    </button>
                     <ul className="max-h-48 space-y-1 overflow-y-auto">
                       {[
                         ...mics.map((m, i) => ({
@@ -1307,19 +1329,24 @@ export function Studio({
           {screenOn && <p className="text-[11px] text-success">Tela espelhada. Pode trocar de janela: a live continua.</p>}
         </div>
 
-        <label className="block space-y-1.5">
+        <div className="space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Mic className="size-3.5" /> Microfone
           </span>
-          <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone">
-            {mics.map((m, i) => (
-              <option key={m.deviceId || i} value={m.deviceId}>
-                {micName(m, i)}
-              </option>
-            ))}
-            <option value="none">Sem microfone</option>
-          </Select>
-        </label>
+          <div className="flex gap-2">
+            <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone" className="min-w-0 flex-1">
+              {mics.map((m, i) => (
+                <option key={m.deviceId || i} value={m.deviceId}>
+                  {micName(m, i)}
+                </option>
+              ))}
+              <option value="none">Sem microfone</option>
+            </Select>
+            <button type="button" onClick={searchDevices} aria-label="Procurar microfones" title="Procurar microfones" className={buttonClass('secondary', 'icon', 'size-11 shrink-0')}>
+              <RefreshCw className="size-4" />
+            </button>
+          </div>
+        </div>
         <label className="block space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Settings2 className="size-3.5" /> Qualidade
