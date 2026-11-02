@@ -1,6 +1,6 @@
 'use client';
 
-import { AppWindow, Maximize2, Minimize2, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, RotateCw, Settings2, Video, Wifi } from 'lucide-react';
+import { AppWindow, Maximize2, Minimize2, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Settings2, Video, Wifi } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDialog } from '@/components/confirm';
@@ -8,7 +8,7 @@ import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus } from '@/lib/live/broadcaster';
-import { Compositor, type Corner, type Fit, type Scene } from '@/lib/live/compositor';
+import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
 import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
 import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial } from '@/lib/types';
@@ -28,12 +28,14 @@ const SCENES: { key: Scene; label: string; icon: typeof Video; desktop?: boolean
   { key: 'screen', label: 'Só tela', icon: Monitor, desktop: true },
   { key: 'both', label: 'Tela + câmera', icon: PictureInPicture2, desktop: true },
 ];
-const CORNERS: { key: Corner; label: string }[] = [
-  { key: 'tl', label: '↖' },
-  { key: 'tr', label: '↗' },
-  { key: 'bl', label: '↙' },
-  { key: 'br', label: '↘' },
-];
+
+function MirrorButton({ mirror, onToggle }: { mirror: boolean; onToggle: () => void }) {
+  return (
+    <button type="button" onClick={onToggle} aria-pressed={mirror} className={buttonClass(mirror ? 'primary' : 'secondary', 'sm', 'w-full')} aria-label="Espelhar câmera">
+      <FlipHorizontal2 className="size-4" /> Espelhar
+    </button>
+  );
+}
 
 /** Nomes que o Android dá aos microfones, em português (no computador vem o nome do aparelho). */
 function micName(d: MediaDeviceInfo, i: number) {
@@ -74,14 +76,28 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const [cam, setCam] = useState<string>(''); // deviceId ou 'none'
   const [mic, setMic] = useState<string>(''); // deviceId ou 'none'
   const [scene, setScene] = useState<Scene>('camera');
-  const [corner, setCorner] = useState<Corner>('br');
+  // quadradinho da câmera: posição e tamanho (guardados para as próximas lives)
+  const [pipBox, setPipBox] = useState(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('studio-pip') ?? '');
+      if (typeof v?.x === 'number' && typeof v?.y === 'number' && typeof v?.w === 'number') return v as { x: number; y: number; w: number };
+    } catch {
+      /* primeira vez */
+    }
+    return { x: 0.7, y: 0.55, w: 0.28 };
+  });
+  const [pipSel, setPipSel] = useState(false);
+  const [pipRect, setPipRect] = useState({ x: 0.7, y: 0.55, w: 0.28, h: 0.28 });
+  const pipDrag = useRef<{ mode: 'move' | 'size'; sx: number; sy: number; box: { x: number; y: number; w: number }; moved: boolean; t: number } | null>(null);
+  const pipTouches = useRef(new Map<number, { x: number; y: number }>());
+  const pipArea = useRef<HTMLDivElement>(null);
   const [screenOn, setScreenOn] = useState(false);
   const [quality, setQuality] = useState<Quality>('720');
   // a live é sempre horizontal (16:9)
   const vertical = false;
-  const [rotation, setRotation] = useState(0);
+  const rotation = 0;
   const [mirror, setMirror] = useState(false);
-  const [fit, setFit] = useState<Fit>('cover');
+  const fit: Fit = 'cover';
   const [pip, setPip] = useState(true);
   const pdf = useRef<PdfPresenter | null>(null);
   const [pdfId, setPdfId] = useState('');
@@ -186,12 +202,74 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     const c = comp.current;
     if (!c) return;
     c.scene = scene;
-    c.corner = corner;
+    c.pipX = pipBox.x;
+    c.pipY = pipBox.y;
+    c.pipW = pipBox.w;
     c.rotation = rotation;
     c.mirror = mirror;
     c.fit = fit;
     c.pip = pip;
-  }, [scene, corner, rotation, mirror, fit, pip]);
+    setPipRect(c.pipRect());
+  }, [scene, pipBox, rotation, mirror, fit, pip]);
+
+  // o retângulo do quadradinho acompanha o formato da câmera
+  useEffect(() => {
+    const t = window.setInterval(() => comp.current && setPipRect(comp.current.pipRect()), 700);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const savePip = (b: { x: number; y: number; w: number }) => {
+    try {
+      localStorage.setItem('studio-pip', JSON.stringify(b));
+    } catch {
+      /* navegador sem armazenamento */
+    }
+  };
+
+  // Quadradinho da câmera: arrastar move para qualquer lugar; tocar mostra a alça de tamanho; pinça também muda o tamanho
+  const pipDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size') => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pipTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    pipDrag.current = { mode, sx: e.clientX, sy: e.clientY, box: { ...pipBox, x: pipRect.x, y: pipRect.y }, moved: false, t: Date.now() };
+  };
+  const pipMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = pipDrag.current;
+    const stageEl = pipArea.current;
+    if (!d || !stageEl) return;
+    const r = stageEl.getBoundingClientRect();
+    const ts = pipTouches.current;
+    const prev = ts.get(e.pointerId);
+    ts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (ts.size === 2 && prev) {
+      // pinça no quadradinho: tamanho
+      const other = [...ts.entries()].find(([id]) => id !== e.pointerId)![1];
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+      if (d0 > 0) setPipBox((b) => ({ ...b, w: Math.min(0.6, Math.max(0.12, b.w * (d1 / d0))) }));
+      d.moved = true;
+      return;
+    }
+    const dx = (e.clientX - d.sx) / r.width;
+    const dy = (e.clientY - d.sy) / r.height;
+    if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) d.moved = true;
+    if (d.mode === 'move') setPipBox({ ...d.box, x: d.box.x + dx, y: d.box.y + dy });
+    else setPipBox({ ...d.box, w: Math.min(0.6, Math.max(0.12, d.box.w + dx)) });
+  };
+  const pipUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    pipTouches.current.delete(e.pointerId);
+    const d = pipDrag.current;
+    if (!d) return;
+    if (!d.moved && d.mode === 'move' && Date.now() - d.t < 400) setPipSel((v) => !v);
+    if (pipTouches.current.size === 0) {
+      pipDrag.current = null;
+      setPipBox((b) => {
+        const fixed = { x: Math.min(Math.max(0, b.x), 1 - pipRect.w), y: Math.min(Math.max(0, b.y), 1 - pipRect.h), w: b.w };
+        savePip(fixed);
+        return fixed;
+      });
+    }
+  };
 
   // Tela ligada durante a live (o celular não apaga a tela no meio da aula)
   useEffect(() => {
@@ -534,6 +612,43 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             data-zoom={pdfView?.zoom.toFixed(2)}
             aria-label="Prévia da transmissão"
           />
+          {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
+          {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
+            <div
+              ref={pipArea}
+              className="pointer-events-none absolute"
+              style={
+                full
+                  ? { left: '50%', top: '50%', transform: 'translate(-50%, -50%)', width: 'min(100vw, calc(100dvh * 16 / 9))', aspectRatio: '16 / 9' }
+                  : { inset: 0 }
+              }
+            >
+              <div
+                role="button"
+                aria-label="Quadradinho da câmera"
+                onPointerDown={(e) => pipDown(e, 'move')}
+                onPointerMove={pipMove}
+                onPointerUp={pipUp}
+                onPointerCancel={pipUp}
+                className={cn('pointer-events-auto absolute cursor-move touch-none rounded-[6%]', pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent')}
+                style={{ left: `${pipRect.x * 100}%`, top: `${pipRect.y * 100}%`, width: `${pipRect.w * 100}%`, height: `${pipRect.h * 100}%` }}
+              >
+                {pipSel && (
+                  <div
+                    role="button"
+                    aria-label="Mudar o tamanho da câmera"
+                    onPointerDown={(e) => pipDown(e, 'size')}
+                    onPointerMove={pipMove}
+                    onPointerUp={pipUp}
+                    onPointerCancel={pipUp}
+                    className="absolute -right-2.5 -bottom-2.5 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
+                  >
+                    <Maximize2 className="size-3.5 text-white" />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {onAir && (
             <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
               <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
@@ -691,29 +806,9 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
                 <label className="flex items-center gap-2 text-xs text-ink-2">
                   <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
                 </label>
-                <p className="text-[11px] text-muted">
-                  Na tela da transmissão: <strong>um dedo</strong> rola as páginas (uma embaixo da outra) e move, <strong>pinça</strong> dá zoom, <strong>dois toques</strong> alternam entre a largura e a página inteira.
-                </p>
+                <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
               </>
             )}
-          </div>
-        )}
-
-        {(scene === 'both' || (scene === 'pdf' && pip)) && (
-          <div className="flex items-center gap-2 text-xs text-ink-2">
-            Câmera no canto:
-            {CORNERS.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                aria-label={`Canto ${c.label}`}
-                aria-pressed={corner === c.key}
-                onClick={() => setCorner(c.key)}
-                className={cn('grid size-8 place-items-center rounded-lg border text-sm', corner === c.key ? 'border-brand bg-brand text-white' : 'border-line')}
-              >
-                {c.label}
-              </button>
-            ))}
           </div>
         )}
 
@@ -759,17 +854,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             <option value="none">Sem câmera</option>
           </Select>
         </label>
-        <div className="grid grid-cols-3 gap-1.5">
-          <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} className={buttonClass('secondary', 'sm', 'px-1 text-[11px]')} aria-label="Girar câmera">
-            <RotateCw className="size-4" /> Girar{rotation ? ` ${rotation}°` : ''}
-          </button>
-          <button type="button" onClick={() => setMirror((m) => !m)} aria-pressed={mirror} className={buttonClass(mirror ? 'primary' : 'secondary', 'sm', 'px-1 text-[11px]')} aria-label="Espelhar câmera">
-            <FlipHorizontal2 className="size-4" /> Espelhar
-          </button>
-          <button type="button" onClick={() => setFit((f) => (f === 'cover' ? 'contain' : 'cover'))} className={buttonClass('secondary', 'sm', 'px-1 text-[11px]')} aria-label="Encaixe da câmera">
-            {fit === 'cover' ? 'Preencher' : 'Inteira'}
-          </button>
-        </div>
+        {scene !== 'pdf' && <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />}
 
         <div className="space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">

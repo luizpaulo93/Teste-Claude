@@ -55,8 +55,12 @@ export class Compositor {
   /** posição do recorte da câmera (-1 a 1): escolhe a parte da imagem em pé que aparece na live horizontal */
   camX = 0;
   camY = 0;
-  /** câmera no canto nas cenas de tela e de PDF */
+  /** câmera no quadradinho nas cenas de tela e de PDF */
   pip = true;
+  /** posição (canto de cima à esquerda) e largura do quadradinho, em fração do quadro */
+  pipX = 0.7;
+  pipY = 0.55;
+  pipW = 0.28;
   pdf: PdfPresenter | null = null;
   private cam: Source | null = null;
   private screen: Source | null = null;
@@ -93,6 +97,23 @@ export class Compositor {
   get hasCamera() {
     return Boolean(this.cam);
   }
+  /** Retângulo do quadradinho da câmera (fração do quadro), já dentro da tela. */
+  pipRect() {
+    const { width: W, height: H } = this.canvas;
+    const f = this.cam?.frame;
+    const { w: cw, h: ch } = f ? this.camSize(f) : { w: 16, h: 9 };
+    const w = Math.min(0.9, Math.max(0.1, this.pipW));
+    let h = (w * W * (ch / cw)) / H;
+    let ww = w;
+    if (h > 0.9) {
+      ww = (w * 0.9) / h;
+      h = 0.9;
+    }
+    const x = Math.min(Math.max(0, this.pipX), 1 - ww);
+    const y = Math.min(Math.max(0, this.pipY), 1 - h);
+    return { x, y, w: ww, h };
+  }
+
   /** Arrasta o recorte da câmera (dx, dy em fração do quadro). */
   moveCamera(dx: number, dy: number) {
     const f = this.cam?.frame;
@@ -171,27 +192,25 @@ export class Compositor {
     } else if (scr) this.fitFrame(scr, 0, 0, W, H);
     else this.message('Escolha a tela ou a janela para espelhar');
 
-    // Câmera no canto
+    // Câmera no quadradinho (onde o professor arrastar, no tamanho que escolher)
     if ((this.scene === 'both' || (this.scene === 'pdf' && this.pip)) && cam) {
-      const { w: cw, h: ch } = this.camSize(cam);
+      const r = this.pipRect();
+      const x = r.x * W;
+      const y = r.y * H;
+      const pw = r.w * W;
+      const ph = r.h * H;
       const short = Math.min(W, H);
-      // tamanho do quadrinho: 26% da largura (horizontal) ou 34% (vertical)
-      const pw = Math.round((W > H ? 0.26 : 0.34) * W);
-      const ph = Math.min(Math.round((pw * ch) / cw), Math.round(H * 0.45));
-      const m = Math.round(short * 0.03);
-      const x = this.corner.endsWith('r') ? W - pw - m : m;
-      const y = this.corner.startsWith('b') ? H - ph - m : m;
-      const r = Math.round(pw * 0.05);
+      const rad = Math.round(pw * 0.05);
       c.save();
       c.beginPath();
-      c.roundRect(x, y, pw, ph, r);
+      c.roundRect(x, y, pw, ph, rad);
       c.clip();
       this.drawCam(cam, x, y, pw, ph, 'cover');
       c.restore();
       c.lineWidth = Math.max(2, Math.round(short / 300));
       c.strokeStyle = 'rgba(255,255,255,0.85)';
       c.beginPath();
-      c.roundRect(x, y, pw, ph, r);
+      c.roundRect(x, y, pw, ph, rad);
       c.stroke();
     }
     this.onFrame?.(this.canvas);
