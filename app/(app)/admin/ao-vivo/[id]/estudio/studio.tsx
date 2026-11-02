@@ -2,6 +2,7 @@
 
 import {
   AppWindow,
+  X,
   MessageSquare,
   Maximize2,
   Minimize2,
@@ -414,6 +415,7 @@ export function Studio({
 
   /** Tela cheia deitada: a câmera passa a filmar na horizontal de verdade (celular deitado). */
   async function enterFull() {
+    setPop(null);
     setFull(true);
     try {
       await stage.current?.requestFullscreen?.({ navigationUI: 'hide' });
@@ -431,6 +433,7 @@ export function Studio({
     }
   }
   async function exitFull() {
+    setPop(null);
     setFull(false);
     try {
       screen.orientation?.unlock?.();
@@ -462,6 +465,11 @@ export function Studio({
 
   // Na tela da transmissão: um dedo move o PDF, dois dedos dão zoom (pinça), dois toques alternam largura/página
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // tocar na tela fecha o popup de microfone/câmera
+    if (pop) {
+      setPop(null);
+      return;
+    }
     if (scene === 'camera') {
       // câmera: arrastar escolhe a parte da imagem que aparece no recorte
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -711,8 +719,14 @@ export function Studio({
     }
   }
 
-  async function endLive() {
-    if (!(await confirmDialog('Encerrar a transmissão?'))) return;
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  /** Encerrar: na tela cheia a confirmação aparece na própria tela da live (fora dela o navegador esconde) */
+  async function endLive(confirmed = false) {
+    if (!confirmed) {
+      if (full) return setConfirmEnd(true);
+      if (!(await confirmDialog('Encerrar a transmissão?'))) return;
+    }
+    setConfirmEnd(false);
     setBusy(true);
     try {
       if (comp.current) comp.current.onFrame = undefined;
@@ -728,6 +742,30 @@ export function Studio({
   }
 
   const blocked = !support?.ok || !ready;
+
+  const pdfList = (
+    <ul className="space-y-1.5">
+      {materials.map((m) => (
+        <li key={m.id}>
+          <button
+            type="button"
+            onClick={() => {
+              setChoosing(false);
+              void openPdf(m.id);
+            }}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2',
+              pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line',
+            )}
+          >
+            <FileText className="size-5 shrink-0 text-danger" />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>
+            {pdfId === m.id && <span className="text-[11px] text-brand">aberto</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
@@ -821,7 +859,7 @@ export function Studio({
                   <FileText className="size-3.5" /> Trocar
                 </button>
               )}
-              {full && (
+              {
                 <>
                   <button
                     type="button"
@@ -842,7 +880,7 @@ export function Studio({
                   >
                     <Camera className="size-4" />
                   </button>
-                  {chat && (
+                  {full && chat && (
                     <button
                       type="button"
                       onClick={() => setChatOpen((v) => !v)}
@@ -852,21 +890,26 @@ export function Studio({
                       <MessageSquare className="size-4" />
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={exitFull}
-                    aria-label="Sair da tela cheia"
-                    className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
-                  >
-                    <Minimize2 className="size-4" />
-                  </button>
+                  {full && (
+                    <button
+                      type="button"
+                      onClick={exitFull}
+                      aria-label="Sair da tela cheia"
+                      className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+                    >
+                      <Minimize2 className="size-4" />
+                    </button>
+                  )}
                 </>
-              )}
+              }
             </div>
 
             {/* Popups de microfone e câmera (tela cheia) */}
-            {full && pop && (
-              <div className="absolute top-14 right-2 z-10 w-64 max-w-[calc(100%-1rem)] space-y-2 rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur">
+            {pop && (
+              <div
+                data-popup={pop}
+                className="absolute top-12 right-2 z-10 max-h-[calc(100%-3.5rem)] w-64 max-w-[calc(100%-1rem)] space-y-2 overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur"
+              >
                 {pop === 'mic' ? (
                   <>
                     <button
@@ -990,7 +1033,7 @@ export function Studio({
                 {onAir ? (
                   <button
                     type="button"
-                    onClick={endLive}
+                    onClick={() => void endLive()}
                     disabled={busy}
                     className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-bold text-black"
                   >
@@ -1009,6 +1052,42 @@ export function Studio({
               </div>
             )}
           </div>
+          {/* Na tela cheia, as janelas aparecem dentro da própria tela da live */}
+          {full && (confirmEnd || choosing) && (
+            <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
+              <div className="w-full max-w-sm space-y-4 rounded-3xl border border-line-strong bg-surface p-5 shadow-2xl">
+                {confirmEnd ? (
+                  <>
+                    <p className="text-base font-bold text-ink">Encerrar a transmissão?</p>
+                    <p className="text-sm text-muted">Os alunos deixam de ver a live e a gravação vira aula na pasta Live.</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button type="button" onClick={() => setConfirmEnd(false)} className={buttonClass('secondary', 'md')}>
+                        Continuar ao vivo
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void endLive(true)}
+                        disabled={busy}
+                        className={buttonClass('primary', 'md', '!bg-red-600 hover:!bg-red-700')}
+                      >
+                        {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-base font-bold text-ink">Qual PDF mostrar?</p>
+                      <button type="button" onClick={() => setChoosing(false)} aria-label="Fechar" className={buttonClass('ghost', 'icon', 'size-8')}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="max-h-[50dvh] overflow-y-auto">{pdfList}</div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           {/* Chat ao lado, só para o professor, na tela cheia horizontal */}
           {full && chat && chatOpen && (
             <aside className="h-full w-[min(34%,340px)] shrink-0 border-l border-white/10 bg-surface">
@@ -1240,7 +1319,7 @@ export function Studio({
         </label>
 
         {onAir ? (
-          <button type="button" onClick={endLive} disabled={busy} className={buttonClass('secondary', 'lg', 'w-full')}>
+          <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg', 'w-full')}>
             {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar transmissão
           </button>
         ) : (
@@ -1250,28 +1329,8 @@ export function Studio({
         )}
         <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
       </div>
-      <Modal open={choosing} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
-        <ul className="space-y-1.5">
-          {materials.map((m) => (
-            <li key={m.id}>
-              <button
-                type="button"
-                onClick={() => {
-                  setChoosing(false);
-                  void openPdf(m.id);
-                }}
-                className={cn(
-                  'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2',
-                  pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line',
-                )}
-              >
-                <FileText className="size-5 shrink-0 text-danger" />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>
-                {pdfId === m.id && <span className="text-[11px] text-brand">aberto</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
+      <Modal open={choosing && !full} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
+        {pdfList}
       </Modal>
     </div>
   );
