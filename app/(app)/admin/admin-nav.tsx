@@ -21,8 +21,11 @@ const TABS = [
 
 export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
   const pathname = usePathname();
+  // Só nas telas de gestão (e em Desempenho/Calendário, que o admin abre daqui)
+  if (!/^\/(admin|desempenho|calendario)(\/|$)/.test(pathname)) return null;
   return (
-    <div className="rail -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+    // fica preso no topo ao rolar (abaixo da barra do celular)
+    <div className="rail sticky top-14 z-30 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line bg-bg/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
       {TABS.map((t) => {
         const active = t.href === '/admin' ? pathname === '/admin' : pathname.startsWith(t.href);
         return (

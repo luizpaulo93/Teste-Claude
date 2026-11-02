@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { PdfOwnerProvider } from '@/components/pdf-owner';
 import { AppShell } from '@/components/shell/app-shell';
+import { AdminNav } from './admin/admin-nav';
 import { CompleteProfile } from './perfil/complete-profile';
 import { visibleLives } from '@/lib/live';
 import { pendingDoubts } from '@/lib/mentoria-space';
@@ -25,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       liveNow={liveNow}
       mentoriaAlert={mentoriaAlert}
     >
+      {viewer.isAdmin && <AdminNav mentoriaAlert={mentoriaAlert} />}
       <PdfOwnerProvider owner={viewer.pdfOwner}>
         {viewer.needsProfile ? (
           <CompleteProfile

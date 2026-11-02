@@ -94,11 +94,6 @@ export function LivesManager({
                         <Video className="size-3.5" /> Estúdio
                       </Link>
                     )}
-                    {l.status !== 'live' && (
-                      <ActionButton action={() => setLiveStatus(l.id, 'live')} confirm="Iniciar agora? Os alunos verão a transmissão." success="Transmissão no ar!" variant="primary" size="sm" className="!bg-red-600 hover:!bg-red-700">
-                        <Radio className="size-3.5" /> {l.status === 'ended' ? 'Reabrir' : 'Iniciar'}
-                      </ActionButton>
-                    )}
                     {l.status === 'live' && (
                       <ActionButton action={() => setLiveStatus(l.id, 'ended')} confirm="Encerrar a transmissão?" success="Transmissão encerrada" size="sm">
                         <CircleStop className="size-3.5" /> Encerrar
