@@ -1,12 +1,12 @@
 'use client';
 
-import { AppWindow, ArrowDown, ArrowUp, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Minus, Monitor, MonitorOff, PictureInPicture2, Plus, Radio, RotateCw, Settings2, Smartphone, Video, Wifi } from 'lucide-react';
+import { AppWindow, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, RotateCw, Settings2, Video, Wifi } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
-import { Spinner } from '@/components/ui-client';
+import { Modal, Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus } from '@/lib/live/broadcaster';
 import { Compositor, type Corner, type Fit, type Scene } from '@/lib/live/compositor';
 import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
@@ -54,7 +54,8 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const [corner, setCorner] = useState<Corner>('br');
   const [screenOn, setScreenOn] = useState(false);
   const [quality, setQuality] = useState<Quality>('720');
-  const [vertical, setVertical] = useState(false);
+  // a live é sempre horizontal (16:9)
+  const vertical = false;
   const [rotation, setRotation] = useState(0);
   const [mirror, setMirror] = useState(false);
   const [fit, setFit] = useState<Fit>('cover');
@@ -63,7 +64,10 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   const [pdfId, setPdfId] = useState('');
   const [pdfView, setPdfView] = useState<PdfView | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
-  const drag = useRef<{ x: number; y: number } | null>(null);
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const lastTap = useRef(0);
+  const [pageInput, setPageInput] = useState('');
+  const [choosing, setChoosing] = useState(false);
   const [level, setLevel] = useState(0);
   const [support, setSupport] = useState<{ ok: boolean; reason?: string } | null>(null);
   const [status, setStatus] = useState<BroadcastStatus | null>(null);
@@ -184,19 +188,58 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
     }
   }
 
-  // Arrastar na prévia move a parte do PDF que aparece
+  // Na tela da transmissão: um dedo move o PDF, dois dedos dão zoom (pinça), dois toques alternam largura/página
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (scene !== 'pdf') return;
-    drag.current = { x: e.clientX, y: e.clientY };
     e.currentTarget.setPointerCapture(e.pointerId);
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) pdf.current?.toggleFit();
+      lastTap.current = now;
+    }
   };
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drag.current || scene !== 'pdf') return;
+    const ps = pointers.current;
+    const prev = ps.get(e.pointerId);
+    if (!prev || scene !== 'pdf' || !pdf.current) return;
     const r = e.currentTarget.getBoundingClientRect();
-    pdf.current?.pan((e.clientX - drag.current.x) / r.width, (e.clientY - drag.current.y) / r.height);
-    drag.current = { x: e.clientX, y: e.clientY };
+    if (ps.size === 1) {
+      pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height, true);
+    } else if (ps.size === 2) {
+      const other = [...ps.entries()].find(([id]) => id !== e.pointerId)![1];
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+      const mx = ((e.clientX + other.x) / 2 - r.left) / r.width;
+      const my = ((e.clientY + other.y) / 2 - r.top) / r.height;
+      if (d0 > 0) pdf.current.zoomAt(d1 / d0, mx, my);
+      // arrastar com os dois dedos também move
+      pdf.current.pan((e.clientX - prev.x) / 2 / r.width, (e.clientY - prev.y) / 2 / r.height);
+    }
+    ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
   };
-  const onUp = () => (drag.current = null);
+  const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    pointers.current.delete(e.pointerId);
+  };
+
+  // Rolagem (mouse/trackpad): rola o PDF e passa de página no fim; Ctrl + rolagem (ou pinça no trackpad) dá zoom
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (scene !== 'pdf' || !pdf.current?.pages) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      if (e.ctrlKey) pdf.current.zoomAt(Math.exp(-e.deltaY / 300), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+      else pdf.current.pan(-e.deltaX / r.width, -e.deltaY / r.height, true);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [scene]);
+
+  useEffect(() => {
+    if (pdfView) setPageInput(String(pdfView.page));
+  }, [pdfView?.page]);
 
   // Câmera escolhida
   useEffect(() => {
@@ -263,8 +306,11 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
   function pickScene(s: Scene) {
     if (s === 'pdf') {
       setScene('pdf');
-      if (!pdfView && materials[0]) void openPdf(materials[0].id);
-      else if (!materials.length) toast('Suba um PDF em "PDFs da live" (abaixo) para mostrar aqui.');
+      if (!materials.length) toast('Suba um PDF em "PDFs da live" (abaixo) para mostrar aqui.');
+      // já tem PDF aberto: volta para ele. Senão: mais de um pergunta qual abrir; só um abre direto
+      else if (pdfView?.pages) return;
+      else if (materials.length > 1) setChoosing(true);
+      else void openPdf(materials[0].id);
       return;
     }
     if (s !== 'camera' && !screenTrack.current) {
@@ -388,6 +434,17 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
               <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
             </span>
           )}
+          {scene === 'pdf' && materials.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setChoosing(true)}
+              aria-label="Trocar de PDF"
+              title="Trocar de PDF"
+              className={cn('absolute right-2 flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}
+            >
+              <FileText className="size-3.5" /> Trocar
+            </button>
+          )}
           {status?.state === 'reconnecting' && <span className="absolute top-3 right-3 rounded-md bg-amber-500 px-2 py-1 text-[11px] font-bold text-black">Reconectando…</span>}
         </div>
 
@@ -413,7 +470,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
         {scene === 'pdf' && (
           <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
             {materials.length ? (
-              <Select value={pdfId} onChange={(e) => void openPdf(e.target.value)} aria-label="PDF para mostrar">
+              <Select value={pdfId} onChange={(e) => void openPdf(e.target.value)} aria-label="PDF para mostrar" className={materials.length > 1 ? 'hidden' : ''}>
                 <option value="" disabled>
                   Escolha o PDF
                 </option>
@@ -434,40 +491,43 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             {pdfView && pdfView.pages > 0 && (
               <>
                 <div className="flex items-center justify-between gap-2">
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} disabled={pdfView.page <= 1} aria-label="Página anterior" className={buttonClass('secondary', 'icon', 'size-10')}>
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} disabled={pdfView.page <= 1} aria-label="Página anterior" className={buttonClass('secondary', 'icon', 'size-11')}>
                     <ChevronLeft className="size-5" />
                   </button>
-                  <span className="text-sm font-semibold text-ink tabular-nums">
-                    Página {pdfView.page} de {pdfView.pages}
-                  </span>
-                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} disabled={pdfView.page >= pdfView.pages} aria-label="Próxima página" className={buttonClass('secondary', 'icon', 'size-10')}>
-                    <ChevronRight className="size-5" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-6 gap-1.5">
-                  <button type="button" onClick={() => void pdf.current?.setZoom(pdfView.zoom / 1.25)} aria-label="Diminuir" className={buttonClass('secondary', 'sm', 'px-0')}>
-                    <Minus className="size-4" />
-                  </button>
-                  <button type="button" onClick={() => void pdf.current?.setZoom(pdfView.zoom * 1.25)} aria-label="Aumentar" className={buttonClass('secondary', 'sm', 'px-0')}>
-                    <Plus className="size-4" />
-                  </button>
-                  <button type="button" onClick={() => pdf.current?.pan(0, 0.5)} aria-label="Subir" className={buttonClass('secondary', 'sm', 'px-0')}>
-                    <ArrowUp className="size-4" />
-                  </button>
-                  <button type="button" onClick={() => pdf.current?.pan(0, -0.5)} aria-label="Descer" className={buttonClass('secondary', 'sm', 'px-0')}>
-                    <ArrowDown className="size-4" />
-                  </button>
-                  <button type="button" onClick={() => pdf.current?.fitWidth()} className={buttonClass('secondary', 'sm', 'px-0 text-[11px]')}>
-                    Largura
-                  </button>
-                  <button type="button" onClick={() => pdf.current?.fitPage()} className={buttonClass('secondary', 'sm', 'px-0 text-[11px]')}>
+                  <form
+                    className="flex items-center gap-1.5 text-sm font-semibold text-ink"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const n = parseInt(pageInput, 10);
+                      if (n) void pdf.current?.goTo(n);
+                      (document.activeElement as HTMLElement | null)?.blur();
+                    }}
+                  >
                     Página
+                    <input
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      onBlur={() => {
+                        const n = parseInt(pageInput, 10);
+                        if (n && n !== pdfView.page) void pdf.current?.goTo(n);
+                        else setPageInput(String(pdfView.page));
+                      }}
+                      inputMode="numeric"
+                      aria-label="Ir para a página"
+                      className="h-9 w-14 rounded-lg border border-line-strong bg-bg-elev text-center tabular-nums"
+                    />
+                    <span className="tabular-nums">de {pdfView.pages}</span>
+                  </form>
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} disabled={pdfView.page >= pdfView.pages} aria-label="Próxima página" className={buttonClass('secondary', 'icon', 'size-11')}>
+                    <ChevronRight className="size-5" />
                   </button>
                 </div>
                 <label className="flex items-center gap-2 text-xs text-ink-2">
                   <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
                 </label>
-                <p className="text-[11px] text-muted">Arraste na prévia para escolher a parte do PDF que os alunos veem.</p>
+                <p className="text-[11px] text-muted">
+                  Na tela da transmissão: <strong>um dedo</strong> move, <strong>dois dedos</strong> dão zoom, <strong>dois toques</strong> alternam entre a largura e a página inteira. Rolando até o fim, passa de página.
+                </p>
               </>
             )}
           </div>
@@ -544,28 +604,6 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
             {fit === 'cover' ? 'Preencher' : 'Inteira'}
           </button>
         </div>
-        <div className="space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
-            <Smartphone className="size-3.5" /> Formato da live
-          </span>
-          <div className="grid grid-cols-2 gap-1.5">
-            {[
-              { v: false, label: 'Horizontal (16:9)' },
-              { v: true, label: 'Vertical (9:16)' },
-            ].map((o) => (
-              <button
-                key={o.label}
-                type="button"
-                disabled={onAir}
-                aria-pressed={vertical === o.v}
-                onClick={() => setVertical(o.v)}
-                className={cn('rounded-xl border px-2 py-2 text-xs font-semibold transition disabled:opacity-50', vertical === o.v ? 'border-brand bg-brand text-white' : 'border-line text-ink-2')}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
         <div className="space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
@@ -630,6 +668,26 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
         )}
         <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
       </div>
+      <Modal open={choosing} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
+        <ul className="space-y-1.5">
+          {materials.map((m) => (
+            <li key={m.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setChoosing(false);
+                  void openPdf(m.id);
+                }}
+                className={cn('flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2', pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line')}
+              >
+                <FileText className="size-5 shrink-0 text-danger" />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>
+                {pdfId === m.id && <span className="text-[11px] text-brand">aberto</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </Modal>
     </div>
   );
 }

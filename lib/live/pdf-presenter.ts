@@ -89,43 +89,76 @@ export class PdfPresenter {
     this.onChange?.();
   }
 
-  async goTo(page: number) {
+  /** Menor zoom: a página inteira no quadro (bom para A4 em pé) */
+  get minZoom() {
+    return Math.min(1, this.frameW / this.frameH / this.ratio);
+  }
+
+  async goTo(page: number, atBottom = false) {
     if (!this.doc) return;
     const n = Math.min(this.pages, Math.max(1, page));
     if (n === this.page) return;
     this.page = n;
-    this.cy = 0;
+    this.over = 0;
+    this.cy = atBottom ? this.ratio : 0; // clamp() leva para o fim da página
     await this.render();
   }
 
-  async setZoom(z: number) {
-    const old = this.zoom;
-    const next = Math.min(6, Math.max(0.3, z));
-    // mantém o centro da parte visível
-    const midX = this.cx + this.vw / 2;
-    const midY = this.cy + this.vh / 2;
+  // Re-renderiza a página só quando o zoom para de mudar (a pinça fica leve)
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private scheduleRender() {
+    clearTimeout(this.timer);
+    this.timer = setTimeout(() => void this.render(), 160);
+  }
+
+  /** Zoom mantendo parado o ponto sob os dedos (fx, fy = fração do quadro, 0..1). */
+  zoomAt(factor: number, fx = 0.5, fy = 0.5) {
+    const next = Math.min(6, Math.max(this.minZoom, this.zoom * factor));
+    if (Math.abs(next - this.zoom) < 1e-4) return;
+    const px = this.cx + fx * this.vw;
+    const py = this.cy + fy * this.vh;
     this.zoom = next;
-    this.cx = midX - this.vw / 2;
-    this.cy = midY - this.vh / 2;
+    this.cx = px - fx * this.vw;
+    this.cy = py - fy * this.vh;
     this.clamp();
     this.onChange?.();
-    if (Math.abs(next - old) > 0.01) await this.render();
+    this.scheduleRender();
+  }
+
+  async setZoom(z: number) {
+    this.zoomAt(z / this.zoom);
   }
 
   /** Largura da página = largura do quadro */
   fitWidth() {
-    void this.setZoom(1);
+    this.zoomAt(1 / this.zoom, 0.5, 0);
   }
   /** Página inteira no quadro */
   fitPage() {
-    void this.setZoom(Math.min(1, this.frameW / this.frameH / this.ratio));
+    this.zoomAt(this.minZoom / this.zoom);
+  }
+  /** Dois toques: alterna entre largura e página inteira */
+  toggleFit() {
+    if (Math.abs(this.zoom - 1) < 0.02) this.fitPage();
+    else this.fitWidth();
   }
 
-  /** Move a parte visível (dx, dy em fração do quadro: 0.5 = meio quadro). */
-  pan(dx: number, dy: number) {
+  private over = 0;
+  /**
+   * Move a parte visível (dx, dy em fração do quadro). Passando do fim da página (rolando ou arrastando),
+   * vai para a próxima; passando do começo, volta para a anterior.
+   */
+  pan(dx: number, dy: number, turnPages = false) {
     this.cx -= dx * this.vw;
-    this.cy -= dy * this.vh;
+    const want = this.cy - dy * this.vh;
+    this.cy = want;
     this.clamp();
+    if (turnPages) {
+      const diff = (want - this.cy) / this.vh; // quanto passou do limite (em quadros)
+      this.over = diff === 0 ? 0 : this.over + diff;
+      if (this.over > 0.35 && this.page < this.pages) void this.goTo(this.page + 1);
+      else if (this.over < -0.35 && this.page > 1) void this.goTo(this.page - 1, true);
+    }
     this.onChange?.();
   }
 
