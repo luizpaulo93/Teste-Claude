@@ -6,7 +6,6 @@ import { sql } from '@/lib/db';
 import { LiveMaterialsAdmin } from '@/components/live/live-materials';
 import { requireViewer } from '@/lib/session';
 import type { LiveMessage, LiveSession } from '@/lib/types';
-import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { isDocId } from '@/lib/utils';
 import { getAccount, oauthConfigured } from '@/lib/youtube';
 import { Studio } from './studio';
@@ -32,6 +31,11 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
         liveId={live.id}
         live={live.status === 'live'}
         materials={live.materials ?? []}
+        pdfPanel={
+          <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
+            <LiveMaterialsAdmin liveId={live.id} materials={live.materials ?? []} />
+          </div>
+        }
         chat={{ initial: messages, me: { id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role } }}
         ready={ready}
         hint={
@@ -40,19 +44,6 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
             : 'Conecte a conta do YouTube na tela Ao vivo para transmitir.'
         }
       />
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
-          <LiveMaterialsAdmin liveId={live.id} materials={live.materials ?? []} />
-        </div>
-        <LiveChat
-          liveId={live.id}
-          initial={messages}
-          me={{ id: viewer.userId, full_name: viewer.profile.full_name || viewer.email, avatar_url: viewer.profile.avatar_url, role: viewer.profile.role }}
-          isAdmin
-          canSend={live.status !== 'ended'}
-          isLive={live.status !== 'ended'}
-        />
-      </div>
     </div>
   );
 }

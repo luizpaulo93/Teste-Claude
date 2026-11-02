@@ -118,6 +118,7 @@ export function Studio({
   hint,
   materials = [],
   chat,
+  pdfPanel,
 }: {
   liveId: string;
   live: boolean;
@@ -126,6 +127,8 @@ export function Studio({
   materials?: LessonMaterial[];
   /** chat ao lado na tela cheia (só o professor vê assim) */
   chat?: { initial: LiveMessage[]; me: ProfileCard };
+  /** quadro dos PDFs da live */
+  pdfPanel?: React.ReactNode;
 }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -768,8 +771,8 @@ export function Studio({
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="space-y-3">
+    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="order-1 min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
         <div
           ref={stage}
           className={cn(
@@ -1249,7 +1252,18 @@ export function Studio({
         {status?.state === 'error' && <p className="rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">{status.message}</p>}
       </div>
 
-      <div className="space-y-3">
+      <div className="order-2 space-y-3 lg:col-start-2 lg:row-start-2">
+        {/* Iniciar/encerrar logo abaixo do chat, antes das configurações */}
+        {onAir ? (
+          <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg', 'w-full')}>
+            {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar transmissão
+          </button>
+        ) : (
+          <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
+            {busy ? <Spinner /> : <Radio className="size-4" />} {live ? 'Transmitir (sala já está no ar)' : 'Iniciar transmissão'}
+          </button>
+        )}
+        <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
         <label className="block space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Camera className="size-3.5" /> Câmera
@@ -1317,17 +1331,23 @@ export function Studio({
           </Select>
         </label>
 
-        {onAir ? (
-          <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg', 'w-full')}>
-            {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar transmissão
-          </button>
-        ) : (
-          <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
-            {busy ? <Spinner /> : <Radio className="size-4" />} {live ? 'Transmitir (sala já está no ar)' : 'Iniciar transmissão'}
-          </button>
-        )}
-        <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
       </div>
+      {/* PDFs da live: embaixo da imagem no computador */}
+      {pdfPanel && <div className="order-3 min-w-0 lg:col-start-1 lg:row-start-2">{pdfPanel}</div>}
+      {/* Chat: ao lado da imagem no computador; no fim da página no celular */}
+      {chat && (
+        <div className="order-4 lg:relative lg:col-start-2 lg:row-start-1">
+          <LiveChat
+            liveId={liveId}
+            initial={chat.initial}
+            me={chat.me}
+            isAdmin
+            canSend
+            isLive
+            className="flex h-[60dvh] flex-col overflow-hidden lg:absolute lg:inset-0 lg:h-auto"
+          />
+        </div>
+      )}
       <Modal open={choosing && !full} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
         {pdfList}
       </Modal>
