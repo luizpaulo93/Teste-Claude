@@ -31,10 +31,11 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       <Studio
         liveId={live.id}
         live={live.status === 'live'}
+        materials={live.materials ?? []}
         ready={ready}
         hint={
           connected
-            ? `Transmite no canal ${acc.channel_title || 'conectado'} (não listado). Ao encerrar, o link vira aula na pasta “Lives”.`
+            ? `Transmite no canal ${acc.channel_title || 'conectado'} (não listado). Ao encerrar, o link vira aula na pasta “Live”.`
             : 'Conecte a conta do YouTube na tela Ao vivo para transmitir.'
         }
       />

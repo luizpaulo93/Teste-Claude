@@ -1,6 +1,6 @@
 'use client';
 
-import { AppWindow, Camera, CircleStop, Mic, MicOff, Monitor, MonitorOff, PictureInPicture2, Radio, Settings2, Video, Wifi } from 'lucide-react';
+import { AppWindow, ArrowDown, ArrowUp, Camera, ChevronLeft, ChevronRight, CircleStop, FileText, FlipHorizontal2, Mic, MicOff, Minus, Monitor, MonitorOff, PictureInPicture2, Plus, Radio, RotateCw, Settings2, Smartphone, Video, Wifi } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { confirmDialog } from '@/components/confirm';
@@ -8,7 +8,10 @@ import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus } from '@/lib/live/broadcaster';
-import { Compositor, type Corner, type Scene } from '@/lib/live/compositor';
+import { Compositor, type Corner, type Fit, type Scene } from '@/lib/live/compositor';
+import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
+import { getFileUrl } from '@/lib/storage/client';
+import type { LessonMaterial } from '@/lib/types';
 import { cn } from '@/lib/utils';
 import { startStudio, stopStudio } from '../../../live-actions';
 
@@ -19,10 +22,11 @@ const QUALITIES = {
 } as const;
 type Quality = keyof typeof QUALITIES;
 
-const SCENES: { key: Scene; label: string; icon: typeof Video }[] = [
-  { key: 'camera', label: 'Só câmera', icon: Video },
-  { key: 'screen', label: 'Só tela', icon: Monitor },
-  { key: 'both', label: 'Tela + câmera', icon: PictureInPicture2 },
+const SCENES: { key: Scene; label: string; icon: typeof Video; desktop?: boolean }[] = [
+  { key: 'camera', label: 'Câmera', icon: Video },
+  { key: 'pdf', label: 'PDF + câmera', icon: FileText },
+  { key: 'screen', label: 'Só tela', icon: Monitor, desktop: true },
+  { key: 'both', label: 'Tela + câmera', icon: PictureInPicture2, desktop: true },
 ];
 const CORNERS: { key: Corner; label: string }[] = [
   { key: 'tl', label: '↖' },
@@ -38,7 +42,7 @@ const clock = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:$
  * para o YouTube. Três cenas, como no OBS: só a câmera, só a tela, ou a tela com a câmera no canto.
  * Dá para trocar de cena no meio da live. O áudio passa por um mixer: trocar o microfone não corta o som.
  */
-export function Studio({ liveId, live, ready, hint }: { liveId: string; live: boolean; ready: boolean; hint: string }) {
+export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: string; live: boolean; ready: boolean; hint: string; materials?: LessonMaterial[] }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const comp = useRef<Compositor | null>(null);
@@ -50,6 +54,16 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
   const [corner, setCorner] = useState<Corner>('br');
   const [screenOn, setScreenOn] = useState(false);
   const [quality, setQuality] = useState<Quality>('720');
+  const [vertical, setVertical] = useState(false);
+  const [rotation, setRotation] = useState(0);
+  const [mirror, setMirror] = useState(false);
+  const [fit, setFit] = useState<Fit>('cover');
+  const [pip, setPip] = useState(true);
+  const pdf = useRef<PdfPresenter | null>(null);
+  const [pdfId, setPdfId] = useState('');
+  const [pdfView, setPdfView] = useState<PdfView | null>(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const drag = useRef<{ x: number; y: number } | null>(null);
   const [level, setLevel] = useState(0);
   const [support, setSupport] = useState<{ ok: boolean; reason?: string } | null>(null);
   const [status, setStatus] = useState<BroadcastStatus | null>(null);
@@ -79,6 +93,9 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
   // Mesa de cenas + permissão + lista de dispositivos
   useEffect(() => {
     if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
+    pdf.current = new PdfPresenter();
+    pdf.current.onChange = () => setPdfView(pdf.current!.view);
+    if (comp.current) comp.current.pdf = pdf.current;
     void checkSupport().then(setSupport);
     (async () => {
       try {
@@ -98,6 +115,7 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
     })();
     return () => {
       comp.current?.destroy();
+      pdf.current?.destroy();
       camTrack.current?.stop();
       screenTrack.current?.stop();
       micStream.current?.getTracks().forEach((t) => t.stop());
@@ -105,19 +123,80 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
     };
   }, []);
 
-  // Tamanho do quadro = qualidade escolhida
-  useEffect(() => {
+  // Tamanho do quadro = qualidade e formato (horizontal 16:9 ou vertical 9:16)
+  const dims = () => {
     const q = QUALITIES[quality];
-    comp.current?.resize(q.w, q.h);
-  }, [quality]);
-
-  // Cena e canto da câmera
+    return vertical ? { w: q.h, h: q.w } : { w: q.w, h: q.h };
+  };
   useEffect(() => {
-    if (comp.current) {
-      comp.current.scene = scene;
-      comp.current.corner = corner;
+    const d = dims();
+    comp.current?.resize(d.w, d.h);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quality, vertical]);
+
+  // Cena, canto, giro, espelho e encaixe da câmera
+  useEffect(() => {
+    const c = comp.current;
+    if (!c) return;
+    c.scene = scene;
+    c.corner = corner;
+    c.rotation = rotation;
+    c.mirror = mirror;
+    c.fit = fit;
+    c.pip = pip;
+  }, [scene, corner, rotation, mirror, fit, pip]);
+
+  // Tela ligada durante a live (o celular não apaga a tela no meio da aula)
+  useEffect(() => {
+    if (!onAir || !('wakeLock' in navigator)) return;
+    let lock: { release: () => Promise<void> } | null = null;
+    const get = () =>
+      (navigator as Navigator & { wakeLock: { request: (t: 'screen') => Promise<{ release: () => Promise<void> }> } }).wakeLock
+        .request('screen')
+        .then((l) => (lock = l))
+        .catch(() => {});
+    void get();
+    const again = () => document.visibilityState === 'visible' && void get();
+    document.addEventListener('visibilitychange', again);
+    return () => {
+      document.removeEventListener('visibilitychange', again);
+      void lock?.release();
+    };
+  }, [onAir]);
+
+  /** Abre um PDF da live no Estúdio */
+  async function openPdf(id: string) {
+    const m = materials.find((x) => x.id === id);
+    setPdfId(id);
+    if (!m || !pdf.current) return;
+    setPdfBusy(true);
+    try {
+      const url = await getFileUrl(m.file_path);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error();
+      await pdf.current.load(await res.arrayBuffer());
+      setPdfView(pdf.current.view);
+      setScene('pdf');
+    } catch {
+      toast.error('Não foi possível abrir este PDF.');
+    } finally {
+      setPdfBusy(false);
     }
-  }, [scene, corner]);
+  }
+
+  // Arrastar na prévia move a parte do PDF que aparece
+  const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (scene !== 'pdf') return;
+    drag.current = { x: e.clientX, y: e.clientY };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drag.current || scene !== 'pdf') return;
+    const r = e.currentTarget.getBoundingClientRect();
+    pdf.current?.pan((e.clientX - drag.current.x) / r.width, (e.clientY - drag.current.y) / r.height);
+    drag.current = { x: e.clientX, y: e.clientY };
+  };
+  const onUp = () => (drag.current = null);
 
   // Câmera escolhida
   useEffect(() => {
@@ -182,6 +261,12 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
   }
 
   function pickScene(s: Scene) {
+    if (s === 'pdf') {
+      setScene('pdf');
+      if (!pdfView && materials[0]) void openPdf(materials[0].id);
+      else if (!materials.length) toast('Suba um PDF em "PDFs da live" (abaixo) para mostrar aqui.');
+      return;
+    }
     if (s !== 'camera' && !screenTrack.current) {
       setScene(s);
       void shareScreen('monitor');
@@ -251,9 +336,10 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
       const m = mixer();
       await m.ctx.resume();
       const q = QUALITIES[quality];
+      const d = dims();
       // Só o áudio vai pela trilha; o vídeo vem da mesa de cenas (quadro a quadro)
       const stream = new MediaStream([m.dest.stream.getAudioTracks()[0]]);
-      const b = new Broadcaster({ liveId, stream, width: q.w, height: q.h, fps: 30, videoBitrate: q.bitrate, onStatus: setStatus });
+      const b = new Broadcaster({ liveId, stream, width: d.w, height: d.h, fps: 30, videoBitrate: q.bitrate, onStatus: setStatus });
       caster.current = b;
       await b.start();
       if (comp.current) comp.current.onFrame = (c) => b.pushFrame(c);
@@ -285,8 +371,18 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="space-y-3">
-        <div className="relative aspect-video overflow-hidden rounded-2xl border border-line bg-black">
-          <canvas ref={canvasRef} width={1280} height={720} className="size-full object-contain" aria-label="Prévia da transmissão" />
+        <div className={cn('relative mx-auto overflow-hidden rounded-2xl border border-line bg-black', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full')}>
+          <canvas
+            ref={canvasRef}
+            width={1280}
+            height={720}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
+            className={cn('size-full object-contain', scene === 'pdf' && 'cursor-grab touch-none active:cursor-grabbing')}
+            aria-label="Prévia da transmissão"
+          />
           {onAir && (
             <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
               <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
@@ -296,14 +392,13 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
         </div>
 
         {/* Cenas */}
-        <div className="grid grid-cols-3 gap-2">
-          {SCENES.map((s) => (
+        <div className={cn('grid gap-2', canShare ? 'grid-cols-4' : 'grid-cols-2')}>
+          {SCENES.filter((s) => canShare || !s.desktop).map((s) => (
             <button
               key={s.key}
               type="button"
               aria-pressed={scene === s.key}
               onClick={() => pickScene(s.key)}
-              disabled={s.key !== 'camera' && !canShare}
               className={cn(
                 'flex flex-col items-center gap-1 rounded-xl border px-2 py-2.5 text-xs font-semibold transition disabled:opacity-40',
                 scene === s.key ? 'border-red-500 bg-red-500/10 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
@@ -314,7 +409,71 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
             </button>
           ))}
         </div>
-        {scene === 'both' && (
+        {/* PDF na live */}
+        {scene === 'pdf' && (
+          <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
+            {materials.length ? (
+              <Select value={pdfId} onChange={(e) => void openPdf(e.target.value)} aria-label="PDF para mostrar">
+                <option value="" disabled>
+                  Escolha o PDF
+                </option>
+                {materials.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.title}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, logo abaixo. Ele aparece aqui para você mostrar.</p>
+            )}
+            {pdfBusy && (
+              <p className="flex items-center gap-2 text-xs text-muted">
+                <Spinner /> Abrindo o PDF…
+              </p>
+            )}
+            {pdfView && pdfView.pages > 0 && (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page - 1)} disabled={pdfView.page <= 1} aria-label="Página anterior" className={buttonClass('secondary', 'icon', 'size-10')}>
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <span className="text-sm font-semibold text-ink tabular-nums">
+                    Página {pdfView.page} de {pdfView.pages}
+                  </span>
+                  <button type="button" onClick={() => void pdf.current?.goTo(pdfView.page + 1)} disabled={pdfView.page >= pdfView.pages} aria-label="Próxima página" className={buttonClass('secondary', 'icon', 'size-10')}>
+                    <ChevronRight className="size-5" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-6 gap-1.5">
+                  <button type="button" onClick={() => void pdf.current?.setZoom(pdfView.zoom / 1.25)} aria-label="Diminuir" className={buttonClass('secondary', 'sm', 'px-0')}>
+                    <Minus className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => void pdf.current?.setZoom(pdfView.zoom * 1.25)} aria-label="Aumentar" className={buttonClass('secondary', 'sm', 'px-0')}>
+                    <Plus className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => pdf.current?.pan(0, 0.5)} aria-label="Subir" className={buttonClass('secondary', 'sm', 'px-0')}>
+                    <ArrowUp className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => pdf.current?.pan(0, -0.5)} aria-label="Descer" className={buttonClass('secondary', 'sm', 'px-0')}>
+                    <ArrowDown className="size-4" />
+                  </button>
+                  <button type="button" onClick={() => pdf.current?.fitWidth()} className={buttonClass('secondary', 'sm', 'px-0 text-[11px]')}>
+                    Largura
+                  </button>
+                  <button type="button" onClick={() => pdf.current?.fitPage()} className={buttonClass('secondary', 'sm', 'px-0 text-[11px]')}>
+                    Página
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-ink-2">
+                  <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
+                </label>
+                <p className="text-[11px] text-muted">Arraste na prévia para escolher a parte do PDF que os alunos veem.</p>
+              </>
+            )}
+          </div>
+        )}
+
+        {(scene === 'both' || (scene === 'pdf' && pip)) && (
           <div className="flex items-center gap-2 text-xs text-ink-2">
             Câmera no canto:
             {CORNERS.map((c) => (
@@ -374,6 +533,39 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
             <option value="none">Sem câmera</option>
           </Select>
         </label>
+        <div className="grid grid-cols-3 gap-1.5">
+          <button type="button" onClick={() => setRotation((r) => (r + 90) % 360)} className={buttonClass('secondary', 'sm', 'px-1 text-[11px]')} aria-label="Girar câmera">
+            <RotateCw className="size-4" /> Girar{rotation ? ` ${rotation}°` : ''}
+          </button>
+          <button type="button" onClick={() => setMirror((m) => !m)} aria-pressed={mirror} className={buttonClass(mirror ? 'primary' : 'secondary', 'sm', 'px-1 text-[11px]')} aria-label="Espelhar câmera">
+            <FlipHorizontal2 className="size-4" /> Espelhar
+          </button>
+          <button type="button" onClick={() => setFit((f) => (f === 'cover' ? 'contain' : 'cover'))} className={buttonClass('secondary', 'sm', 'px-1 text-[11px]')} aria-label="Encaixe da câmera">
+            {fit === 'cover' ? 'Preencher' : 'Inteira'}
+          </button>
+        </div>
+        <div className="space-y-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+            <Smartphone className="size-3.5" /> Formato da live
+          </span>
+          <div className="grid grid-cols-2 gap-1.5">
+            {[
+              { v: false, label: 'Horizontal (16:9)' },
+              { v: true, label: 'Vertical (9:16)' },
+            ].map((o) => (
+              <button
+                key={o.label}
+                type="button"
+                disabled={onAir}
+                aria-pressed={vertical === o.v}
+                onClick={() => setVertical(o.v)}
+                className={cn('rounded-xl border px-2 py-2 text-xs font-semibold transition disabled:opacity-50', vertical === o.v ? 'border-brand bg-brand text-white' : 'border-line text-ink-2')}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
@@ -394,7 +586,9 @@ export function Studio({ liveId, live, ready, hint }: { liveId: string; live: bo
               )}
             </div>
           ) : (
-            <p className="text-xs text-muted">Espelhar a tela só funciona no computador (Chrome ou Edge).</p>
+            <p className="text-xs text-muted">
+              No celular e no tablet, mostre o PDF pela cena <strong>PDF + câmera</strong>. Não saia do navegador durante a live: o aparelho pausa a transmissão.
+            </p>
           )}
           {screenOn && <p className="text-[11px] text-success">Tela espelhada. Pode trocar de janela: a live continua.</p>}
         </div>

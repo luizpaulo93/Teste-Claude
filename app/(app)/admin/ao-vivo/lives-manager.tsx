@@ -315,7 +315,7 @@ function YoutubeCard({ yt }: { yt: YoutubeState }) {
           <MonitorPlay className="size-4" /> Conectar conta do YouTube
         </a>
       )}
-      {!yt.channel && <p className="text-xs text-muted">Conecte uma vez. No Estúdio, a live é criada no seu canal e, ao encerrar, o link vira aula na pasta “Lives”.</p>}
+      {!yt.channel && <p className="text-xs text-muted">Conecte uma vez. No Estúdio, a live é criada no seu canal e, ao encerrar, o link vira aula na pasta “Live”.</p>}
       {!yt.channel && <YoutubeGuide origin={yt.origin} open={!yt.oauth} />}
     </Card>
   );
