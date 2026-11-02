@@ -35,6 +35,29 @@ const CORNERS: { key: Corner; label: string }[] = [
   { key: 'br', label: '↘' },
 ];
 
+/** Nomes que o Android dá aos microfones, em português (no computador vem o nome do aparelho). */
+function micName(d: MediaDeviceInfo, i: number) {
+  const l = d.label.trim();
+  if (!l) return `Microfone ${i + 1}`;
+  if (/^speakerphone$/i.test(l)) return 'Microfone do celular';
+  if (/headset earpiece|earpiece/i.test(l)) return 'Microfone do celular (modo chamada)';
+  if (/bluetooth/i.test(l)) return l.replace(/bluetooth headset/i, '').trim() ? `Bluetooth: ${l.replace(/bluetooth headset/i, '').trim()}` : 'Fone Bluetooth';
+  if (/^usb (headset|audio|device|microphone)$/i.test(l)) return 'Microfone USB';
+  if (/^(wired )?headset$/i.test(l)) return 'Fone com fio';
+  if (/^default$/i.test(l)) return 'Padrão do sistema';
+  return l.replace(/^Default - /i, 'Padrão: ').replace(/^Communications - /i, 'Chamadas: ');
+}
+function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
+  const l = d.label.trim();
+  if (!l) return `Câmera ${i + 1}`;
+  const side = /facing back|back|rear|traseira/i.test(l) ? 'back' : /facing front|front|frontal|user/i.test(l) ? 'front' : '';
+  if (!side || !/^camera\s*\d/i.test(l)) return l;
+  const same = all.filter((x) => (side === 'back' ? /facing back/i : /facing front/i).test(x.label));
+  const n = same.indexOf(d);
+  const base = side === 'back' ? 'Câmera traseira' : 'Câmera frontal';
+  return same.length > 1 ? `${base} ${n + 1}` : base;
+}
+
 const clock = (s: number) => `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
 /**
@@ -112,16 +135,14 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       } catch {
         setPermError('Libere o acesso à câmera e ao microfone no navegador para usar o estúdio.');
       }
-      const list = await navigator.mediaDevices.enumerateDevices();
-      const c = list.filter((d) => d.kind === 'videoinput');
-      const m = list.filter((d) => d.kind === 'audioinput');
-      setCams(c);
-      setMics(m);
+      await refreshDevices(true);
       setCanShare('getDisplayMedia' in navigator.mediaDevices);
-      setCam((v) => v || c[0]?.deviceId || 'none');
-      setMic((v) => v || m[0]?.deviceId || 'none');
     })();
+    // Conectou ou tirou um microfone/câmera (USB, Bluetooth, fio): a lista atualiza sozinha
+    const onChange = () => void refreshDevices(false);
+    navigator.mediaDevices.addEventListener?.('devicechange', onChange);
     return () => {
+      navigator.mediaDevices.removeEventListener?.('devicechange', onChange);
       comp.current?.destroy();
       pdf.current?.destroy();
       camTrack.current?.stop();
@@ -130,6 +151,24 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
       void audio.current?.ctx.close();
     };
   }, []);
+
+  const knownMics = useRef<Set<string> | null>(null);
+  /** Lê a lista de câmeras e microfones. Microfone novo conectado já fica escolhido. */
+  async function refreshDevices(first: boolean) {
+    const list = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+    const c = list.filter((d) => d.kind === 'videoinput');
+    const m = list.filter((d) => d.kind === 'audioinput');
+    setCams(c);
+    setMics(m);
+    setCam((v) => (v && (v === 'none' || c.some((x) => x.deviceId === v)) ? v : c[0]?.deviceId || 'none'));
+    const before = knownMics.current;
+    knownMics.current = new Set(m.map((x) => x.deviceId));
+    const added = before && !first ? m.filter((x) => !before.has(x.deviceId) && !/^(default|communications)$/.test(x.deviceId)) : [];
+    if (added[0]) {
+      setMic(added[0].deviceId);
+      toast(`Microfone conectado: ${micName(added[0], m.indexOf(added[0]))}`);
+    } else setMic((v) => (v && (v === 'none' || m.some((x) => x.deviceId === v)) ? v : m[0]?.deviceId || 'none'));
+  }
 
   // Tamanho do quadro = qualidade e formato (horizontal 16:9 ou vertical 9:16)
   const dims = () => {
@@ -714,7 +753,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
           <Select value={cam} onChange={(e) => setCam(e.target.value)} aria-label="Câmera">
             {cams.map((c, i) => (
               <option key={c.deviceId || i} value={c.deviceId}>
-                {c.label || `Câmera ${i + 1}`}
+                {camName(c, i, cams)}
               </option>
             ))}
             <option value="none">Sem câmera</option>
@@ -765,7 +804,7 @@ export function Studio({ liveId, live, ready, hint, materials = [] }: { liveId: 
           <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone">
             {mics.map((m, i) => (
               <option key={m.deviceId || i} value={m.deviceId}>
-                {m.label || `Microfone ${i + 1}`}
+                {micName(m, i)}
               </option>
             ))}
             <option value="none">Sem microfone</option>
