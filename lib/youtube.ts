@@ -143,6 +143,72 @@ export async function createBroadcast(title: string, description: string) {
   return { videoId: broadcast.id, ingest };
 }
 
+/**
+ * Live para um app externo (celular/tablet espelhando a tela, ou OBS): chave RTMPS exclusiva desta live.
+ * enableAutoStop desligado: se a internet do celular cair por alguns segundos, a live NÃO termina sozinha;
+ * o app reconecta com a mesma chave e só o professor encerra.
+ */
+export async function createExternalBroadcast(title: string, description: string) {
+  const stream = await yt<{
+    id: string;
+    cdn: { ingestionInfo: { ingestionAddress: string; rtmpsIngestionAddress?: string; streamName: string } };
+  }>('/liveStreams?part=snippet,cdn,contentDetails', {
+    method: 'POST',
+    body: JSON.stringify({
+      snippet: { title: title.slice(0, 100) },
+      cdn: { ingestionType: 'rtmp', resolution: 'variable', frameRate: 'variable' },
+      contentDetails: { isReusable: false },
+    }),
+  });
+  const broadcast = await yt<{ id: string }>('/liveBroadcasts?part=snippet,status,contentDetails', {
+    method: 'POST',
+    body: JSON.stringify({
+      snippet: { title: title.slice(0, 100), description: description.slice(0, 4000), scheduledStartTime: new Date().toISOString() },
+      status: { privacyStatus: 'unlisted', selfDeclaredMadeForKids: false },
+      contentDetails: { enableAutoStart: true, enableAutoStop: false, enableDvr: true, latencyPreference: 'low', monitorStream: { enableMonitorStream: false } },
+    }),
+  });
+  await yt(`/liveBroadcasts/bind?id=${broadcast.id}&part=id,contentDetails&streamId=${stream.id}`, { method: 'POST' });
+  const info = stream.cdn.ingestionInfo;
+  return {
+    videoId: broadcast.id,
+    streamId: stream.id,
+    server: info.rtmpsIngestionAddress || 'rtmps://a.rtmps.youtube.com/live2',
+    serverRtmp: info.ingestionAddress,
+    key: info.streamName,
+  };
+}
+
+/** O YouTube está recebendo o vídeo do app? (active = recebendo; health = qualidade da conexão) */
+export async function streamHealth(streamId: string) {
+  const j = await yt<{ items?: { status?: { streamStatus?: string; healthStatus?: { status?: string } } }[] }>(`/liveStreams?part=status&id=${encodeURIComponent(streamId)}`);
+  const st = j.items?.[0]?.status;
+  return { stream: st?.streamStatus ?? 'unknown', health: st?.healthStatus?.status ?? 'noData' };
+}
+
+/** Apaga a chave no YouTube (depois do fim, ninguém mais consegue transmitir com ela). */
+export async function deleteStream(streamId: string) {
+  await yt(`/liveStreams?id=${encodeURIComponent(streamId)}`, { method: 'DELETE' }).catch(() => {});
+}
+
+export interface ExternalIngest {
+  videoId: string;
+  streamId: string;
+  server: string;
+  serverRtmp: string;
+  key: string;
+}
+export async function setExternal(liveId: string, data: ExternalIngest) {
+  await sql.exec(
+    `insert into integrations (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
+    [`ext:${liveId}`, JSON.stringify(data)],
+  );
+}
+export async function getExternal(liveId: string) {
+  const row = await sql.one<{ data: ExternalIngest }>(`select data from integrations where id = $1`, [`ext:${liveId}`]);
+  return row?.data ?? null;
+}
+
 export async function endBroadcast(videoId: string) {
   await yt(`/liveBroadcasts/transition?broadcastStatus=complete&id=${videoId}&part=status`, { method: 'POST' }).catch(() => {});
 }
