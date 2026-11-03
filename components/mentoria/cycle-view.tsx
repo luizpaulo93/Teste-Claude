@@ -12,8 +12,7 @@ const period = (a: string | null, b: string | null) => [dmy(a), dmy(b)].filter(B
 
 /** Lista dos ciclos anteriores (salvos quando o mentor começou um novo). */
 export function CycleList({ list, base }: { list: Awaited<ReturnType<typeof cyclesOf>>; base: string }) {
-  if (!list.length)
-    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior.</p>;
+  if (!list.length) return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior.</p>;
   return (
     <ul className="space-y-2">
       {list.map((c) => (
@@ -45,11 +44,26 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
   const disciplines = DISCIPLINES.filter((d) => !specific || inPlan.has(d.key)).map((d) => ({ key: d.key, name: d.name }));
   const rows: AssuntoRow[] = ASSUNTOS.filter((a) => (specific ? by.has(a.key) : true)).map((a) => {
     const c = by.get(a.key);
-    return { key: a.key, discipline: a.discipline, block: a.block, title: a.title, priority: a.priority, level: c ? c.level : null, last_acc: c?.last_acc ?? null, due_on: null, attempts: c?.attempts ?? 0, scheduled: null, extra: null, byStudent: false };
+    return {
+      key: a.key,
+      discipline: a.discipline,
+      block: a.block,
+      title: a.title,
+      priority: a.priority,
+      level: c ? c.level : null,
+      last_acc: c?.last_acc ?? null,
+      due_on: null,
+      attempts: c?.attempts ?? 0,
+      scheduled: null,
+      extra: null,
+      byStudent: false,
+    };
   });
   const names = Object.fromEntries(DISCIPLINES.map((d) => [d.key, d.name]));
   const done = cycle.cards
-    .flatMap((c) => (c.history ?? []).map((h) => ({ ...h, title: ASSUNTO_BY_KEY.get(c.item_key)?.title ?? c.title, discipline: names[c.discipline] ?? c.discipline })))
+    .flatMap((c) =>
+      (c.history ?? []).map((h) => ({ ...h, title: ASSUNTO_BY_KEY.get(c.item_key)?.title ?? c.title, discipline: names[c.discipline] ?? c.discipline })),
+    )
     .sort((a, b) => b.d.localeCompare(a.d));
   const days = [...new Set(done.map((x) => x.d))];
   const q = done.reduce((a, x) => a + x.q, 0);

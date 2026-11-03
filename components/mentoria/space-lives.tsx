@@ -7,13 +7,26 @@ import type { LiveSession } from '@/lib/types';
 /** Lives só da mentoria: no ar, agendadas e gravadas (a gravação também vira aula na pasta "Lives"). */
 export async function SpaceLives({ spaces, admin }: { spaces: string[]; admin?: boolean }) {
   const lives = spaces.length
-    ? await sql.query<LiveSession>(`select * from live_sessions where (space = any($1) or audience && $1::text[]) ${admin ? '' : 'and is_published'} order by starts_at desc limit 100`, [spaces])
+    ? await sql.query<LiveSession>(
+        `select * from live_sessions where (space = any($1) or audience && $1::text[]) ${admin ? '' : 'and is_published'} order by starts_at desc limit 100`,
+        [spaces],
+      )
     : [];
   const now = lives.filter((l) => l.status === 'live');
   const next = lives.filter((l) => l.status === 'scheduled').reverse();
   const past = lives.filter((l) => l.status === 'ended' && l.youtube_id);
   if (!lives.length)
-    return <EmptyState icon={<Radio className="size-6" />} title="Nenhuma live da mentoria" description={admin ? 'Em Admin → Ao vivo, agende uma live escolhendo esta mentoria em "Quem pode assistir".' : 'Quando o mentor agendar uma live, ela aparece aqui.'} />;
+    return (
+      <EmptyState
+        icon={<Radio className="size-6" />}
+        title="Nenhuma live da mentoria"
+        description={
+          admin
+            ? 'Em Admin → Ao vivo, agende uma live escolhendo esta mentoria em "Quem pode assistir".'
+            : 'Quando o mentor agendar uma live, ela aparece aqui.'
+        }
+      />
+    );
   const Section = ({ title, list }: { title: string; list: LiveSession[] }) =>
     list.length ? (
       <section className="space-y-2.5">

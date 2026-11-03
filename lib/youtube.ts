@@ -23,7 +23,11 @@ export interface YoutubeAccount {
 }
 
 // Tira espaços e aspas colados por engano junto com as chaves na Vercel
-const envClean = (v?: string) => (v ?? '').trim().replace(/^["']|["']$/g, '').trim();
+const envClean = (v?: string) =>
+  (v ?? '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .trim();
 export const googleClientId = () => envClean(process.env.GOOGLE_CLIENT_ID);
 const googleClientSecret = () => envClean(process.env.GOOGLE_CLIENT_SECRET);
 export const oauthConfigured = () => Boolean(googleClientId() && googleClientSecret());
@@ -37,10 +41,9 @@ export async function saveAccount(patch: Partial<YoutubeAccount>) {
   const cur = await getAccount();
   const next = { ...cur, ...patch };
   for (const k of Object.keys(next) as (keyof YoutubeAccount)[]) if (next[k] === undefined || next[k] === '') delete next[k];
-  await sql.exec(
-    `insert into integrations (id, data) values ('youtube', $1) on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [JSON.stringify(next)],
-  );
+  await sql.exec(`insert into integrations (id, data) values ('youtube', $1) on conflict (id) do update set data = excluded.data, updated_at = now()`, [
+    JSON.stringify(next),
+  ]);
   return next;
 }
 
@@ -71,7 +74,13 @@ export async function exchangeCode(code: string, redirectUri: string) {
       grant_type: 'authorization_code',
     }),
   });
-  const j = (await res.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
+  const j = (await res.json().catch(() => ({}))) as {
+    access_token?: string;
+    refresh_token?: string;
+    expires_in?: number;
+    error?: string;
+    error_description?: string;
+  };
   if (!res.ok || !j.access_token) throw new Error(`token:${j.error ?? res.status}:${j.error_description ?? ''}`);
   return j;
 }
@@ -106,7 +115,8 @@ async function yt<T>(path: string, init: RequestInit & { token?: string } = {}):
   if (!res.ok) {
     const reason = j.error?.errors?.[0]?.reason;
     if (reason === 'youtubeSignupRequired') throw new Error('youtubeSignupRequired');
-    if (reason === 'liveStreamingNotEnabled') throw new Error('Ative a transmissão ao vivo no seu canal (YouTube Studio → Transmitir). A liberação pode levar até 24 h.');
+    if (reason === 'liveStreamingNotEnabled')
+      throw new Error('Ative a transmissão ao vivo no seu canal (YouTube Studio → Transmitir). A liberação pode levar até 24 h.');
     throw new Error(j.error?.message || 'O YouTube recusou o pedido.');
   }
   return j;
@@ -120,14 +130,17 @@ export async function channelOf(token: string) {
 
 /** Cria a live (não listada) no canal e devolve o ID do vídeo e o endereço HLS. */
 export async function createBroadcast(title: string, description: string) {
-  const stream = await yt<{ id: string; cdn: { ingestionInfo: { ingestionAddress: string; streamName: string } } }>('/liveStreams?part=snippet,cdn,contentDetails', {
-    method: 'POST',
-    body: JSON.stringify({
-      snippet: { title: title.slice(0, 100) },
-      cdn: { ingestionType: 'hls', resolution: 'variable', frameRate: 'variable' },
-      contentDetails: { isReusable: false },
-    }),
-  });
+  const stream = await yt<{ id: string; cdn: { ingestionInfo: { ingestionAddress: string; streamName: string } } }>(
+    '/liveStreams?part=snippet,cdn,contentDetails',
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        snippet: { title: title.slice(0, 100) },
+        cdn: { ingestionType: 'hls', resolution: 'variable', frameRate: 'variable' },
+        contentDetails: { isReusable: false },
+      }),
+    },
+  );
   const broadcast = await yt<{ id: string }>('/liveBroadcasts?part=snippet,status,contentDetails', {
     method: 'POST',
     body: JSON.stringify({
@@ -165,7 +178,13 @@ export async function createExternalBroadcast(title: string, description: string
     body: JSON.stringify({
       snippet: { title: title.slice(0, 100), description: description.slice(0, 4000), scheduledStartTime: new Date().toISOString() },
       status: { privacyStatus: 'unlisted', selfDeclaredMadeForKids: false },
-      contentDetails: { enableAutoStart: true, enableAutoStop: false, enableDvr: true, latencyPreference: 'low', monitorStream: { enableMonitorStream: false } },
+      contentDetails: {
+        enableAutoStart: true,
+        enableAutoStop: false,
+        enableDvr: true,
+        latencyPreference: 'low',
+        monitorStream: { enableMonitorStream: false },
+      },
     }),
   });
   await yt(`/liveBroadcasts/bind?id=${broadcast.id}&part=id,contentDetails&streamId=${stream.id}`, { method: 'POST' });
@@ -181,7 +200,9 @@ export async function createExternalBroadcast(title: string, description: string
 
 /** O YouTube está recebendo o vídeo do app? (active = recebendo; health = qualidade da conexão) */
 export async function streamHealth(streamId: string) {
-  const j = await yt<{ items?: { status?: { streamStatus?: string; healthStatus?: { status?: string } } }[] }>(`/liveStreams?part=status&id=${encodeURIComponent(streamId)}`);
+  const j = await yt<{ items?: { status?: { streamStatus?: string; healthStatus?: { status?: string } } }[] }>(
+    `/liveStreams?part=status&id=${encodeURIComponent(streamId)}`,
+  );
   const st = j.items?.[0]?.status;
   return { stream: st?.streamStatus ?? 'unknown', health: st?.healthStatus?.status ?? 'noData' };
 }
@@ -199,10 +220,10 @@ export interface ExternalIngest {
   key: string;
 }
 export async function setExternal(liveId: string, data: ExternalIngest) {
-  await sql.exec(
-    `insert into integrations (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [`ext:${liveId}`, JSON.stringify(data)],
-  );
+  await sql.exec(`insert into integrations (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`, [
+    `ext:${liveId}`,
+    JSON.stringify(data),
+  ]);
 }
 export async function getExternal(liveId: string) {
   const row = await sql.one<{ data: ExternalIngest }>(`select data from integrations where id = $1`, [`ext:${liveId}`]);
@@ -215,10 +236,10 @@ export async function endBroadcast(videoId: string) {
 
 // ---------- endereço de envio de cada live (guardado só no servidor)
 export async function setIngest(liveId: string, ingest: string) {
-  await sql.exec(
-    `insert into integrations (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [`ingest:${liveId}`, JSON.stringify({ ingest })],
-  );
+  await sql.exec(`insert into integrations (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`, [
+    `ingest:${liveId}`,
+    JSON.stringify({ ingest }),
+  ]);
 }
 export async function getIngest(liveId: string) {
   const row = await sql.one<{ data: { ingest?: string } }>(`select data from integrations where id = $1`, [`ingest:${liveId}`]);

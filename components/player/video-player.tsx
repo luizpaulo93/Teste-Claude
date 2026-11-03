@@ -53,14 +53,7 @@ const HIDE_AFTER_MS = 2000; // controles somem 2 s depois do último toque
 const EDGE = 0.28; // 28% de cada lado: toque duplo volta/avança 10 s
 const SAVE_EVERY_SEC = 30;
 
-const WM_POS = [
-  'top-[10%] left-[4%]',
-  'top-[16%] right-[4%]',
-  'top-[42%] left-[4%]',
-  'top-[46%] right-[4%]',
-  'top-[68%] left-[4%]',
-  'top-[72%] right-[4%]',
-];
+const WM_POS = ['top-[10%] left-[4%]', 'top-[16%] right-[4%]', 'top-[42%] left-[4%]', 'top-[46%] right-[4%]', 'top-[68%] left-[4%]', 'top-[72%] right-[4%]'];
 
 export interface VideoPlayerProps {
   videoId: string;
@@ -553,7 +546,10 @@ export function VideoPlayer({
       {/* Vídeo do YouTube (maior que a moldura para esconder título e logo do YouTube).
           Na tela cheia o vídeo fica inteiro em 16:9, com bordas pretas no que sobrar (como no YouTube). */}
       <div className="pointer-events-none absolute inset-0 flex items-center justify-center overflow-hidden">
-        <div className="relative overflow-hidden" style={isFull ? (box ? { width: box.w, height: box.h } : { width: '100%', aspectRatio: '16 / 9' }) : { position: 'absolute', inset: 0 }}>
+        <div
+          className="relative overflow-hidden"
+          style={isFull ? (box ? { width: box.w, height: box.h } : { width: '100%', aspectRatio: '16 / 9' }) : { position: 'absolute', inset: 0 }}
+        >
           <div
             ref={mountRef}
             className={cn(
@@ -574,7 +570,9 @@ export function VideoPlayer({
           key={feedback.key}
           className={cn(
             'pointer-events-none absolute inset-y-0 z-30 flex w-28 animate-fade-in items-center justify-center sm:w-40',
-            feedback.side === 'left' ? 'left-0 rounded-r-full bg-gradient-to-r from-black/60 to-transparent' : 'right-0 rounded-l-full bg-gradient-to-l from-black/60 to-transparent',
+            feedback.side === 'left'
+              ? 'left-0 rounded-r-full bg-gradient-to-r from-black/60 to-transparent'
+              : 'right-0 rounded-l-full bg-gradient-to-l from-black/60 to-transparent',
           )}
         >
           <div className="flex flex-col items-center gap-1 text-white">
@@ -595,7 +593,10 @@ export function VideoPlayer({
       {watermark && started && (
         <div
           aria-hidden
-          className={cn('pointer-events-none absolute z-[35] max-w-[85%] truncate text-[10px] font-semibold text-white/30 transition-all duration-1000 sm:text-xs', WM_POS[wmPos])}
+          className={cn(
+            'pointer-events-none absolute z-[35] max-w-[85%] truncate text-[10px] font-semibold text-white/30 transition-all duration-1000 sm:text-xs',
+            WM_POS[wmPos],
+          )}
           style={{ textShadow: '0 1px 2px rgba(0,0,0,.6)' }}
         >
           {watermark}
@@ -659,10 +660,18 @@ export function VideoPlayer({
       {/* Velocidade: painel na frente do vídeo (fácil de tocar no celular) */}
       {speedOpen && (
         <div className="absolute inset-0 z-50 grid place-items-center bg-black/75 p-3 backdrop-blur-sm" onClick={() => setSpeedOpen(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-[270px] rounded-2xl border border-white/15 bg-[#0d1527]/95 p-3 text-white shadow-2xl sm:max-w-xs sm:p-4">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-[270px] rounded-2xl border border-white/15 bg-[#0d1527]/95 p-3 text-white shadow-2xl sm:max-w-xs sm:p-4"
+          >
             <div className="mb-2.5 flex items-center justify-between border-b border-white/10 pb-2">
               <span className="text-sm font-bold">Velocidade</span>
-              <button type="button" onClick={() => setSpeedOpen(false)} aria-label="Fechar" className="grid size-7 place-items-center rounded-lg bg-white/10 hover:bg-white/20">
+              <button
+                type="button"
+                onClick={() => setSpeedOpen(false)}
+                aria-label="Fechar"
+                className="grid size-7 place-items-center rounded-lg bg-white/10 hover:bg-white/20"
+              >
                 <X className="size-4" />
               </button>
             </div>
@@ -672,7 +681,10 @@ export function VideoPlayer({
                   key={s}
                   type="button"
                   onClick={() => changeSpeed(s)}
-                  className={cn('rounded-xl py-2 text-sm font-bold tabular-nums transition', s === speed ? 'bg-brand text-white ring-1 ring-blue-400/50' : 'bg-white/10 hover:bg-white/15')}
+                  className={cn(
+                    'rounded-xl py-2 text-sm font-bold tabular-nums transition',
+                    s === speed ? 'bg-brand text-white ring-1 ring-blue-400/50' : 'bg-white/10 hover:bg-white/15',
+                  )}
                 >
                   {s}x
                 </button>
@@ -706,7 +718,11 @@ export function VideoPlayer({
               </button>
             )}
             {onNext && (
-              <button type="button" onClick={onNext} className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#070b14] hover:bg-slate-200">
+              <button
+                type="button"
+                onClick={onNext}
+                className="flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-[#070b14] hover:bg-slate-200"
+              >
                 Próxima aula <SkipForward className="size-4" />
               </button>
             )}
@@ -715,7 +731,12 @@ export function VideoPlayer({
       )}
 
       {/* Sombra de cima, junto com os controles */}
-      <div className={cn('pointer-events-none absolute inset-x-0 top-0 z-30 h-20 bg-gradient-to-b from-black/80 to-transparent transition-opacity duration-300', barVisible && started ? 'opacity-100' : 'opacity-0')} />
+      <div
+        className={cn(
+          'pointer-events-none absolute inset-x-0 top-0 z-30 h-20 bg-gradient-to-b from-black/80 to-transparent transition-opacity duration-300',
+          barVisible && started ? 'opacity-100' : 'opacity-0',
+        )}
+      />
 
       {/* Barra de controles */}
       {ready && !ytError && (
@@ -735,7 +756,10 @@ export function VideoPlayer({
               <div className="absolute inset-y-0 left-0 rounded-full bg-white/30" style={{ width: `${buffered}%` }} />
               <div className="absolute inset-y-0 left-0 rounded-full bg-brand" style={{ width: `${pct}%` }} />
             </div>
-            <span className="pointer-events-none absolute size-3.5 -translate-x-1/2 rounded-full bg-white shadow transition-transform group-hover/seek:scale-110" style={{ left: `${pct}%` }} />
+            <span
+              className="pointer-events-none absolute size-3.5 -translate-x-1/2 rounded-full bg-white shadow transition-transform group-hover/seek:scale-110"
+              style={{ left: `${pct}%` }}
+            />
             <input
               type="range"
               min={0}
@@ -815,7 +839,10 @@ export function VideoPlayer({
               onClick={toggleCaptions}
               aria-pressed={cc}
               title={cc ? 'Desativar legenda (C)' : 'Ativar legenda (C)'}
-              className={cn('flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition', cc ? 'bg-brand text-white' : 'bg-white/10 hover:bg-white/15')}
+              className={cn(
+                'flex h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-bold transition',
+                cc ? 'bg-brand text-white' : 'bg-white/10 hover:bg-white/15',
+              )}
             >
               <Captions className="size-4" />
               <span className="hidden sm:inline">Legenda</span>
@@ -831,7 +858,11 @@ export function VideoPlayer({
               </button>
             )}
             {onToggleTheater && !isFull && (
-              <CtrlBtn label={theater ? 'Sair do modo cinema (T)' : 'Modo cinema (T)'} onClick={onToggleTheater} className={cn('hidden lg:grid', theater && 'text-blue-300')}>
+              <CtrlBtn
+                label={theater ? 'Sair do modo cinema (T)' : 'Modo cinema (T)'}
+                onClick={onToggleTheater}
+                className={cn('hidden lg:grid', theater && 'text-blue-300')}
+              >
                 <RectangleHorizontal className="size-[18px]" />
               </CtrlBtn>
             )}
@@ -874,7 +905,13 @@ function syncCaptions(p: any, on: boolean) {
 
 function CtrlBtn({ label, onClick, children, className }: { label: string; onClick: () => void; children: React.ReactNode; className?: string }) {
   return (
-    <button type="button" aria-label={label} title={label} onClick={onClick} className={cn('grid size-10 shrink-0 place-items-center rounded-lg transition hover:bg-white/15', className)}>
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn('grid size-10 shrink-0 place-items-center rounded-lg transition hover:bg-white/15', className)}
+    >
       {children}
     </button>
   );

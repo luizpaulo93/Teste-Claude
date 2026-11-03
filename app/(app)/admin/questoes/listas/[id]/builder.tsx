@@ -102,7 +102,7 @@ export function Builder({
         />
         {!isNew && (
           <>
-            <DownloadMenu id={initial.id} />
+            <DownloadMenu id={initial.id} title={title} />
             <Button size="sm" onClick={() => setApply(true)} disabled={dirty}>
               <Send className="size-4" /> Aplicar
             </Button>

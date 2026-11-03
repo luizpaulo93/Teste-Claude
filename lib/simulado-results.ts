@@ -16,7 +16,9 @@ export async function computeResults(simuladoId: string): Promise<{ error?: stri
     if (!sim) return { error: 'Simulado não encontrado.' };
     const key = (await t.one<{ answer_key: string }>(`select answer_key from simulado_keys where simulado_id = $1`, [simuladoId]))?.answer_key ?? '';
     if (key.length !== sim.question_count) return { error: 'Cadastre o gabarito completo antes de liberar.' };
-    const subs = await t.query<SimuladoSubmission>(`select user_id, answers from simulado_submissions where simulado_id = $1 and status = 'completed'`, [simuladoId]);
+    const subs = await t.query<SimuladoSubmission>(`select user_id, answers from simulado_submissions where simulado_id = $1 and status = 'completed'`, [
+      simuladoId,
+    ]);
 
     const { rows, stats } = evaluateCohort(sim.area, sim.question_count, key, subs);
     await t.exec(`delete from simulado_results where simulado_id = $1`, [simuladoId]);

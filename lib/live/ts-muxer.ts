@@ -114,7 +114,8 @@ export class TsMuxer {
       const fields: number[] = [];
       if (first && (pcr !== null || rai)) {
         fields.push((rai ? 0x40 : 0) | (pcr !== null ? 0x10 : 0));
-        if (pcr !== null) fields.push(Math.floor(pcr / 2 ** 25) & 0xff, (pcr >>> 17) & 0xff, (pcr >>> 9) & 0xff, (pcr >>> 1) & 0xff, ((pcr & 1) << 7) | 0x7e, 0x00);
+        if (pcr !== null)
+          fields.push(Math.floor(pcr / 2 ** 25) & 0xff, (pcr >>> 17) & 0xff, (pcr >>> 9) & 0xff, (pcr >>> 1) & 0xff, ((pcr & 1) << 7) | 0x7e, 0x00);
       }
       const remaining = payload.length - off;
       let i = 4;

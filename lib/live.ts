@@ -64,7 +64,9 @@ export function liveFeed(liveId: string) {
     async () => {
       const [live, messages] = await Promise.all([
         sql.one<LiveSession>(`select * from live_sessions where id = $1`, [liveId]),
-        sql.query<LiveMessage>(`select * from (select * from live_messages where live_id = $1 order by created_at desc limit 100) m order by created_at`, [liveId]),
+        sql.query<LiveMessage>(`select * from (select * from live_messages where live_id = $1 order by created_at desc limit 100) m order by created_at`, [
+          liveId,
+        ]),
       ]);
       return { live, messages };
     },

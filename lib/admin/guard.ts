@@ -20,7 +20,9 @@ export function refreshSettings() {
 }
 
 export function str(fd: FormData, key: string, max = 4000) {
-  return String(fd.get(key) ?? '').trim().slice(0, max);
+  return String(fd.get(key) ?? '')
+    .trim()
+    .slice(0, max);
 }
 export function bool(fd: FormData, key: string) {
   const v = fd.get(key);

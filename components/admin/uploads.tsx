@@ -109,7 +109,11 @@ export function ImageUpload({
               aria-label={`Cor ${i + 1}`}
               aria-pressed={color === i}
               onClick={() => setUrl(`color:${i}`)}
-              className={cn('aspect-square rounded-lg bg-gradient-to-br ring-offset-2 ring-offset-surface transition', g, color === i ? 'ring-2 ring-brand' : 'hover:scale-105')}
+              className={cn(
+                'aspect-square rounded-lg bg-gradient-to-br ring-offset-2 ring-offset-surface transition',
+                g,
+                color === i ? 'ring-2 ring-brand' : 'hover:scale-105',
+              )}
             />
           ))}
         </div>

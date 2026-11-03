@@ -42,6 +42,7 @@ export function publicConfigProblem(): string | null {
   const missing = (['apiKey', 'authDomain', 'projectId', 'appId'] as const).filter((k) => !firebaseConfig[k]);
   if (missing.length === 4) return 'A variável NEXT_PUBLIC_FIREBASE_CONFIG não foi encontrada. Cole nela o bloco firebaseConfig do console do Firebase.';
   if (missing.length) return `Faltam estes campos na configuração do Firebase: ${missing.join(', ')}. Copie o bloco firebaseConfig completo de novo.`;
-  if (!firebaseConfig.apiKey.startsWith('AIza') && !useEmulator) return 'O apiKey do Firebase parece errado (ele começa com "AIza"). Copie o bloco firebaseConfig de novo.';
+  if (!firebaseConfig.apiKey.startsWith('AIza') && !useEmulator)
+    return 'O apiKey do Firebase parece errado (ele começa com "AIza"). Copie o bloco firebaseConfig de novo.';
   return null;
 }

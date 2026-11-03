@@ -113,8 +113,7 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
   const student = email ? (row?.student ?? null) : null;
   const classGroup = student?.class_id ? (catalog.classes.find((c) => c.id === student.class_id) ?? null) : null;
   const isAdmin = profile.role === 'admin';
-  const isMember =
-    isAdmin || !settings.restrict_to_student_list || Boolean(student && student.status === 'active' && classGroup);
+  const isMember = isAdmin || !settings.restrict_to_student_list || Boolean(student && student.status === 'active' && classGroup);
 
   return {
     userId: uid,

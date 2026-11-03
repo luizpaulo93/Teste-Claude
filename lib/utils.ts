@@ -25,7 +25,7 @@ export function extractYoutubeId(input: string): string {
     // segue para o fallback
   }
   const m = raw.match(/^[\w-]{11}$/) || raw.match(/([\w-]{11})/);
-  return m ? m[1] ?? m[0] : '';
+  return m ? (m[1] ?? m[0]) : '';
 }
 
 export function youtubeThumb(id: string) {

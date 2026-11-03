@@ -17,7 +17,13 @@ export function NewCycleButton({ mentoriaId, groupId, scope }: { mentoriaId?: st
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [v, setV] = useState({ title: '', exam_date: '', start_date: new Date().toISOString().slice(0, 10), end_date: '', scope: scope ?? ('completa' as MentoriaScope) });
+  const [v, setV] = useState({
+    title: '',
+    exam_date: '',
+    start_date: new Date().toISOString().slice(0, 10),
+    end_date: '',
+    scope: scope ?? ('completa' as MentoriaScope),
+  });
   async function save() {
     setBusy(true);
     const r = groupId ? await newGroupCycle(groupId, v) : await newCycle(mentoriaId!, v);

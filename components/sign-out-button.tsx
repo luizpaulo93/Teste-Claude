@@ -12,7 +12,9 @@ export function SignOutButton({ className, label = 'Sair' }: { className?: strin
       onSubmit={async (e) => {
         e.preventDefault();
         const form = e.currentTarget;
-        await clientAuth().signOut().catch(() => {});
+        await clientAuth()
+          .signOut()
+          .catch(() => {});
         form.submit();
       }}
     >

@@ -27,7 +27,10 @@ export interface Card {
 }
 
 export async function getMentoria(id: string) {
-  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null; scope: 'completa' | 'especifica' }>(`select * from mentorias where id = $1`, [id]);
+  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null; scope: 'completa' | 'especifica' }>(
+    `select * from mentorias where id = $1`,
+    [id],
+  );
   if (!m) return null;
   return { ...m, availability: Array.isArray(m.availability) ? m.availability.map(Number) : [0, 0, 0, 0, 0, 0, 0], plan_disciplines: m.plan_disciplines ?? [] };
 }
@@ -95,7 +98,15 @@ export async function syncCards(mentoriaId: string, keys: string[]) {
          select v.id, $1, v.k, v.d, v.t, v.p, v.o
            from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
          on conflict (mentoria_id, item_key) do update set ord = excluded.ord, priority = excluded.priority, title = excluded.title, discipline = excluded.discipline`,
-        [mentoriaId, list.map(() => newId()), list.map((x) => x.key), list.map((x) => x.discipline), list.map((x) => x.title), list.map((x) => x.priority), list.map((_, j) => j)],
+        [
+          mentoriaId,
+          list.map(() => newId()),
+          list.map((x) => x.key),
+          list.map((x) => x.discipline),
+          list.map((x) => x.title),
+          list.map((x) => x.priority),
+          list.map((_, j) => j),
+        ],
       );
   });
   return list.length;
@@ -111,7 +122,15 @@ export async function appendCards(mentoriaId: string, keys: string[]) {
     `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
      select v.id, $1, v.k, v.d, v.t, v.p, v.o from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
      on conflict (mentoria_id, item_key) do nothing`,
-    [mentoriaId, list.map(() => newId()), list.map((x) => x.key), list.map((x) => x.discipline), list.map((x) => x.title), list.map((x) => x.priority), list.map((_, j) => start + j)],
+    [
+      mentoriaId,
+      list.map(() => newId()),
+      list.map((x) => x.key),
+      list.map((x) => x.discipline),
+      list.map((x) => x.title),
+      list.map((x) => x.priority),
+      list.map((_, j) => start + j),
+    ],
   );
 }
 
@@ -126,17 +145,16 @@ export async function writePlan(mentoriaId: string, chosen: string[], mode: 'pri
 export async function ensureFresh(mentoriaId: string) {
   const keys = await sql.query<{ item_key: string }>(`select distinct item_key from mentoria_cards where mentoria_id = $1`, [mentoriaId]);
   if (keys.some((k) => !ASSUNTO_BY_KEY.has(k.item_key))) {
-    const m = await sql.one<{ plan_disciplines: string[]; plan_order: string }>(`select plan_disciplines, plan_order from mentorias where id = $1`, [mentoriaId]);
+    const m = await sql.one<{ plan_disciplines: string[]; plan_order: string }>(`select plan_disciplines, plan_order from mentorias where id = $1`, [
+      mentoriaId,
+    ]);
     if (m?.plan_disciplines?.length) {
       await writePlan(mentoriaId, m.plan_disciplines, m.plan_order === 'matriz' ? 'matriz' : 'prioridade');
       await reschedule(mentoriaId);
       return;
     }
   }
-  const late = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 and (scheduled_on < $2) limit 1`, [
-    mentoriaId,
-    todayBR(),
-  ]);
+  const late = await sql.one(`select 1 from mentoria_cards where mentoria_id = $1 and (scheduled_on < $2) limit 1`, [mentoriaId, todayBR()]);
   if (late) await reschedule(mentoriaId);
 }
 
@@ -187,14 +205,28 @@ export async function dayData(m: { id: string; availability: number[] }, request
   const monday = shift(day, -weekdayIndex(day));
   const week = Array.from({ length: 7 }, (_, i) => shift(monday, i));
   const list = await cards(m.id);
-  const base = (c: Card) => ({ id: c.id, discipline: names[c.discipline] ?? c.discipline, title: byKey.get(c.item_key)?.title ?? c.title, priority: c.priority, extra: false, period: null as { from: string; to: string } | null });
+  const base = (c: Card) => ({
+    id: c.id,
+    discipline: names[c.discipline] ?? c.discipline,
+    title: byKey.get(c.item_key)?.title ?? c.title,
+    priority: c.priority,
+    extra: false,
+    period: null as { from: string; to: string } | null,
+  });
   const done = list.flatMap((c) =>
     (c.history ?? [])
       .filter((h) => h.d === day)
       .map((h) => {
         const acc = h.q ? Math.round((h.c / h.q) * 100) : 0;
         const goal = h.l ? GOAL[Math.min(4, h.l)] : 0;
-        return { ...base(c), extra: Boolean(h.x), id: `${c.id}-${h.l}`, level: h.l, step: 'study' as const, result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f } };
+        return {
+          ...base(c),
+          extra: Boolean(h.x),
+          id: `${c.id}-${h.l}`,
+          level: h.l,
+          step: 'study' as const,
+          result: { q: h.q, c: h.c, acc, goal, passed: acc >= goal, f: h.f },
+        };
       }),
   );
   // Assunto num período (mentor): aparece em todos os dias do período; atrasado, aparece hoje

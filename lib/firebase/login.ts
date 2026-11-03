@@ -21,8 +21,7 @@ export function explainAuthError(e: unknown) {
   if (code.includes('popup-closed') || code.includes('cancelled-popup')) return '';
   if (code.includes('unauthorized-domain'))
     return 'Este endereço não está autorizado no Firebase. Adicione o domínio em Authentication → Configurações → Domínios autorizados.';
-  if (code.includes('operation-not-allowed'))
-    return 'Este tipo de login ainda não foi ativado no Firebase (Authentication → Método de login).';
+  if (code.includes('operation-not-allowed')) return 'Este tipo de login ainda não foi ativado no Firebase (Authentication → Método de login).';
   if (code.includes('invalid-email')) return 'E-mail inválido. Confira se digitou certo.';
   if (code.includes('too-many-requests') || code.includes('quota')) return 'Muitas tentativas seguidas. Aguarde alguns minutos.';
   if (code.includes('invalid-action-code') || code.includes('expired-action-code')) return 'Este link expirou ou já foi usado. Peça um novo.';

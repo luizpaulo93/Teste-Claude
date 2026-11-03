@@ -2,16 +2,76 @@ import type { CalendarEvent } from './types';
 import { toISODate } from './utils';
 
 export const EVENT_COLORS: Record<string, { dot: string; chip: string; label: string; band: string; circle: string }> = {
-  blue: { dot: 'bg-blue-500', chip: 'bg-blue-500/15 text-blue-500 border-blue-500/25', label: 'Azul', band: 'bg-blue-500/15', circle: 'bg-blue-500/15 text-blue-400' },
-  violet: { dot: 'bg-violet-500', chip: 'bg-violet-500/15 text-violet-500 border-violet-500/25', label: 'Violeta', band: 'bg-violet-500/15', circle: 'bg-violet-500/15 text-violet-400' },
-  emerald: { dot: 'bg-emerald-500', chip: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/25', label: 'Esmeralda', band: 'bg-emerald-500/15', circle: 'bg-emerald-500/15 text-emerald-400' },
-  amber: { dot: 'bg-amber-500', chip: 'bg-amber-500/15 text-amber-500 border-amber-500/25', label: 'Âmbar', band: 'bg-amber-500/15', circle: 'bg-amber-500/15 text-amber-400' },
-  cyan: { dot: 'bg-cyan-500', chip: 'bg-cyan-500/15 text-cyan-500 border-cyan-500/25', label: 'Celeste', band: 'bg-cyan-500/15', circle: 'bg-cyan-500/15 text-cyan-400' },
-  rose: { dot: 'bg-rose-500', chip: 'bg-rose-500/15 text-rose-500 border-rose-500/25', label: 'Coral', band: 'bg-rose-500/15', circle: 'bg-rose-500/15 text-rose-400' },
-  pink: { dot: 'bg-pink-500', chip: 'bg-pink-500/15 text-pink-500 border-pink-500/25', label: 'Magenta', band: 'bg-pink-500/15', circle: 'bg-pink-500/15 text-pink-400' },
-  indigo: { dot: 'bg-indigo-500', chip: 'bg-indigo-500/15 text-indigo-500 border-indigo-500/25', label: 'Índigo', band: 'bg-indigo-500/15', circle: 'bg-indigo-500/15 text-indigo-400' },
-  teal: { dot: 'bg-teal-500', chip: 'bg-teal-500/15 text-teal-500 border-teal-500/25', label: 'Turquesa', band: 'bg-teal-500/15', circle: 'bg-teal-500/15 text-teal-400' },
-  slate: { dot: 'bg-slate-400', chip: 'bg-slate-400/15 text-slate-400 border-slate-400/25', label: 'Cinza', band: 'bg-slate-400/15', circle: 'bg-slate-400/15 text-slate-400' },
+  blue: {
+    dot: 'bg-blue-500',
+    chip: 'bg-blue-500/15 text-blue-500 border-blue-500/25',
+    label: 'Azul',
+    band: 'bg-blue-500/15',
+    circle: 'bg-blue-500/15 text-blue-400',
+  },
+  violet: {
+    dot: 'bg-violet-500',
+    chip: 'bg-violet-500/15 text-violet-500 border-violet-500/25',
+    label: 'Violeta',
+    band: 'bg-violet-500/15',
+    circle: 'bg-violet-500/15 text-violet-400',
+  },
+  emerald: {
+    dot: 'bg-emerald-500',
+    chip: 'bg-emerald-500/15 text-emerald-500 border-emerald-500/25',
+    label: 'Esmeralda',
+    band: 'bg-emerald-500/15',
+    circle: 'bg-emerald-500/15 text-emerald-400',
+  },
+  amber: {
+    dot: 'bg-amber-500',
+    chip: 'bg-amber-500/15 text-amber-500 border-amber-500/25',
+    label: 'Âmbar',
+    band: 'bg-amber-500/15',
+    circle: 'bg-amber-500/15 text-amber-400',
+  },
+  cyan: {
+    dot: 'bg-cyan-500',
+    chip: 'bg-cyan-500/15 text-cyan-500 border-cyan-500/25',
+    label: 'Celeste',
+    band: 'bg-cyan-500/15',
+    circle: 'bg-cyan-500/15 text-cyan-400',
+  },
+  rose: {
+    dot: 'bg-rose-500',
+    chip: 'bg-rose-500/15 text-rose-500 border-rose-500/25',
+    label: 'Coral',
+    band: 'bg-rose-500/15',
+    circle: 'bg-rose-500/15 text-rose-400',
+  },
+  pink: {
+    dot: 'bg-pink-500',
+    chip: 'bg-pink-500/15 text-pink-500 border-pink-500/25',
+    label: 'Magenta',
+    band: 'bg-pink-500/15',
+    circle: 'bg-pink-500/15 text-pink-400',
+  },
+  indigo: {
+    dot: 'bg-indigo-500',
+    chip: 'bg-indigo-500/15 text-indigo-500 border-indigo-500/25',
+    label: 'Índigo',
+    band: 'bg-indigo-500/15',
+    circle: 'bg-indigo-500/15 text-indigo-400',
+  },
+  teal: {
+    dot: 'bg-teal-500',
+    chip: 'bg-teal-500/15 text-teal-500 border-teal-500/25',
+    label: 'Turquesa',
+    band: 'bg-teal-500/15',
+    circle: 'bg-teal-500/15 text-teal-400',
+  },
+  slate: {
+    dot: 'bg-slate-400',
+    chip: 'bg-slate-400/15 text-slate-400 border-slate-400/25',
+    label: 'Cinza',
+    band: 'bg-slate-400/15',
+    circle: 'bg-slate-400/15 text-slate-400',
+  },
 };
 
 /** Cor fixa por categoria (como no MemberClass); "evento do curso" usa a cor escolhida. */

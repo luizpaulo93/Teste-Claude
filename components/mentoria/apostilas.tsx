@@ -45,7 +45,9 @@ export function FileRow({ f }: { f: ApostilaGroup['files'][number] }) {
   }
   return (
     <button type="button" onClick={open} className="flex w-full items-center gap-2.5 rounded-xl px-2 py-2 text-left transition hover:bg-surface-2">
-      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">{busy ? <Spinner /> : <FileText className="size-4" />}</span>
+      <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-danger/10 text-danger">
+        {busy ? <Spinner /> : <FileText className="size-4" />}
+      </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-[13px] font-semibold text-ink">{f.title}</span>
         {f.size_label && <span className="block text-[10px] text-muted">PDF · {f.size_label}</span>}
@@ -88,8 +90,7 @@ export function DayFolder({ groups }: { groups: ApostilaGroup[] }) {
 /** Pasta com todos os documentos da mentoria (aluno e mentor veem a mesma). */
 export function ApostilasFolder({ groups, today }: { groups: ApostilaGroup[]; today: string }) {
   const list = groups.filter((g) => g.files.length);
-  if (!list.length)
-    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda.</p>;
+  if (!list.length) return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda.</p>;
   return (
     <div className="space-y-3">
       {list.map((g) => {

@@ -37,7 +37,11 @@ export function ReportDownload({ target }: { target: string }) {
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/pdf' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `relatorio-${r.report.title.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').slice(0, 40)}-${week}.pdf`;
+      a.download = `relatorio-${r.report.title
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[^a-z0-9]+/g, '-')
+        .slice(0, 40)}-${week}.pdf`;
       document.body.append(a);
       a.click();
       a.remove();

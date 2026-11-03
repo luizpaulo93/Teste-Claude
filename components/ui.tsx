@@ -6,8 +6,7 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'outline';
 type Size = 'sm' | 'md' | 'lg' | 'icon';
 
 const variants: Record<Variant, string> = {
-  primary:
-    'bg-brand text-white hover:bg-brand-strong shadow-[0_6px_20px_-8px_var(--brand)] active:scale-[0.98]',
+  primary: 'bg-brand text-white hover:bg-brand-strong shadow-[0_6px_20px_-8px_var(--brand)] active:scale-[0.98]',
   secondary: 'bg-surface-2 text-ink hover:bg-surface-3 border border-line',
   outline: 'border border-line-strong text-ink hover:bg-surface-2',
   ghost: 'text-ink-2 hover:text-ink hover:bg-surface-2',
@@ -30,21 +29,11 @@ export function buttonClass(variant: Variant = 'primary', size: Size = 'md', cla
   );
 }
 
-export function Button({
-  variant,
-  size,
-  className,
-  ...props
-}: ComponentProps<'button'> & { variant?: Variant; size?: Size }) {
+export function Button({ variant, size, className, ...props }: ComponentProps<'button'> & { variant?: Variant; size?: Size }) {
   return <button type="button" className={buttonClass(variant, size, className)} {...props} />;
 }
 
-export function LinkButton({
-  variant,
-  size,
-  className,
-  ...props
-}: ComponentProps<typeof Link> & { variant?: Variant; size?: Size }) {
+export function LinkButton({ variant, size, className, ...props }: ComponentProps<typeof Link> & { variant?: Variant; size?: Size }) {
   return <Link className={buttonClass(variant, size, className)} {...props} />;
 }
 
@@ -52,11 +41,7 @@ export function Card({ className, ...props }: ComponentProps<'div'>) {
   return <div className={cn('rounded-2xl border border-line bg-surface shadow-card', className)} {...props} />;
 }
 
-export function Badge({
-  tone = 'neutral',
-  className,
-  ...props
-}: ComponentProps<'span'> & { tone?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' }) {
+export function Badge({ tone = 'neutral', className, ...props }: ComponentProps<'span'> & { tone?: 'neutral' | 'brand' | 'success' | 'warning' | 'danger' }) {
   const tones = {
     neutral: 'bg-surface-3 text-ink-2',
     brand: 'bg-brand-soft text-brand',
@@ -66,11 +51,7 @@ export function Badge({
   };
   return (
     <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap',
-        tones[tone],
-        className,
-      )}
+      className={cn('inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap', tones[tone], className)}
       {...props}
     />
   );
@@ -110,17 +91,7 @@ export function Checkbox({ label, className, ...props }: ComponentProps<'input'>
   );
 }
 
-export function PageHeader({
-  title,
-  subtitle,
-  actions,
-  eyebrow,
-}: {
-  title: ReactNode;
-  subtitle?: ReactNode;
-  actions?: ReactNode;
-  eyebrow?: ReactNode;
-}) {
+export function PageHeader({ title, subtitle, actions, eyebrow }: { title: ReactNode; subtitle?: ReactNode; actions?: ReactNode; eyebrow?: ReactNode }) {
   return (
     <div className="mb-6 flex flex-col gap-4 sm:mb-8 sm:flex-row sm:items-end sm:justify-between">
       <div className="min-w-0 animate-fade-in">
@@ -150,17 +121,7 @@ export function SectionHeader({ title, href, link, icon }: { title: ReactNode; h
   );
 }
 
-export function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-}: {
-  icon?: ReactNode;
-  title: string;
-  description?: string;
-  action?: ReactNode;
-}) {
+export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: string; action?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-line-strong px-6 py-14 text-center">
       {icon && <div className="mb-4 grid size-12 place-items-center rounded-2xl bg-brand-soft text-brand">{icon}</div>}
@@ -186,10 +147,7 @@ export function Avatar({ name, src, size = 36, className }: { name: string; src?
     />
   ) : (
     <span
-      className={cn(
-        'grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand to-accent font-bold text-white',
-        className,
-      )}
+      className={cn('grid shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand to-accent font-bold text-white', className)}
       style={{ width: size, height: size, fontSize: size * 0.38 }}
     >
       {initials(name)}

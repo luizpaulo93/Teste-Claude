@@ -4,12 +4,16 @@ import type { Browser } from 'puppeteer-core';
 import { footerHeightMm, PAGE } from '@/lib/list-html';
 import type { ListTemplate } from '@/lib/question-lists';
 
+const CHROMIUM_PACK = 'https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar';
+
 /** Chrome do servidor (na Vercel vem do @sparticuz/chromium; no computador, o Chrome instalado). */
 async function launch(): Promise<Browser> {
   const puppeteer = await import('puppeteer-core');
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const chromium = (await import('@sparticuz/chromium')).default;
-    return puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
+    // Chrome que vai junto com o app; se a Vercel não tiver incluído os arquivos, baixa o pacote oficial (fica em /tmp)
+    const exe = await chromium.executablePath().catch(() => chromium.executablePath(CHROMIUM_PACK));
+    return puppeteer.launch({ args: chromium.args, executablePath: exe, headless: true });
   }
   const local = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium', '/usr/bin/chromium', '/usr/bin/google-chrome'].find((p) => p && existsSync(p));
   if (!local) throw new Error('Chrome não encontrado para gerar o PDF.');

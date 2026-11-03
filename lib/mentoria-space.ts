@@ -95,7 +95,8 @@ export async function syncGroup(groupId: string, onlyEmail?: string, delta?: { a
     if (!has?.n) {
       if (g.plan_keys.length) await syncCards(id, g.plan_keys);
     } else if (delta) {
-      if (delta.remove.length) await sql.exec(`delete from mentoria_cards where mentoria_id = $1 and item_key = any($2) and level = 0 and attempts = 0`, [id, delta.remove]);
+      if (delta.remove.length)
+        await sql.exec(`delete from mentoria_cards where mentoria_id = $1 and item_key = any($2) and level = 0 and attempts = 0`, [id, delta.remove]);
       if (delta.add.length) await appendCards(id, delta.add);
     }
     await applyGroupBlocks(g.id, m.email);

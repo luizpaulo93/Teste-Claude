@@ -23,19 +23,24 @@ export function readServiceAccount(): { sa: ServiceAccount | null; problem: stri
         return { sa: null, problem: 'FIREBASE_SERVICE_ACCOUNT não tem client_email/private_key/project_id. Cole o arquivo JSON da conta de serviço inteiro.' };
       return { sa: { project_id: j.project_id, client_email: j.client_email, private_key: j.private_key.replace(/\\n/g, '\n') }, problem: null };
     } catch {
-      return { sa: null, problem: 'FIREBASE_SERVICE_ACCOUNT não é um JSON válido. Abra o arquivo .json baixado do Firebase e cole TODO o conteúdo (de { até }).' };
+      return {
+        sa: null,
+        problem: 'FIREBASE_SERVICE_ACCOUNT não é um JSON válido. Abra o arquivo .json baixado do Firebase e cole TODO o conteúdo (de { até }).',
+      };
     }
   }
   const project_id = (process.env.FIREBASE_PROJECT_ID ?? '').trim();
   const client_email = (process.env.FIREBASE_CLIENT_EMAIL ?? '').trim();
   const private_key = (process.env.FIREBASE_PRIVATE_KEY ?? '').replace(/\\n/g, '\n').trim();
   if (project_id && client_email && private_key) return { sa: { project_id, client_email, private_key }, problem: null };
-  return { sa: null, problem: 'A variável FIREBASE_SERVICE_ACCOUNT não foi encontrada. Cole nela o JSON da conta de serviço (Configurações do projeto → Contas de serviço → Gerar nova chave privada).' };
+  return {
+    sa: null,
+    problem:
+      'A variável FIREBASE_SERVICE_ACCOUNT não foi encontrada. Cole nela o JSON da conta de serviço (Configurações do projeto → Contas de serviço → Gerar nova chave privada).',
+  };
 }
-
 
 export function adminConfigProblem(): string | null {
   if (process.env.FIREBASE_AUTH_EMULATOR_HOST) return null;
   return readServiceAccount().problem;
 }
-

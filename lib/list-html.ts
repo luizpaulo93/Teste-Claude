@@ -2,11 +2,9 @@ import 'server-only';
 import type { QImg } from '@/lib/question-types';
 import type { ListTemplate } from '@/lib/question-lists';
 import type { Question } from '@/lib/questions';
+import { pdfFontsCss } from '@/lib/pdf-fonts';
 import { rich, richTex } from '@/lib/rich';
 
-const KATEX_CSS = 'https://cdn.jsdelivr.net/npm/katex@0.19.1/dist/katex.min.css';
-// Arimo tem as mesmas medidas da Arial (o servidor não tem a Arial instalada)
-const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Arimo:ital,wght@0,400;0,700;1,400;1,700&display=block';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export type ListQuestion = Question & { exame?: string; paper_ano?: number | null };
@@ -59,12 +57,12 @@ export function listHtml(title: string, qs: ListQuestion[], t: ListTemplate | nu
         .join('')}</div></section>`
     : '';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title>
-<link rel="stylesheet" href="${KATEX_CSS}"><link rel="stylesheet" href="${FONT_CSS}">
+<style>${pdfFontsCss()}</style>
 <style>
 @page { size: A4; margin: ${PAGE.marginMm}mm ${PAGE.marginMm}mm ${(PAGE.marginMm + footer).toFixed(1)}mm ${PAGE.marginMm}mm; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: #fff; color: #000; }
-body { font-family: Arial, Arimo, 'Liberation Sans', Helvetica, sans-serif; font-size: 10pt; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+body { font-family: Arimo, Arial, 'Liberation Sans', KaTeX_Main, KaTeX_AMS, Helvetica, sans-serif; font-size: 10pt; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .header { width: 100%; display: block; margin: 0 0 4mm; }
 h1.title { font-size: 12pt; margin: 0 0 3mm; text-align: center; }
 .cols { column-count: 2; column-gap: 7mm; column-rule: 0.5pt solid #888; column-fill: auto; }

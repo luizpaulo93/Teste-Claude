@@ -45,7 +45,16 @@ export function LandingRoot({ children, brand }: { children: ReactNode; brand: s
   return (
     <LoginCtx.Provider value={() => setOpen(true)}>
       {children}
-      <Modal open={open} onClose={() => setOpen(false)} size="sm" title={<span className="flex items-center gap-2"><Logo className="size-5" /> Entrar no {brand}</span>}>
+      <Modal
+        open={open}
+        onClose={() => setOpen(false)}
+        size="sm"
+        title={
+          <span className="flex items-center gap-2">
+            <Logo className="size-5" /> Entrar no {brand}
+          </span>
+        }
+      >
         <p className="mb-5 text-sm text-muted">Acesse suas aulas, simulados e mentoria.</p>
         <LoginForm />
       </Modal>
@@ -53,7 +62,17 @@ export function LandingRoot({ children, brand }: { children: ReactNode; brand: s
   );
 }
 
-export function LoginButton({ children, className, variant = 'primary', size = 'md' }: { children: ReactNode; className?: string; variant?: 'primary' | 'outline' | 'secondary' | 'ghost'; size?: 'sm' | 'md' | 'lg' }) {
+export function LoginButton({
+  children,
+  className,
+  variant = 'primary',
+  size = 'md',
+}: {
+  children: ReactNode;
+  className?: string;
+  variant?: 'primary' | 'outline' | 'secondary' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+}) {
   const open = useContext(LoginCtx);
   return (
     <button type="button" onClick={open} className={buttonClass(variant, size, className)}>
@@ -80,7 +99,12 @@ export function LandingNav({ brand }: { brand: string }) {
     return () => window.removeEventListener('scroll', on);
   }, []);
   return (
-    <header className={cn('fixed inset-x-0 top-0 z-50 transition-all duration-300', scrolled ? 'border-b border-white/10 bg-[#050912]/75 backdrop-blur-xl' : 'bg-transparent')}>
+    <header
+      className={cn(
+        'fixed inset-x-0 top-0 z-50 transition-all duration-300',
+        scrolled ? 'border-b border-white/10 bg-[#050912]/75 backdrop-blur-xl' : 'bg-transparent',
+      )}
+    >
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:h-[72px] sm:px-6 lg:px-8">
         <a href="#topo" className="flex items-center gap-2.5 text-white">
           <Logo className="size-8" />
@@ -97,7 +121,12 @@ export function LandingNav({ brand }: { brand: string }) {
           <LoginButton size="md" className="rounded-full px-5">
             Entrar <ArrowRight className="size-4" />
           </LoginButton>
-          <button type="button" onClick={() => setMenu((v) => !v)} aria-label="Menu" className="grid size-10 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMenu((v) => !v)}
+            aria-label="Menu"
+            className="grid size-10 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"
+          >
             {menu ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>

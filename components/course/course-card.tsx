@@ -64,7 +64,11 @@ export function CoverCard({
     <Link href={href} className="group block w-full min-w-0 outline-none" prefetch={priority ? true : undefined}>
       <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-line bg-surface-2 shadow-card transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-glow group-focus-visible:shadow-glow">
         {coverImage(cover) ? (
-          <Img src={coverImage(cover)} loading={priority ? 'eager' : 'lazy'} className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]" />
+          <Img
+            src={coverImage(cover)}
+            loading={priority ? 'eager' : 'lazy'}
+            className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
+          />
         ) : (
           <CoverFallback title="" seed={seed} color={coverColor(cover)} />
         )}

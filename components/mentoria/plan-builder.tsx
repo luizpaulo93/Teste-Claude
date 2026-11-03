@@ -55,9 +55,17 @@ export function PlanBuilder({
                 type="button"
                 onClick={() => toggle(d.key)}
                 aria-pressed={on}
-                className={cn('flex items-start gap-2 rounded-xl border p-3 text-left transition', on ? 'border-brand bg-brand/10' : 'border-line bg-surface hover:bg-surface-2')}
+                className={cn(
+                  'flex items-start gap-2 rounded-xl border p-3 text-left transition',
+                  on ? 'border-brand bg-brand/10' : 'border-line bg-surface hover:bg-surface-2',
+                )}
               >
-                <span className={cn('mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border-2', on ? 'border-brand bg-brand text-white' : 'border-line-strong')}>
+                <span
+                  className={cn(
+                    'mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border-2',
+                    on ? 'border-brand bg-brand text-white' : 'border-line-strong',
+                  )}
+                >
                   {on && <Check className="size-3.5" strokeWidth={3} />}
                 </span>
                 <span>
@@ -84,7 +92,10 @@ export function PlanBuilder({
               key={k}
               type="button"
               onClick={() => setMode(k)}
-              className={cn('rounded-xl border p-3 text-left transition', mode === k ? 'border-brand bg-brand/10' : 'border-line bg-surface hover:bg-surface-2')}
+              className={cn(
+                'rounded-xl border p-3 text-left transition',
+                mode === k ? 'border-brand bg-brand/10' : 'border-line bg-surface hover:bg-surface-2',
+              )}
             >
               <span className="block text-sm font-bold text-ink">{t}</span>
               <span className="block text-[11px] text-muted">{d}</span>
@@ -95,7 +106,9 @@ export function PlanBuilder({
       <button type="button" onClick={build} disabled={busy || !sel.length} className={buttonClass('primary', 'lg', 'w-full sm:w-auto')}>
         {busy ? <Spinner /> : <Sparkles className="size-4" />} {chosen.length ? 'Atualizar cronograma' : 'Gerar cronograma'}
       </button>
-      {!hasSchedule && <p className="text-xs text-warning">O aluno ainda não informou os horários. Preencha na aba Horários para distribuir os assuntos nos dias certos.</p>}
+      {!hasSchedule && (
+        <p className="text-xs text-warning">O aluno ainda não informou os horários. Preencha na aba Horários para distribuir os assuntos nos dias certos.</p>
+      )}
     </div>
   );
 }

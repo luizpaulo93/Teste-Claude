@@ -35,7 +35,15 @@ export function LiveMaterialsAdmin({ liveId, materials }: { liveId: string; mate
           <div className="min-w-0 flex-1">
             <FileRow f={m} />
           </div>
-          <ActionButton action={() => removeLiveMaterial(liveId, m.id)} confirm="Tirar este PDF da live?" success="PDF removido" variant="ghost" size="sm" className="px-2 hover:text-danger" title="Tirar PDF">
+          <ActionButton
+            action={() => removeLiveMaterial(liveId, m.id)}
+            confirm="Tirar este PDF da live?"
+            success="PDF removido"
+            variant="ghost"
+            size="sm"
+            className="px-2 hover:text-danger"
+            title="Tirar PDF"
+          >
             <Trash2 className="size-4" />
           </ActionButton>
         </div>

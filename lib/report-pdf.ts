@@ -132,7 +132,8 @@ export async function reportPdf(r: MentoriaReport) {
   w.heading('Onde está');
   w.levels(g.levels);
   w.heading('Por disciplina');
-  for (const d of g.disciplines) w.text(`${d.name}: ${d.studied}/${d.total} estudados · ${d.questions} questões · acerto ${d.questions ? `${d.acc}%` : '-'}`, { size: 10, gap: 2 });
+  for (const d of g.disciplines)
+    w.text(`${d.name}: ${d.studied}/${d.total} estudados · ${d.questions} questões · acerto ${d.questions ? `${d.acc}%` : '-'}`, { size: 10, gap: 2 });
   if (g.best.length) {
     w.heading('Assuntos em que vai melhor');
     w.topics(g.best, 'best', '');
@@ -141,7 +142,10 @@ export async function reportPdf(r: MentoriaReport) {
     w.heading('O que fez na semana');
     if (!r.students[0].done.length) w.text('Não estudou nesta semana.', { size: 10, color: RED });
     for (const x of r.students[0].done)
-      w.text(`${dmy(x.d).slice(0, 5)} · ${x.discipline} · ${x.title} (${KIND[Math.min(4, x.l)]}) — ${x.c}/${x.q} (${x.acc}%)${x.f ? ` · ${FEEL[x.f]}` : ''}`, { size: 9.5, gap: 1 });
+      w.text(`${dmy(x.d).slice(0, 5)} · ${x.discipline} · ${x.title} (${KIND[Math.min(4, x.l)]}) — ${x.c}/${x.q} (${x.acc}%)${x.f ? ` · ${FEEL[x.f]}` : ''}`, {
+        size: 9.5,
+        gap: 1,
+      });
   }
 
   if (group)
@@ -157,7 +161,10 @@ export async function reportPdf(r: MentoriaReport) {
       w.heading('O que fez na semana');
       if (!s.done.length) w.text('Não estudou nesta semana.', { size: 10, color: RED });
       for (const x of s.done)
-        w.text(`${dmy(x.d).slice(0, 5)} · ${x.discipline} · ${x.title} (${KIND[Math.min(4, x.l)]}) — ${x.c}/${x.q} (${x.acc}%)${x.f ? ` · ${FEEL[x.f]}` : ''}`, { size: 9.5, gap: 1 });
+        w.text(
+          `${dmy(x.d).slice(0, 5)} · ${x.discipline} · ${x.title} (${KIND[Math.min(4, x.l)]}) — ${x.c}/${x.q} (${x.acc}%)${x.f ? ` · ${FEEL[x.f]}` : ''}`,
+          { size: 9.5, gap: 1 },
+        );
       w.heading('Maior dificuldade', RED);
       w.topics(s.hardest, 'hard', 'Nenhuma dificuldade marcada.');
       w.heading('Mais erra', RED);

@@ -70,7 +70,12 @@ export function ConfirmHost() {
           <button type="button" className={buttonClass('secondary', 'md')} onClick={() => close(false)}>
             Cancelar
           </button>
-          <button type="button" autoFocus className={danger ? buttonClass('danger', 'md', 'border-transparent bg-danger text-white hover:bg-danger/90') : buttonClass('primary', 'md')} onClick={() => close(true)}>
+          <button
+            type="button"
+            autoFocus
+            className={danger ? buttonClass('danger', 'md', 'border-transparent bg-danger text-white hover:bg-danger/90') : buttonClass('primary', 'md')}
+            onClick={() => close(true)}
+          >
             {ask.confirmLabel}
           </button>
         </div>

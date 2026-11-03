@@ -27,7 +27,9 @@ export interface Block {
 const COLS = `id, space, title, item_keys, start_on::text as start_on, end_on::text as end_on, files`;
 
 export const blocksOf = (spaces: string[]) =>
-  spaces.length ? sql.query<Block>(`select ${COLS} from mentoria_blocks where space = any($1) order by start_on desc, created_at desc`, [spaces]) : Promise.resolve([] as Block[]);
+  spaces.length
+    ? sql.query<Block>(`select ${COLS} from mentoria_blocks where space = any($1) order by start_on desc, created_at desc`, [spaces])
+    : Promise.resolve([] as Block[]);
 
 export const getBlock = (id: string) => sql.one<Block>(`select ${COLS} from mentoria_blocks where id = $1`, [id]);
 

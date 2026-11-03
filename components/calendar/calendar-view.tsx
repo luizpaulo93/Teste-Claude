@@ -98,7 +98,9 @@ export function CalendarView({
     return Array.from({ length: total / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
   }, [year, month]);
 
-  const range = drag ? { start: drag.anchor <= drag.current ? drag.anchor : drag.current, end: drag.anchor <= drag.current ? drag.current : drag.anchor } : null;
+  const range = drag
+    ? { start: drag.anchor <= drag.current ? drag.anchor : drag.current, end: drag.anchor <= drag.current ? drag.current : drag.anchor }
+    : null;
 
   const openNew = (start: string, end: string) => setForm({ start, end });
 
@@ -175,14 +177,25 @@ export function CalendarView({
         onTouchStart={() => startDrag(cell.date)}
         className="group relative flex h-12 cursor-pointer items-center justify-center select-none sm:h-14"
       >
-        {multi && !inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 sm:h-10', pal.band, bandShape(multi.start_date, multi.end_date))} />}
-        {inRange && <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 bg-brand/12 sm:h-10', bandShape(range!.start, range!.end))} />}
+        {multi && !inRange && (
+          <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 sm:h-10', pal.band, bandShape(multi.start_date, multi.end_date))} />
+        )}
+        {inRange && (
+          <div className={cn('pointer-events-none absolute top-1/2 h-9 -translate-y-1/2 bg-brand/12 sm:h-10', bandShape(range!.start, range!.end))} />
+        )}
         {bdays.length > 0 && (
-          <span className="pointer-events-none absolute top-0 left-1/2 z-20 -translate-x-1/2 text-[10px] leading-none" title={`Aniversário: ${bdays.map((b) => b.name).join(', ')}`}>
+          <span
+            className="pointer-events-none absolute top-0 left-1/2 z-20 -translate-x-1/2 text-[10px] leading-none"
+            title={`Aniversário: ${bdays.map((b) => b.name).join(', ')}`}
+          >
             🎂
           </span>
         )}
-        <div className={cn('relative z-10 grid size-9 place-items-center rounded-full text-xs transition-all duration-200 ease-out sm:size-10 sm:text-sm', circle)}>{cell.day}</div>
+        <div
+          className={cn('relative z-10 grid size-9 place-items-center rounded-full text-xs transition-all duration-200 ease-out sm:size-10 sm:text-sm', circle)}
+        >
+          {cell.day}
+        </div>
         {dots.length > 0 && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0.5 z-20 flex justify-center gap-1">
             {dots.map((e) => (
@@ -214,7 +227,10 @@ export function CalendarView({
           <button
             type="button"
             onClick={() => setView((v) => (v === 'month' ? 'year' : 'month'))}
-            className={cn('flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition', view === 'year' ? 'border-brand bg-brand text-white' : 'border-line bg-surface-2 text-ink-2 hover:bg-surface-3')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition',
+              view === 'year' ? 'border-brand bg-brand text-white' : 'border-line bg-surface-2 text-ink-2 hover:bg-surface-3',
+            )}
           >
             <LayoutGrid className="size-3.5" /> {view === 'year' ? 'Ver mês' : 'Ano todo'}
           </button>
@@ -240,11 +256,23 @@ export function CalendarView({
       {/* Navegação */}
       <div className="flex flex-col items-center gap-2">
         <div className="flex items-center justify-center gap-2">
-          <button type="button" aria-label="Anterior" onClick={view === 'year' ? () => goYear(year - 1, 0) : prevMonth} className="grid size-9 place-items-center rounded-full bg-surface-2 text-brand hover:bg-surface-3">
+          <button
+            type="button"
+            aria-label="Anterior"
+            onClick={view === 'year' ? () => goYear(year - 1, 0) : prevMonth}
+            className="grid size-9 place-items-center rounded-full bg-surface-2 text-brand hover:bg-surface-3"
+          >
             <ChevronLeft className="size-4" />
           </button>
-          <span className="min-w-40 text-center text-base font-extrabold text-ink sm:text-lg">{view === 'year' ? `Ano ${year}` : `${MONTHS[month]} ${year}`}</span>
-          <button type="button" aria-label="Próximo" onClick={view === 'year' ? () => goYear(year + 1, 0) : nextMonth} className="grid size-9 place-items-center rounded-full bg-surface-2 text-brand hover:bg-surface-3">
+          <span className="min-w-40 text-center text-base font-extrabold text-ink sm:text-lg">
+            {view === 'year' ? `Ano ${year}` : `${MONTHS[month]} ${year}`}
+          </span>
+          <button
+            type="button"
+            aria-label="Próximo"
+            onClick={view === 'year' ? () => goYear(year + 1, 0) : nextMonth}
+            className="grid size-9 place-items-center rounded-full bg-surface-2 text-brand hover:bg-surface-3"
+          >
             <ChevronRight className="size-4" />
           </button>
         </div>
@@ -266,7 +294,10 @@ export function CalendarView({
                   setMonth(m0);
                   setView('month');
                 }}
-                className={cn('cursor-pointer rounded-2xl border p-3.5 transition', isNow ? 'border-brand/60 bg-surface-2 shadow-glow' : 'border-line bg-surface shadow-card hover:border-brand/40')}
+                className={cn(
+                  'cursor-pointer rounded-2xl border p-3.5 transition',
+                  isNow ? 'border-brand/60 bg-surface-2 shadow-glow' : 'border-line bg-surface shadow-card hover:border-brand/40',
+                )}
               >
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-xs font-extrabold text-ink">{name}</span>
@@ -300,7 +331,11 @@ export function CalendarView({
                           }}
                           className={cn(
                             'grid size-5 place-items-center rounded-full text-[9px] font-bold transition hover:scale-110',
-                            d === today ? 'bg-brand text-white' : top ? cn((EVENT_COLORS[top.color] ?? EVENT_COLORS.blue).dot, 'text-black') : 'text-muted hover:bg-surface-3',
+                            d === today
+                              ? 'bg-brand text-white'
+                              : top
+                                ? cn((EVENT_COLORS[top.color] ?? EVENT_COLORS.blue).dot, 'text-black')
+                                : 'text-muted hover:bg-surface-3',
                           )}
                         >
                           {i + 1}
@@ -323,7 +358,10 @@ export function CalendarView({
               if (el?.dataset.date) moveDrag(el.dataset.date);
             }}
             onTouchEnd={() => dragRef.current && endDrag()}
-            className={cn('w-full space-y-2.5 rounded-3xl border border-line bg-surface p-3 shadow-card select-none sm:p-5 md:col-span-7', addMode && 'touch-none')}
+            className={cn(
+              'w-full space-y-2.5 rounded-3xl border border-line bg-surface p-3 shadow-card select-none sm:p-5 md:col-span-7',
+              addMode && 'touch-none',
+            )}
           >
             <div className="grid grid-cols-7 border-b border-line pb-2.5 text-center">
               {WEEKDAYS.map((w) => (
@@ -359,7 +397,10 @@ export function CalendarView({
             ) : (
               <div className="scrollbar-thin max-h-[55dvh] space-y-3 overflow-y-auto pr-1">
                 {dayBdays.map((b) => (
-                  <div key={b.id} className="flex items-start gap-3 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-transparent p-3.5">
+                  <div
+                    key={b.id}
+                    className="flex items-start gap-3 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-transparent p-3.5"
+                  >
                     <span className="grid size-8 shrink-0 place-items-center rounded-full border border-amber-400/50 bg-amber-500/25 text-amber-500">
                       <Cake className="size-4" />
                     </span>
@@ -444,7 +485,15 @@ function EventActions({ ev, onEdit }: { ev: CalendarEvent; onEdit: () => void })
   );
 }
 
-function EventForm({ state, onClose, onSaved }: { state: { ev?: CalendarEvent; start: string; end: string } | null; onClose: () => void; onSaved: () => void }) {
+function EventForm({
+  state,
+  onClose,
+  onSaved,
+}: {
+  state: { ev?: CalendarEvent; start: string; end: string } | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
   const [category, setCategory] = useState('assunto_semana');
   const [color, setColor] = useState('blue');
   const [pending, start] = useTransition();
@@ -487,7 +536,10 @@ function EventForm({ state, onClose, onSaved }: { state: { ev?: CalendarEvent; s
                   key={c}
                   type="button"
                   onClick={() => setCategory(c)}
-                  className={cn('rounded-xl border px-3 py-2 text-left text-xs font-bold transition', category === c ? 'border-brand bg-brand/15 text-ink' : 'border-line bg-surface-2 text-ink-2 hover:bg-surface-3')}
+                  className={cn(
+                    'rounded-xl border px-3 py-2 text-left text-xs font-bold transition',
+                    category === c ? 'border-brand bg-brand/15 text-ink' : 'border-line bg-surface-2 text-ink-2 hover:bg-surface-3',
+                  )}
                 >
                   <span className={cn('mr-1.5 inline-block size-2 rounded-full', EVENT_COLORS[eventColor(c, color)].dot)} />
                   {EVENT_CATEGORIES[c]}
@@ -510,7 +562,14 @@ function EventForm({ state, onClose, onSaved }: { state: { ev?: CalendarEvent; s
                 {Object.entries(EVENT_COLORS)
                   .filter(([k]) => k !== 'slate')
                   .map(([k, v]) => (
-                    <button key={k} type="button" onClick={() => setColor(k)} aria-label={v.label} title={v.label} className={cn('size-8 rounded-full ring-offset-2 ring-offset-surface transition', v.dot, color === k && 'ring-2 ring-ink')} />
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => setColor(k)}
+                      aria-label={v.label}
+                      title={v.label}
+                      className={cn('size-8 rounded-full ring-offset-2 ring-offset-surface transition', v.dot, color === k && 'ring-2 ring-ink')}
+                    />
                   ))}
               </div>
             </div>
@@ -523,7 +582,11 @@ function EventForm({ state, onClose, onSaved }: { state: { ev?: CalendarEvent; s
             <button type="button" onClick={onClose} className="rounded-xl px-4 py-2 text-sm font-semibold text-ink-2 hover:bg-surface-2">
               Cancelar
             </button>
-            <button type="submit" disabled={pending} className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-strong disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={pending}
+              className="flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-strong disabled:opacity-60"
+            >
               {pending && <Spinner />} Salvar evento
             </button>
           </div>

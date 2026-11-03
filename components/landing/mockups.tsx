@@ -26,7 +26,13 @@ function Poster({ t, g, p }: { t: string; g: string; p: number }) {
 /** Prévia da plataforma (desktop) feita em HTML/CSS. */
 export function DesktopMockup({ bare }: { bare?: boolean } = {}) {
   return (
-    <div className={bare ? 'overflow-hidden bg-[#07080c]' : 'overflow-hidden rounded-2xl border border-white/10 bg-[#07080c] shadow-[0_40px_120px_-20px_rgba(37,99,235,0.45)] ring-1 ring-white/5'}>
+    <div
+      className={
+        bare
+          ? 'overflow-hidden bg-[#07080c]'
+          : 'overflow-hidden rounded-2xl border border-white/10 bg-[#07080c] shadow-[0_40px_120px_-20px_rgba(37,99,235,0.45)] ring-1 ring-white/5'
+      }
+    >
       <div className={bare ? 'hidden' : 'flex items-center gap-1.5 border-b border-white/5 bg-[#0b0d13] px-4 py-2.5'}>
         <span className="size-2.5 rounded-full bg-[#ff5f57]" />
         <span className="size-2.5 rounded-full bg-[#febc2e]" />
@@ -49,7 +55,10 @@ export function DesktopMockup({ bare }: { bare?: boolean } = {}) {
           ].map(([Icon, label, active]) => {
             const I = Icon as typeof Home;
             return (
-              <div key={label as string} className={`mb-0.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] font-semibold ${active ? 'bg-blue-500/15 text-blue-400' : 'text-white/50'}`}>
+              <div
+                key={label as string}
+                className={`mb-0.5 flex items-center gap-2 rounded-lg px-2 py-1.5 text-[10px] font-semibold ${active ? 'bg-blue-500/15 text-blue-400' : 'text-white/50'}`}
+              >
                 <I className="size-3" /> {label as string}
               </div>
             );
@@ -112,7 +121,10 @@ export function PhoneMockup() {
             </span>
           </div>
           {['Introdução à cinemática', 'Movimento uniforme', 'MUV e gráficos', 'Lançamento oblíquo'].map((t, i) => (
-            <div key={t} className={`flex items-center gap-2 rounded-lg px-2 py-2 text-[10px] ${i === 1 ? 'bg-blue-500/15 font-semibold text-white' : 'text-white/60'}`}>
+            <div
+              key={t}
+              className={`flex items-center gap-2 rounded-lg px-2 py-2 text-[10px] ${i === 1 ? 'bg-blue-500/15 font-semibold text-white' : 'text-white/60'}`}
+            >
               {i === 0 ? <CheckCircle2 className="size-3 text-emerald-400" /> : <Play className="size-3" />}
               {t}
             </div>
@@ -151,7 +163,17 @@ export function TriCard() {
           </linearGradient>
         </defs>
         <path d="M0 75 L50 66 L100 70 L150 48 L200 40 L250 26 L300 12 L300 90 L0 90 Z" fill="url(#tri-f)" />
-        <path className="lp-draw" d="M0 75 L50 66 L100 70 L150 48 L200 40 L250 26 L300 12" fill="none" stroke="#60a5fa" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="600" strokeDashoffset="600" />
+        <path
+          className="lp-draw"
+          d="M0 75 L50 66 L100 70 L150 48 L200 40 L250 26 L300 12"
+          fill="none"
+          stroke="#60a5fa"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="600"
+          strokeDashoffset="600"
+        />
       </svg>
       <div className="mt-3 grid grid-cols-3 gap-2 text-center">
         {[
@@ -198,7 +220,10 @@ export function PhoneHomeMockup() {
           <p className="mb-2 text-[10px] font-bold text-white">Aulões ao vivo</p>
           <div className="grid grid-cols-2 gap-2">
             {['AULÃO 1', 'AULÃO 2'].map((t, i) => (
-              <div key={t} className={`relative aspect-[3/4] overflow-hidden rounded-xl bg-gradient-to-b ${i ? 'from-indigo-600 to-violet-800' : 'from-blue-600 to-cyan-700'}`}>
+              <div
+                key={t}
+                className={`relative aspect-[3/4] overflow-hidden rounded-xl bg-gradient-to-b ${i ? 'from-indigo-600 to-violet-800' : 'from-blue-600 to-cyan-700'}`}
+              >
                 {i === 0 && <span className="absolute top-1.5 left-1.5 rounded bg-rose-500 px-1.5 py-0.5 text-[7px] font-bold text-white">AO VIVO</span>}
                 <p className="absolute inset-x-0 bottom-2 text-center text-[11px] font-black text-white">{t}</p>
               </div>

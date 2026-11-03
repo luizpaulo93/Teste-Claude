@@ -16,7 +16,7 @@ export function ComboChart({
   points,
   min = 300,
   max = 1000,
-  barName = "TRI",
+  barName = 'TRI',
   lineName,
   ticks: tickValues,
 }: {
@@ -37,15 +37,10 @@ export function ComboChart({
   const slot = iw / points.length;
   const bw = Math.min(46, slot * 0.55);
   const cx = (i: number) => pad.l + slot * i + slot / 2;
-  const y = (v: number) =>
-    pad.t + ih - ((Math.max(min, Math.min(max, v)) - min) / (max - min)) * ih;
-  const ticks = (tickValues ?? [min, 500, 700, 900]).filter(
-    (t) => t >= min && t <= max,
-  );
+  const y = (v: number) => pad.t + ih - ((Math.max(min, Math.min(max, v)) - min) / (max - min)) * ih;
+  const ticks = (tickValues ?? [min, 500, 700, 900]).filter((t) => t >= min && t <= max);
   // Curva suave passando pelo topo de cada barra (acompanha o nível da nota)
-  const tops = points
-    .map((p, i) => (p.bar == null ? null : { x: cx(i), y: y(p.bar) }))
-    .filter(Boolean) as { x: number; y: number }[];
+  const tops = points.map((p, i) => (p.bar == null ? null : { x: cx(i), y: y(p.bar) })).filter(Boolean) as { x: number; y: number }[];
   const curve = tops.reduce((d, pt, i, a) => {
     if (i === 0) return `M${pt.x.toFixed(1)},${pt.y.toFixed(1)}`;
     const p0 = a[i - 2] ?? a[i - 1];
@@ -55,7 +50,7 @@ export function ComboChart({
     const c1 = { x: p1.x + (p2.x - p0.x) / 6, y: p1.y + (p2.y - p0.y) / 6 };
     const c2 = { x: p2.x - (p3.x - p1.x) / 6, y: p2.y - (p3.y - p1.y) / 6 };
     return `${d} C${c1.x.toFixed(1)},${c1.y.toFixed(1)} ${c2.x.toFixed(1)},${c2.y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
-  }, "");
+  }, '');
 
   return (
     <div>
@@ -78,21 +73,8 @@ export function ComboChart({
           </defs>
           {ticks.map((t) => (
             <g key={t}>
-              <line
-                x1={pad.l}
-                x2={W - pad.r}
-                y1={y(t)}
-                y2={y(t)}
-                stroke="var(--line-strong)"
-                strokeDasharray="3 4"
-              />
-              <text
-                x={pad.l - 6}
-                y={y(t) + 4}
-                textAnchor="end"
-                fontSize="10"
-                fill="var(--muted)"
-              >
+              <line x1={pad.l} x2={W - pad.r} y1={y(t)} y2={y(t)} stroke="var(--line-strong)" strokeDasharray="3 4" />
+              <text x={pad.l - 6} y={y(t) + 4} textAnchor="end" fontSize="10" fill="var(--muted)">
                 {t}
               </text>
             </g>
@@ -100,87 +82,28 @@ export function ComboChart({
           {points.map((p, i) => {
             if (p.bar == null) return null;
             const bar = (
-              <g
-                key={i}
-                className={
-                  p.href
-                    ? "cursor-pointer [&:hover_rect.b]:opacity-80"
-                    : undefined
-                }
-              >
-                {p.href && (
-                  <rect
-                    x={cx(i) - slot / 2}
-                    y={pad.t}
-                    width={slot}
-                    height={ih + pad.b}
-                    fill="transparent"
-                  />
-                )}
-                <rect
-                  className="b"
-                  x={cx(i) - bw / 2}
-                  y={y(p.bar)}
-                  width={bw}
-                  height={pad.t + ih - y(p.bar)}
-                  rx="6"
-                  fill="url(#cc-bar)"
-                />
-                <text
-                  x={cx(i)}
-                  y={y(p.bar) - 10}
-                  textAnchor="middle"
-                  fontSize="11"
-                  fontWeight="700"
-                  fill="var(--ink)"
-                >
+              <g key={i} className={p.href ? 'cursor-pointer [&:hover_rect.b]:opacity-80' : undefined}>
+                {p.href && <rect x={cx(i) - slot / 2} y={pad.t} width={slot} height={ih + pad.b} fill="transparent" />}
+                <rect className="b" x={cx(i) - bw / 2} y={y(p.bar)} width={bw} height={pad.t + ih - y(p.bar)} rx="6" fill="url(#cc-bar)" />
+                <text x={cx(i)} y={y(p.bar) - 10} textAnchor="middle" fontSize="11" fontWeight="700" fill="var(--ink)">
                   {p.barLabel ?? Math.round(p.bar)}
                 </text>
               </g>
             );
             return p.href ? (
-              <a
-                key={i}
-                href={p.href}
-                aria-label={`${p.label}: ${p.barLabel ?? Math.round(p.bar)}`}
-              >
+              <a key={i} href={p.href} aria-label={`${p.label}: ${p.barLabel ?? Math.round(p.bar)}`}>
                 {bar}
               </a>
             ) : (
               bar
             );
           })}
-          {tops.length > 1 && (
-            <path
-              d={curve}
-              fill="none"
-              stroke="#f59e0b"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              pointerEvents="none"
-            />
-          )}
+          {tops.length > 1 && <path d={curve} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeLinecap="round" pointerEvents="none" />}
           {tops.map((t, i) => (
-            <circle
-              key={`l${i}`}
-              cx={t.x}
-              cy={t.y}
-              r="4"
-              fill="#f59e0b"
-              stroke="var(--surface)"
-              strokeWidth="2"
-              pointerEvents="none"
-            />
+            <circle key={`l${i}`} cx={t.x} cy={t.y} r="4" fill="#f59e0b" stroke="var(--surface)" strokeWidth="2" pointerEvents="none" />
           ))}
           {points.map((p, i) => (
-            <text
-              key={`x${i}`}
-              x={cx(i)}
-              y={H - 10}
-              textAnchor="middle"
-              fontSize="10"
-              fill="var(--muted)"
-            >
+            <text key={`x${i}`} x={cx(i)} y={H - 10} textAnchor="middle" fontSize="10" fill="var(--muted)">
               {p.label.length > 14 ? `${p.label.slice(0, 13)}…` : p.label}
             </text>
           ))}
@@ -192,8 +115,7 @@ export function ComboChart({
         </span>
         {tops.length > 1 && (
           <span className="flex items-center gap-1.5">
-            <span className="h-0.5 w-4 rounded bg-amber-500" />{" "}
-            {lineName ?? "Evolução"}
+            <span className="h-0.5 w-4 rounded bg-amber-500" /> {lineName ?? 'Evolução'}
           </span>
         )}
       </div>

@@ -33,7 +33,9 @@ export function LessonForm({
   addToModule?: string;
   onDone: () => void;
 }) {
-  const [mats, setMats] = useState<MaterialDraft[]>((lesson?.materials ?? []).map((m) => ({ id: m.id, title: m.title, file_path: m.file_path, size_label: m.size_label })));
+  const [mats, setMats] = useState<MaterialDraft[]>(
+    (lesson?.materials ?? []).map((m) => ({ id: m.id, title: m.title, file_path: m.file_path, size_label: m.size_label })),
+  );
   const pending = useRef<MaterialDraft[]>([]);
   const move = (i: number, d: number) =>
     setMats((list) => {
@@ -61,7 +63,11 @@ export function LessonForm({
         </Field>
       </div>
       <Field label="Pasta (banco de aulas)">
-        <select name="folder_id" defaultValue={lesson?.folder_id ?? folderId ?? ''} className="h-11 w-full rounded-xl border border-line-strong bg-bg-elev px-3 text-sm text-ink">
+        <select
+          name="folder_id"
+          defaultValue={lesson?.folder_id ?? folderId ?? ''}
+          className="h-11 w-full rounded-xl border border-line-strong bg-bg-elev px-3 text-sm text-ink"
+        >
           <option value="">Sem pasta</option>
           {folders.map((f) => (
             <option key={f.id} value={f.id}>
@@ -105,7 +111,12 @@ export function LessonForm({
             <button type="button" onClick={() => move(i, 1)} className="p-1 text-muted hover:text-ink" aria-label="Descer">
               <ArrowDown className="size-3.5" />
             </button>
-            <button type="button" onClick={() => setMats((list) => list.filter((_, k) => k !== i))} className="p-1 text-muted hover:text-danger" aria-label="Remover">
+            <button
+              type="button"
+              onClick={() => setMats((list) => list.filter((_, k) => k !== i))}
+              className="p-1 text-muted hover:text-danger"
+              aria-label="Remover"
+            >
               <X className="size-4" />
             </button>
           </div>

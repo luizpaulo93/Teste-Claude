@@ -49,10 +49,9 @@ export const getMyState = cache(async (userId: string) => {
          from lesson_progress where user_id = $1 order by updated_at desc limit 3000`,
       [userId],
     ),
-    sql.query<{ lesson_id: string; created_at: string }>(
-      `select lesson_id, created_at from favorites where user_id = $1 order by created_at desc limit 1000`,
-      [userId],
-    ),
+    sql.query<{ lesson_id: string; created_at: string }>(`select lesson_id, created_at from favorites where user_id = $1 order by created_at desc limit 1000`, [
+      userId,
+    ]),
   ]);
   return { progress, favorites };
 });
@@ -72,10 +71,7 @@ export const getCourseTree = cache(async (courseId: string, viewer: Viewer) => {
 
 export const getUpcomingEvents = cache(async (limit = 5) => {
   const today = new Date().toISOString().slice(0, 10);
-  return sql.query<CalendarEvent>(
-    `select * from calendar_events where end_date >= $1 and is_published order by start_date limit $2`,
-    [today, limit],
-  );
+  return sql.query<CalendarEvent>(`select * from calendar_events where end_date >= $1 and is_published order by start_date limit $2`, [today, limit]);
 });
 
 /** % de aulas concluídas de um curso (conta pelas aulas, então vale mesmo se a aula estiver em vários cursos). */

@@ -37,9 +37,7 @@ function pool() {
   p.on('error', (e) => console.error('[db]', e.message));
   // Na Vercel (Fluid compute) fecha conexões ociosas antes da função ser suspensa
   if (process.env.VERCEL) {
-    import('@vercel/functions')
-      .then(({ attachDatabasePool }) => attachDatabasePool(p))
-      .catch(() => null);
+    import('@vercel/functions').then(({ attachDatabasePool }) => attachDatabasePool(p)).catch(() => null);
   }
   g.__pgPool = p;
   return p;
@@ -62,10 +60,7 @@ function ensureSchema() {
       await c.query('select pg_advisory_xact_lock(727274)');
       await c.query(`create table if not exists _meta (key text primary key, value text not null)`);
       await c.query(SCHEMA_SQL);
-      await c.query(
-        `insert into _meta (key, value) values ('schema', $1) on conflict (key) do update set value = excluded.value`,
-        [String(SCHEMA_VERSION)],
-      );
+      await c.query(`insert into _meta (key, value) values ('schema', $1) on conflict (key) do update set value = excluded.value`, [String(SCHEMA_VERSION)]);
       await c.query('commit');
     } catch (e) {
       await c.query('rollback').catch(() => null);
@@ -88,8 +83,8 @@ export interface Queryable {
 
 function wrap(run: (text: string, params?: unknown[]) => Promise<{ rows: unknown[]; rowCount: number | null }>): Queryable {
   return {
-    query: async <T,>(text: string, params?: unknown[]) => (await run(text, params)).rows as T[],
-    one: async <T,>(text: string, params?: unknown[]) => ((await run(text, params)).rows[0] as T | undefined) ?? null,
+    query: async <T>(text: string, params?: unknown[]) => (await run(text, params)).rows as T[],
+    one: async <T>(text: string, params?: unknown[]) => ((await run(text, params)).rows[0] as T | undefined) ?? null,
     exec: async (text: string, params?: unknown[]) => (await run(text, params)).rowCount ?? 0,
   };
 }

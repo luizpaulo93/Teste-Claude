@@ -62,16 +62,20 @@ export function BlocksPanel({ space, blocks, today }: { space: string; blocks: B
           {[...current, ...past].map((b) => {
             const now = b.start_on <= today && b.end_on >= today;
             return (
-              <li key={b.id} className={cn('flex items-start gap-3 rounded-xl border p-3', b.end_on < today ? 'border-line opacity-60' : now ? 'border-brand/50 bg-brand/5' : 'border-line')}>
+              <li
+                key={b.id}
+                className={cn(
+                  'flex items-start gap-3 rounded-xl border p-3',
+                  b.end_on < today ? 'border-line opacity-60' : now ? 'border-brand/50 bg-brand/5' : 'border-line',
+                )}
+              >
                 <CalendarRange className={cn('mt-0.5 size-4 shrink-0', now ? 'text-brand' : 'text-muted')} />
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold text-ink">
                     {periodLabel(b.start_on, b.end_on)}
                     {b.title && <span className="font-normal text-ink-2"> · {b.title}</span>}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-muted">
-                    {b.item_keys.map((k) => ASSUNTO_BY_KEY.get(k)?.title ?? k).join(' · ') || 'Sem assuntos'}
-                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted">{b.item_keys.map((k) => ASSUNTO_BY_KEY.get(k)?.title ?? k).join(' · ') || 'Sem assuntos'}</p>
                   {b.files.length > 0 && (
                     <p className="mt-1 flex items-center gap-1 text-[11px] font-semibold text-amber-500">
                       <FileText className="size-3" /> {b.files.length} apostila{b.files.length > 1 ? 's' : ''}
@@ -104,7 +108,15 @@ export function BlocksPanel({ space, blocks, today }: { space: string; blocks: B
 
 function BlockModal({ space, today, block, onClose }: { space: string; today: string; block: BlockData | null; onClose: () => void }) {
   const router = useRouter();
-  const initialKind: Kind = !block ? 'semana' : block.start_on === block.end_on ? 'dia' : block.end_on === shiftISO(block.start_on, 6) ? 'semana' : block.end_on === plusMonth(block.start_on) ? 'mes' : 'livre';
+  const initialKind: Kind = !block
+    ? 'semana'
+    : block.start_on === block.end_on
+      ? 'dia'
+      : block.end_on === shiftISO(block.start_on, 6)
+        ? 'semana'
+        : block.end_on === plusMonth(block.start_on)
+          ? 'mes'
+          : 'livre';
   const [kind, setKind] = useState<Kind>(initialKind);
   const [start, setStart] = useState(block?.start_on ?? today);
   const [end, setEnd] = useState(block?.end_on ?? shiftISO(today, 6));
@@ -134,7 +146,9 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
 
   async function save() {
     setBusy(true);
-    const r = await saveBlock({ id: block?.id, space, title, item_keys: keys, start_on: start, end_on: end, files }).catch(() => ({ error: 'Não foi possível salvar.' }));
+    const r = await saveBlock({ id: block?.id, space, title, item_keys: keys, start_on: start, end_on: end, files }).catch(() => ({
+      error: 'Não foi possível salvar.',
+    }));
     setBusy(false);
     if (r.error) return toast.error(r.error);
     toast('Período salvo no cronograma.');
@@ -169,7 +183,10 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
                 type="button"
                 aria-pressed={kind === k.key}
                 onClick={() => pickKind(k.key)}
-                className={cn('rounded-xl border px-2 py-2 text-xs font-semibold transition', kind === k.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2')}
+                className={cn(
+                  'rounded-xl border px-2 py-2 text-xs font-semibold transition',
+                  kind === k.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2',
+                )}
               >
                 {k.label}
               </button>
@@ -191,12 +208,20 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
 
         <div className="space-y-2">
           <p className="text-xs font-semibold text-ink-2">
-            Assuntos do período <span className="font-normal text-muted">({keys.length} escolhido{keys.length === 1 ? '' : 's'})</span>
+            Assuntos do período{' '}
+            <span className="font-normal text-muted">
+              ({keys.length} escolhido{keys.length === 1 ? '' : 's'})
+            </span>
           </p>
           {keys.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {keys.map((k) => (
-                <button key={k} type="button" onClick={() => toggle(k)} className="flex items-center gap-1 rounded-lg bg-brand/12 px-2 py-1 text-[11px] font-semibold text-brand">
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => toggle(k)}
+                  className="flex items-center gap-1 rounded-lg bg-brand/12 px-2 py-1 text-[11px] font-semibold text-brand"
+                >
                   {ASSUNTO_BY_KEY.get(k)?.title ?? k} <X className="size-3" />
                 </button>
               ))}
@@ -213,7 +238,10 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
                   key={d.key}
                   type="button"
                   onClick={() => setDisc(d.key)}
-                  className={cn('shrink-0 rounded-lg border px-2.5 py-1 text-xs font-semibold', disc === d.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2')}
+                  className={cn(
+                    'shrink-0 rounded-lg border px-2.5 py-1 text-xs font-semibold',
+                    disc === d.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2',
+                  )}
                 >
                   {d.name}
                 </button>
@@ -251,7 +279,12 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
                 aria-label="Nome da apostila"
               />
               <span className="shrink-0 text-[10px] text-muted">{f.size_label}</span>
-              <button type="button" onClick={() => setFiles((l) => l.filter((x) => x.id !== f.id))} aria-label="Tirar apostila" className="text-muted hover:text-danger">
+              <button
+                type="button"
+                onClick={() => setFiles((l) => l.filter((x) => x.id !== f.id))}
+                aria-label="Tirar apostila"
+                className="text-muted hover:text-danger"
+              >
                 <X className="size-4" />
               </button>
             </div>

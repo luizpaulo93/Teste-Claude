@@ -84,7 +84,20 @@ function topics(rows: Row[]) {
   for (const r of rows) {
     const h = r.history ?? [];
     if (!h.length) continue;
-    const t = by.get(r.item_key) ?? { key: r.item_key, title: r.title, discipline: NAMES[r.discipline] ?? r.discipline, students: 0, questions: 0, correct: 0, errors: 0, acc: 0, hard: 0, medium: 0, easy: 0, who: new Set<string>() };
+    const t = by.get(r.item_key) ?? {
+      key: r.item_key,
+      title: r.title,
+      discipline: NAMES[r.discipline] ?? r.discipline,
+      students: 0,
+      questions: 0,
+      correct: 0,
+      errors: 0,
+      acc: 0,
+      hard: 0,
+      medium: 0,
+      easy: 0,
+      who: new Set<string>(),
+    };
     for (const e of h) {
       t.questions += e.q;
       t.correct += e.c;
@@ -101,10 +114,19 @@ function topics(rows: Row[]) {
 function rank(list: TopicStat[], n = 10) {
   return {
     // Maior dificuldade: "ladeira abaixo" primeiro, depois "mais ou menos", depois o menor acerto
-    hardest: list.filter((t) => t.hard + t.medium > 0).sort((a, b) => b.hard - a.hard || b.medium - a.medium || a.acc - b.acc).slice(0, n),
+    hardest: list
+      .filter((t) => t.hard + t.medium > 0)
+      .sort((a, b) => b.hard - a.hard || b.medium - a.medium || a.acc - b.acc)
+      .slice(0, n),
     // Mais erros: mais questões erradas, depois o menor acerto
-    mostErrors: list.filter((t) => t.errors > 0).sort((a, b) => b.errors - a.errors || a.acc - b.acc).slice(0, n),
-    best: list.filter((t) => t.questions > 0 && t.acc >= 70).sort((a, b) => b.acc - a.acc || b.questions - a.questions).slice(0, n),
+    mostErrors: list
+      .filter((t) => t.errors > 0)
+      .sort((a, b) => b.errors - a.errors || a.acc - b.acc)
+      .slice(0, n),
+    best: list
+      .filter((t) => t.questions > 0 && t.acc >= 70)
+      .sort((a, b) => b.acc - a.acc || b.questions - a.questions)
+      .slice(0, n),
   };
 }
 
@@ -120,7 +142,13 @@ function disciplines(rows: Row[]): DisciplineStat[] {
     }
     by.set(r.discipline, d);
   }
-  return [...by.values()].map((d) => ({ name: d.name, questions: d.questions, studied: d.studied, total: d.total, acc: pct((d as DisciplineStat & { c: number }).c, d.questions) }));
+  return [...by.values()].map((d) => ({
+    name: d.name,
+    questions: d.questions,
+    studied: d.studied,
+    total: d.total,
+    acc: pct((d as DisciplineStat & { c: number }).c, d.questions),
+  }));
 }
 
 const levels = (rows: Row[]) => [0, 1, 2, 3, 4].map((l) => rows.filter((r) => Math.min(4, r.level) === l).length);
@@ -163,7 +191,18 @@ export async function buildReport(ids: string[], title: string, week?: { from: s
         ...rank(t, 5),
         disciplines: disciplines(mine),
         done: mine
-          .flatMap((r) => (r.history ?? []).map((h) => ({ d: h.d, title: r.title, discipline: NAMES[r.discipline] ?? r.discipline, q: h.q, c: h.c, acc: pct(h.c, h.q), f: h.f, l: h.l })))
+          .flatMap((r) =>
+            (r.history ?? []).map((h) => ({
+              d: h.d,
+              title: r.title,
+              discipline: NAMES[r.discipline] ?? r.discipline,
+              q: h.q,
+              c: h.c,
+              acc: pct(h.c, h.q),
+              f: h.f,
+              l: h.l,
+            })),
+          )
           .sort((a, b) => a.d.localeCompare(b.d)),
       };
     })

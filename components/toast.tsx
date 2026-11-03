@@ -40,18 +40,9 @@ export function Toaster() {
           role="status"
           className="pointer-events-auto flex w-full max-w-sm animate-slide-up items-center gap-3 rounded-2xl border border-line-strong bg-surface/95 px-4 py-3 text-sm shadow-card backdrop-blur"
         >
-          {t.kind === 'success' ? (
-            <CheckCircle2 className="size-5 shrink-0 text-success" />
-          ) : (
-            <AlertTriangle className="size-5 shrink-0 text-danger" />
-          )}
+          {t.kind === 'success' ? <CheckCircle2 className="size-5 shrink-0 text-success" /> : <AlertTriangle className="size-5 shrink-0 text-danger" />}
           <span className="flex-1 text-ink">{t.message}</span>
-          <button
-            type="button"
-            aria-label="Fechar"
-            onClick={() => setItems((prev) => prev.filter((p) => p.id !== t.id))}
-            className="text-muted hover:text-ink"
-          >
+          <button type="button" aria-label="Fechar" onClick={() => setItems((prev) => prev.filter((p) => p.id !== t.id))} className="text-muted hover:text-ink">
             <X className="size-4" />
           </button>
         </div>

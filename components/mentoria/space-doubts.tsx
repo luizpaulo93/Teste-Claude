@@ -7,7 +7,17 @@ import type { Doubt } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
 /** Dúvidas de um espaço da mentoria (fotos, comentários e curtidas, como nas dúvidas da plataforma). */
-export async function SpaceDoubts({ viewer, space, spaces, base }: { viewer: Viewer; space: string; spaces?: { key: string; label: string; pending?: number }[]; base?: string }) {
+export async function SpaceDoubts({
+  viewer,
+  space,
+  spaces,
+  base,
+}: {
+  viewer: Viewer;
+  space: string;
+  spaces?: { key: string; label: string; pending?: number }[];
+  base?: string;
+}) {
   const rows = await sql.query<Doubt & { liked: boolean }>(
     `select d.*, exists(select 1 from doubt_likes l where l.doubt_id = d.id and l.user_id = $2) as liked
        from doubts d where d.space = $1 order by d.created_at desc limit 100`,
@@ -22,7 +32,10 @@ export async function SpaceDoubts({ viewer, space, spaces, base }: { viewer: Vie
               key={s.key}
               href={`${base}?s=${encodeURIComponent(s.key)}`}
               scroll={false}
-              className={cn('shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition', s.key === space ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-2')}
+              className={cn(
+                'shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition',
+                s.key === space ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-2',
+              )}
             >
               {s.label}
             </Link>
@@ -30,7 +43,13 @@ export async function SpaceDoubts({ viewer, space, spaces, base }: { viewer: Vie
         </div>
       )}
       <DoubtComposer userId={viewer.userId} name={viewer.profile.full_name || viewer.email} avatar={viewer.profile.avatar_url} space={space} />
-      <DoubtFeed key={space + rows.length} doubts={rows} likedIds={rows.filter((d) => d.liked).map((d) => d.id)} viewerId={viewer.userId} isAdmin={viewer.isAdmin} />
+      <DoubtFeed
+        key={space + rows.length}
+        doubts={rows}
+        likedIds={rows.filter((d) => d.liked).map((d) => d.id)}
+        viewerId={viewer.userId}
+        isAdmin={viewer.isAdmin}
+      />
     </div>
   );
 }

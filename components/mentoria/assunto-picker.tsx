@@ -54,7 +54,10 @@ export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: 
                 setDisc(d.key);
                 setQ('');
               }}
-              className={cn('shrink-0 rounded-xl border px-3 py-1.5 text-sm font-semibold', disc === d.key && !term ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2')}
+              className={cn(
+                'shrink-0 rounded-xl border px-3 py-1.5 text-sm font-semibold',
+                disc === d.key && !term ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2',
+              )}
             >
               {d.name} <span className="text-xs opacity-75">{n}</span>
             </button>
@@ -78,7 +81,16 @@ export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: 
                     {term && `${d.name} · `}
                     {b.title}
                   </p>
-                  <button type="button" onClick={() => toggle(items.map((i) => i.key), !all)} className="text-[11px] font-semibold text-brand">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      toggle(
+                        items.map((i) => i.key),
+                        !all,
+                      )
+                    }
+                    className="text-[11px] font-semibold text-brand"
+                  >
                     {all ? 'Desmarcar todos' : 'Marcar todos'}
                   </button>
                 </div>
@@ -87,8 +99,18 @@ export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: 
                     const on = sel.has(i.key);
                     return (
                       <li key={i.key}>
-                        <button type="button" onClick={() => toggle([i.key], !on)} aria-pressed={on} className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-surface-2">
-                          <span className={cn('grid size-5 shrink-0 place-items-center rounded-md border-2', on ? 'border-brand bg-brand text-white' : 'border-line-strong')}>
+                        <button
+                          type="button"
+                          onClick={() => toggle([i.key], !on)}
+                          aria-pressed={on}
+                          className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition hover:bg-surface-2"
+                        >
+                          <span
+                            className={cn(
+                              'grid size-5 shrink-0 place-items-center rounded-md border-2',
+                              on ? 'border-brand bg-brand text-white' : 'border-line-strong',
+                            )}
+                          >
                             {on && <Check className="size-3.5" strokeWidth={3} />}
                           </span>
                           <span className="min-w-0 flex-1 text-[13px] text-ink">{i.title}</span>

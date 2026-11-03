@@ -20,10 +20,20 @@ export function Rail({ title, subtitle, action, children }: { title: string; sub
         <div className="flex shrink-0 items-center gap-3">
           {action}
           <div className="hidden gap-1 sm:flex">
-            <button type="button" aria-label="Voltar" onClick={() => scroll(-1)} className="grid size-8 place-items-center rounded-full border border-line-strong text-ink-2 transition hover:bg-surface-2 hover:text-ink">
+            <button
+              type="button"
+              aria-label="Voltar"
+              onClick={() => scroll(-1)}
+              className="grid size-8 place-items-center rounded-full border border-line-strong text-ink-2 transition hover:bg-surface-2 hover:text-ink"
+            >
               <ChevronLeft className="size-4" />
             </button>
-            <button type="button" aria-label="Avançar" onClick={() => scroll(1)} className="grid size-8 place-items-center rounded-full border border-line-strong text-ink-2 transition hover:bg-surface-2 hover:text-ink">
+            <button
+              type="button"
+              aria-label="Avançar"
+              onClick={() => scroll(1)}
+              className="grid size-8 place-items-center rounded-full border border-line-strong text-ink-2 transition hover:bg-surface-2 hover:text-ink"
+            >
               <ChevronRight className="size-4" />
             </button>
           </div>

@@ -59,7 +59,10 @@ export function AssuntosView({
               key={d.key}
               type="button"
               onClick={() => setDisc(d.key)}
-              className={cn('shrink-0 rounded-xl border px-3.5 py-2 text-left text-sm font-semibold transition', disc === d.key ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2')}
+              className={cn(
+                'shrink-0 rounded-xl border px-3.5 py-2 text-left text-sm font-semibold transition',
+                disc === d.key ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2',
+              )}
             >
               {d.name} <span className="text-xs opacity-75">{pct}%</span>
             </button>
@@ -97,7 +100,10 @@ export function AssuntosView({
                 return (
                   <li
                     key={r.key}
-                    className={cn('flex items-start gap-3 px-4 py-2.5', student && today && 'cursor-pointer transition hover:bg-surface-2/60 active:bg-surface-2')}
+                    className={cn(
+                      'flex items-start gap-3 px-4 py-2.5',
+                      student && today && 'cursor-pointer transition hover:bg-surface-2/60 active:bg-surface-2',
+                    )}
                     onClick={student && today ? () => setOpen(r) : undefined}
                   >
                     <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', lv.dot)} />

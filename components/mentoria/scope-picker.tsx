@@ -22,7 +22,10 @@ export function ScopePicker({ value, onChange }: { value: MentoriaScope; onChang
             type="button"
             aria-pressed={value === o.value}
             onClick={() => onChange(o.value)}
-            className={cn('flex items-start gap-3 rounded-xl border p-3 text-left transition', value === o.value ? 'border-brand bg-brand/10' : 'border-line hover:bg-surface-2')}
+            className={cn(
+              'flex items-start gap-3 rounded-xl border p-3 text-left transition',
+              value === o.value ? 'border-brand bg-brand/10' : 'border-line hover:bg-surface-2',
+            )}
           >
             <o.icon className={cn('mt-0.5 size-5 shrink-0', value === o.value ? 'text-brand' : 'text-muted')} />
             <span>

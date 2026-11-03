@@ -8,6 +8,7 @@ import { toast } from '@/components/toast';
 import { Badge, Button, buttonClass, Card, Field, Input, Select } from '@/components/ui';
 import { ActionButton, Modal, Spinner } from '@/components/ui-client';
 import type { ListTemplate } from '@/lib/question-lists';
+import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 import { AudiencePicker, type AudienceOptions } from '../../ao-vivo/lives-manager';
@@ -23,7 +24,7 @@ export interface ListSummary {
 }
 
 /** Baixar em PDF ou Word (com ou sem gabarito no fim). */
-export function DownloadMenu({ id, small }: { id: string; small?: boolean }) {
+export function DownloadMenu({ id, title, small }: { id: string; title: string; small?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -32,24 +33,33 @@ export function DownloadMenu({ id, small }: { id: string; small?: boolean }) {
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, [open]);
+  const [busy, setBusy] = useState(false);
+  async function get(fmt: 'pdf' | 'docx', gab: boolean) {
+    setOpen(false);
+    setBusy(true);
+    toast('Gerando o arquivo…');
+    try {
+      const blob = await fetchFile(`/api/listas/${id}/arquivo?formato=${fmt}${gab ? '&gabarito=1' : ''}`, fmt);
+      saveBlob(blob, safeName(`${title}${gab ? ' (com gabarito)' : ''}`, fmt));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível gerar o arquivo.');
+    }
+    setBusy(false);
+  }
   const item = (fmt: 'pdf' | 'docx', gab: boolean) => (
-    <a
-      href={`/api/listas/${id}/arquivo?formato=${fmt}${gab ? '&gabarito=1' : ''}`}
-      download
-      onClick={() => {
-        setOpen(false);
-        toast('Gerando o arquivo… o download começa em instantes.');
-      }}
-      className="flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold text-ink hover:bg-surface-2"
+    <button
+      type="button"
+      onClick={() => void get(fmt, gab)}
+      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-ink hover:bg-surface-2"
     >
       <FileText className={cn('size-4', fmt === 'pdf' ? 'text-danger' : 'text-brand')} /> {fmt === 'pdf' ? 'PDF' : 'Word'}
       {gab ? ' com gabarito' : ''}
-    </a>
+    </button>
   );
   return (
     <div ref={ref} className="relative">
-      <Button variant="secondary" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <Download className="size-4" /> {small ? '' : 'Baixar'}
+      <Button variant="secondary" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open} disabled={busy}>
+        {busy ? <Spinner /> : <Download className="size-4" />} {small ? '' : 'Baixar'}
       </Button>
       {open && (
         <div className="absolute right-0 z-30 mt-1 w-48 rounded-xl border border-line-strong bg-surface p-1 shadow-2xl">
@@ -100,7 +110,7 @@ export function ListCard({
         <Link href={`/admin/questoes/listas/${list.id}`} className={buttonClass('secondary', 'sm')}>
           <Pencil className="size-4" /> Editar
         </Link>
-        <DownloadMenu id={list.id} />
+        <DownloadMenu id={list.id} title={list.title} />
         <Button size="sm" onClick={() => setApply(true)}>
           <Send className="size-4" /> Aplicar
         </Button>

@@ -47,11 +47,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
         eyebrow="Banco de questões"
         title="Questões"
         actions={
-          viewer.isAdmin ? (
-            <Link href="/admin/questoes" className={buttonClass('secondary', 'sm')}>
-              Importar provas
-            </Link>
-          ) : mine && mine.n > 0 ? (
+          !viewer.isAdmin && mine && mine.n > 0 ? (
             <Badge className="max-w-full whitespace-normal break-words" tone="brand">
               {mine.n} respondidas · {Math.round((mine.ok / mine.n) * 100)}% de acerto
             </Badge>
@@ -104,10 +100,8 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
               </Link>
             </div>
           )}
-          <QuestionFilters value={f} disc={opts.disc} papers={opts.papers.map((p) => ({ id: p.id, label: paperLabel(p) }))} />
-          <p className="mt-4 mb-2 text-xs text-muted">
-            {total} {total === 1 ? 'questão' : 'questões'}
-          </p>
+          <QuestionFilters value={f} rows={opts.rows} papers={opts.papers.map((p) => ({ id: p.id, label: paperLabel(p) }))} total={total} />
+          <div className="mb-3" />
           {items.length ? (
             <ul className="space-y-2">
               {items.map((it, idx) => {

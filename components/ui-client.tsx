@@ -86,7 +86,14 @@ export function Modal({
             <X className="size-5" />
           </button>
         </div>
-        <div className={cn('scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5', footer ? 'pb-5' : 'pb-[calc(1.5rem+env(safe-area-inset-bottom))]')}>{children}</div>
+        <div
+          className={cn(
+            'scrollbar-thin min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pt-5',
+            footer ? 'pb-5' : 'pb-[calc(1.5rem+env(safe-area-inset-bottom))]',
+          )}
+        >
+          {children}
+        </div>
         {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3 safe-bottom">{footer}</div>}
       </div>
     </div>,
@@ -138,17 +145,7 @@ export function ActionButton({
   );
 }
 
-export function Switch({
-  name,
-  defaultChecked,
-  label,
-  description,
-}: {
-  name: string;
-  defaultChecked?: boolean;
-  label: string;
-  description?: string;
-}) {
+export function Switch({ name, defaultChecked, label, description }: { name: string; defaultChecked?: boolean; label: string; description?: string }) {
   const [on, setOn] = useState(Boolean(defaultChecked));
   return (
     <label className="flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-line bg-surface-2/60 p-3.5">

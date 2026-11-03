@@ -235,6 +235,9 @@ export async function refreshPaperCounts(paperId: string) {
 export interface QFilters {
   disciplina?: string;
   assunto?: string;
+  especifico?: string;
+  habilidade?: string;
+  ano?: string;
   prova?: string;
   dif?: Difficulty | '';
   sit?: 'nao' | 'erradas' | 'certas' | '';
@@ -286,6 +289,9 @@ export function readFilters(sp: Record<string, string | string[] | undefined>): 
   return {
     disciplina: one('disciplina').slice(0, 80),
     assunto: one('assunto').slice(0, 200),
+    especifico: one('especifico').slice(0, 400),
+    habilidade: one('habilidade').slice(0, 20),
+    ano: /^\d{4}$/.test(one('ano')) ? one('ano') : '',
     prova: one('prova').slice(0, 120),
     dif: DIFFICULTY.some((d) => d.key === dif) ? (dif as Difficulty) : '',
     sit: sit === 'nao' || sit === 'erradas' || sit === 'certas' ? sit : '',
@@ -330,10 +336,16 @@ function where(f: QFilters, userId: string) {
       conds.push(`(q.assunto_geral ilike any(${n}::text[]) or q.assunto_especifico ilike any(${n}::text[]))`);
     }
   }
+  if (f.especifico) add('q.assunto_especifico = $?', f.especifico);
+  if (f.habilidade) add('q.habilidade = $?', f.habilidade);
+  if (f.ano) add('coalesce(q.ano, p.ano) = $?', Number(f.ano));
+  // trecho: enunciado, alternativas, assuntos ou habilidade
   if (f.q) {
-    args.push(`%${f.q}%`);
+    args.push(`%${f.q.replace(/[%_]/g, (c) => `\\${c}`)}%`);
     const n = `$${args.length}`;
-    conds.push(`(q.assunto_especifico ilike ${n} or q.assunto_geral ilike ${n} or q.habilidade ilike ${n})`);
+    conds.push(
+      `(q.blocos::text ilike ${n} or q.alternativas::text ilike ${n} or q.assunto_especifico ilike ${n} or q.assunto_geral ilike ${n} or q.habilidade ilike ${n})`,
+    );
   }
   return { sql: conds.length ? `where ${conds.join(' and ')}` : '', args };
 }
@@ -389,14 +401,24 @@ export async function neighbors(f: QFilters, userId: string, id: string) {
 export const getQuestion = (id: string) =>
   sql.one<Question & { paper: Paper }>(`select q.*, to_jsonb(p) as paper from questions q join exam_papers p on p.id = q.paper_id where q.id = $1`, [id]);
 
+export interface FilterRow {
+  disciplina: string;
+  assunto_geral: string;
+  assunto_especifico: string;
+  habilidade: string;
+  ano: number | null;
+  paper_id: string;
+}
+
 export async function filterOptions() {
-  const [disc, papers] = await Promise.all([
-    sql.query<{ disciplina: string; assunto_geral: string; n: number }>(
-      `select disciplina, assunto_geral, count(*)::int as n from questions where disciplina <> '' group by 1, 2 order by 1, 2`,
+  const [rows, papers] = await Promise.all([
+    sql.query<FilterRow>(
+      `select distinct q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, coalesce(q.ano, p.ano) as ano, q.paper_id
+         from questions q join exam_papers p on p.id = q.paper_id where q.disciplina <> ''`,
     ),
     sql.query<Paper>(`select * from exam_papers order by ano desc nulls last, id`),
   ]);
-  return { disc, papers };
+  return { rows, papers };
 }
 
 export const paperLabel = (p: Pick<Paper, 'exame' | 'ano' | 'dia' | 'aplicacao'>) =>

@@ -16,4 +16,3 @@ export async function compressImage(file: File, maxSize = 1600, quality = 0.85):
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/webp', quality));
   return blob && blob.size < file.size ? blob : file;
 }
-
