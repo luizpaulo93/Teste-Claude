@@ -37,12 +37,14 @@ export default async function LivesPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Transmissões"
-        title="Ao vivo"
-        actions={goLive ? <GoLiveButton options={goLive} /> : undefined}
-      />
-      {!all.length && <EmptyState icon={<Radio className="size-6" />} title="Nenhuma transmissão agendada" description="Quando uma aula ao vivo for marcada ela aparece aqui." />}
+      <PageHeader eyebrow="Transmissões" title="Ao vivo" actions={goLive ? <GoLiveButton options={goLive} /> : undefined} />
+      {!all.length && (
+        <EmptyState
+          icon={<Radio className="size-6" />}
+          title="Nenhuma transmissão agendada"
+          description="Quando uma aula ao vivo for marcada ela aparece aqui."
+        />
+      )}
       <div className="space-y-10">
         {now.length > 0 && (
           <section>

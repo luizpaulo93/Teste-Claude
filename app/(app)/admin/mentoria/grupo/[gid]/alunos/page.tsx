@@ -24,7 +24,10 @@ export default async function GroupStudents({ params }: { params: Promise<{ gid:
         const s = by.get(emailKey(mb.email));
         return (
           <li key={mb.email} className="border-b border-line last:border-b-0">
-            <Link href={`/admin/mentoria/${encodeURIComponent(emailKey(mb.email))}`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+            <Link
+              href={`/admin/mentoria/${encodeURIComponent(emailKey(mb.email))}`}
+              className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2"
+            >
               <Avatar name={mb.name} size={34} />
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink">{mb.name}</span>

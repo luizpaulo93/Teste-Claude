@@ -68,7 +68,12 @@ export function LiveLessonEditor({
               <div key={m.id} className="flex items-center gap-1.5 rounded-xl border border-line pr-2">
                 <button
                   type="button"
-                  onClick={() => getFileUrl(m.file_path, m.title).then((u) => window.open(u, '_blank'), () => toast.error('Arquivo indisponível.'))}
+                  onClick={() =>
+                    getFileUrl(m.file_path, m.title).then(
+                      (u) => window.open(u, '_blank'),
+                      () => toast.error('Arquivo indisponível.'),
+                    )
+                  }
                   aria-label="Abrir PDF"
                   title="Abrir PDF"
                   className="grid size-9 shrink-0 place-items-center rounded-l-xl text-danger hover:bg-surface-2"
@@ -82,7 +87,12 @@ export function LiveLessonEditor({
                   aria-label="Nome do PDF"
                 />
                 <span className="shrink-0 text-[10px] text-muted">{m.size_label}</span>
-                <button type="button" onClick={() => setMats((l) => l.filter((x) => x.id !== m.id))} aria-label="Tirar PDF" className="text-muted hover:text-danger">
+                <button
+                  type="button"
+                  onClick={() => setMats((l) => l.filter((x) => x.id !== m.id))}
+                  aria-label="Tirar PDF"
+                  className="text-muted hover:text-danger"
+                >
                   <X className="size-4" />
                 </button>
               </div>

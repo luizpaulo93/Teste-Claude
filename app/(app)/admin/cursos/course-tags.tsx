@@ -44,7 +44,14 @@ export function TagsManager({ tags, counts }: { tags: CourseTag[]; counts: Recor
                     if (await run(saveTag(t.id, edit.name), 'Tag renomeada')) setEdit(null);
                   }}
                 >
-                  <Input value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} maxLength={40} className="h-8" autoFocus aria-label="Nome da tag" />
+                  <Input
+                    value={edit.name}
+                    onChange={(e) => setEdit({ ...edit, name: e.target.value })}
+                    maxLength={40}
+                    className="h-8"
+                    autoFocus
+                    aria-label="Nome da tag"
+                  />
                   <button type="submit" disabled={busy} aria-label="Salvar" className={buttonClass('ghost', 'icon', 'size-8 text-success')}>
                     <Check className="size-4" />
                   </button>
@@ -55,18 +62,46 @@ export function TagsManager({ tags, counts }: { tags: CourseTag[]; counts: Recor
               ) : (
                 <>
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
-                    {t.name} <span className="text-xs font-normal text-muted">· {counts[t.id] ?? 0} curso{(counts[t.id] ?? 0) === 1 ? '' : 's'}</span>
+                    {t.name}{' '}
+                    <span className="text-xs font-normal text-muted">
+                      · {counts[t.id] ?? 0} curso{(counts[t.id] ?? 0) === 1 ? '' : 's'}
+                    </span>
                   </span>
-                  <button type="button" disabled={busy || i === 0} onClick={() => run(moveTag(t.id, -1))} aria-label="Subir" className={buttonClass('ghost', 'icon', 'size-8')}>
+                  <button
+                    type="button"
+                    disabled={busy || i === 0}
+                    onClick={() => run(moveTag(t.id, -1))}
+                    aria-label="Subir"
+                    className={buttonClass('ghost', 'icon', 'size-8')}
+                  >
                     <ArrowUp className="size-3.5" />
                   </button>
-                  <button type="button" disabled={busy || i === tags.length - 1} onClick={() => run(moveTag(t.id, 1))} aria-label="Descer" className={buttonClass('ghost', 'icon', 'size-8')}>
+                  <button
+                    type="button"
+                    disabled={busy || i === tags.length - 1}
+                    onClick={() => run(moveTag(t.id, 1))}
+                    aria-label="Descer"
+                    className={buttonClass('ghost', 'icon', 'size-8')}
+                  >
                     <ArrowDown className="size-3.5" />
                   </button>
-                  <button type="button" onClick={() => setEdit({ id: t.id, name: t.name })} aria-label="Renomear" className={buttonClass('ghost', 'icon', 'size-8')}>
+                  <button
+                    type="button"
+                    onClick={() => setEdit({ id: t.id, name: t.name })}
+                    aria-label="Renomear"
+                    className={buttonClass('ghost', 'icon', 'size-8')}
+                  >
                     <Pencil className="size-3.5" />
                   </button>
-                  <ActionButton action={() => deleteTag(t.id)} confirm={`Excluir a tag "${t.name}"? Os cursos continuam, só saem do filtro.`} success="Tag excluída" variant="ghost" size="sm" className="size-8 px-0 hover:text-danger" title="Excluir tag">
+                  <ActionButton
+                    action={() => deleteTag(t.id)}
+                    confirm={`Excluir a tag "${t.name}"? Os cursos continuam, só saem do filtro.`}
+                    success="Tag excluída"
+                    variant="ghost"
+                    size="sm"
+                    className="size-8 px-0 hover:text-danger"
+                    title="Excluir tag"
+                  >
                     <Trash2 className="size-3.5" />
                   </ActionButton>
                 </>
@@ -110,7 +145,10 @@ export function TagPicker({ tags, selected }: { tags: CourseTag[]; selected: str
                 type="button"
                 aria-pressed={on}
                 onClick={() => setSel((l) => (on ? l.filter((x) => x !== t.id) : [...l, t.id]))}
-                className={cn('rounded-full border px-3 py-1 text-xs font-semibold transition', on ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-2')}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs font-semibold transition',
+                  on ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-2',
+                )}
               >
                 {t.name}
               </button>

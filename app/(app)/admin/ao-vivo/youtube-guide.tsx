@@ -34,8 +34,8 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Crie um projeto no Google Cloud',
       body: (
         <>
-          Entre em <A href="https://console.cloud.google.com/projectcreate">console.cloud.google.com</A> com a <strong>mesma conta Google do canal</strong>. Crie um
-          projeto (ex.: “Curso Vértice”). Não precisa cadastrar cartão.
+          Entre em <A href="https://console.cloud.google.com/projectcreate">console.cloud.google.com</A> com a <strong>mesma conta Google do canal</strong>.
+          Crie um projeto (ex.: “Curso Vértice”). Não precisa cadastrar cartão.
         </>
       ),
     },
@@ -43,8 +43,8 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Ative a YouTube Data API v3',
       body: (
         <>
-          Abra <A href="https://console.cloud.google.com/apis/library/youtube.googleapis.com">YouTube Data API v3</A> (com o projeto selecionado no topo) e toque em{' '}
-          <strong>Ativar</strong>.
+          Abra <A href="https://console.cloud.google.com/apis/library/youtube.googleapis.com">YouTube Data API v3</A> (com o projeto selecionado no topo) e
+          toque em <strong>Ativar</strong>.
         </>
       ),
     },
@@ -52,9 +52,9 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Configure a tela de consentimento',
       body: (
         <>
-          Em <A href="https://console.cloud.google.com/auth/overview">Google Auth Platform</A>, toque em <strong>Começar</strong>: nome do app “Curso Vértice”, seu e-mail de
-          suporte, público <strong>Externo</strong>, e-mail de contato e concordar. Depois, em <strong>Público</strong>, toque em <strong>Publicar app</strong> (fica “Em
-          produção”). Sem isso, a conexão com o YouTube cai a cada 7 dias.
+          Em <A href="https://console.cloud.google.com/auth/overview">Google Auth Platform</A>, toque em <strong>Começar</strong>: nome do app “Curso Vértice”,
+          seu e-mail de suporte, público <strong>Externo</strong>, e-mail de contato e concordar. Depois, em <strong>Público</strong>, toque em{' '}
+          <strong>Publicar app</strong> (fica “Em produção”). Sem isso, a conexão com o YouTube cai a cada 7 dias.
         </>
       ),
     },
@@ -67,7 +67,8 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
           <CopyBox text={origin} />
           Em <strong>URIs de redirecionamento autorizados</strong>, cole:
           <CopyBox text={`${origin}/api/youtube/callback`} />
-          Toque em <strong>Criar</strong> e copie o <strong>ID do cliente</strong> e a <strong>Chave secreta do cliente</strong>. Guarde a chave: ela é mostrada uma vez só.
+          Toque em <strong>Criar</strong> e copie o <strong>ID do cliente</strong> e a <strong>Chave secreta do cliente</strong>. Guarde a chave: ela é mostrada
+          uma vez só.
         </>
       ),
     },
@@ -75,12 +76,13 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Coloque as duas chaves na Vercel',
       body: (
         <>
-          No <A href="https://vercel.com/dashboard">painel da Vercel</A>, abra o projeto → <strong>Settings</strong> → <strong>Environment Variables</strong> e crie:
+          No <A href="https://vercel.com/dashboard">painel da Vercel</A>, abra o projeto → <strong>Settings</strong> → <strong>Environment Variables</strong> e
+          crie:
           <CopyBox text="GOOGLE_CLIENT_ID" />
           com o ID do cliente, e
           <CopyBox text="GOOGLE_CLIENT_SECRET" />
-          com a chave secreta (marque Production e Preview). Depois vá em <strong>Deployments</strong> → no último, <strong>⋯ → Redeploy</strong>. As chaves só valem depois
-          disso.
+          com a chave secreta (marque Production e Preview). Depois vá em <strong>Deployments</strong> → no último, <strong>⋯ → Redeploy</strong>. As chaves só
+          valem depois disso.
         </>
       ),
     },
@@ -88,8 +90,8 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Ative as lives no seu canal',
       body: (
         <>
-          No <A href="https://studio.youtube.com">YouTube Studio</A>, toque em <strong>Criar → Transmitir ao vivo</strong>. Na primeira vez o YouTube pede a verificação do
-          canal por telefone, e a liberação pode levar até 24 horas.
+          No <A href="https://studio.youtube.com">YouTube Studio</A>, toque em <strong>Criar → Transmitir ao vivo</strong>. Na primeira vez o YouTube pede a
+          verificação do canal por telefone, e a liberação pode levar até 24 horas.
         </>
       ),
     },
@@ -97,8 +99,8 @@ export function YoutubeGuide({ origin, open }: { origin: string; open?: boolean 
       title: 'Conecte aqui',
       body: (
         <>
-          Volte nesta página e toque em <strong>Conectar conta do YouTube</strong>. Escolha a conta do canal. Se aparecer “O Google não verificou este app”, toque em{' '}
-          <strong>Avançado → Acessar Curso Vértice</strong> (é o seu próprio app) e permita o acesso.
+          Volte nesta página e toque em <strong>Conectar conta do YouTube</strong>. Escolha a conta do canal. Se aparecer “O Google não verificou este app”,
+          toque em <strong>Avançado → Acessar Curso Vértice</strong> (é o seu próprio app) e permita o acesso.
         </>
       ),
     },

@@ -100,7 +100,10 @@ export function GroupForm({
                   type="button"
                   onClick={() => setCls((l) => (on ? l.filter((x) => x !== c.id) : [...l, c.id]))}
                   aria-pressed={on}
-                  className={cn('flex items-center gap-2.5 rounded-xl border p-3 text-left transition', on ? 'border-brand bg-brand/10' : 'border-line hover:bg-surface-2')}
+                  className={cn(
+                    'flex items-center gap-2.5 rounded-xl border p-3 text-left transition',
+                    on ? 'border-brand bg-brand/10' : 'border-line hover:bg-surface-2',
+                  )}
                 >
                   <Box on={on} />
                   <span className="min-w-0 flex-1">
@@ -163,7 +166,12 @@ export function GroupForm({
 
 function Box({ on, dim }: { on: boolean; dim?: boolean }) {
   return (
-    <span className={cn('grid size-5 shrink-0 place-items-center rounded-md border-2', on ? (dim ? 'border-brand/50 bg-brand/40 text-white' : 'border-brand bg-brand text-white') : 'border-line-strong')}>
+    <span
+      className={cn(
+        'grid size-5 shrink-0 place-items-center rounded-md border-2',
+        on ? (dim ? 'border-brand/50 bg-brand/40 text-white' : 'border-brand bg-brand text-white') : 'border-line-strong',
+      )}
+    >
       {on && <Check className="size-3.5" strokeWidth={3} />}
     </span>
   );

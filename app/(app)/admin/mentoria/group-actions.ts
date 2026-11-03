@@ -35,7 +35,9 @@ export interface GroupInput {
 export async function saveGroup(data: GroupInput): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    const name = String(data.name ?? '').trim().slice(0, 120);
+    const name = String(data.name ?? '')
+      .trim()
+      .slice(0, 120);
     if (!name) return { error: 'Dê um nome ao grupo.' };
     const emails = [...new Set((data.student_emails ?? []).map((e) => String(e).trim().toLowerCase()).filter((e) => EMAIL_RE.test(e)))].slice(0, 2000);
     const classes = [...new Set((data.class_ids ?? []).filter((c) => isDocId(String(c))))];
@@ -107,7 +109,12 @@ export async function buildGroupPlan(id: string, disciplines: string[], order: '
     const mode = order === 'matriz' ? 'matriz' : 'prioridade';
     const keys = orderedKeys(chosen, mode);
     const old = (await sql.one<{ plan_keys: string[] }>(`select plan_keys from mentoria_groups where id = $1`, [id]))?.plan_keys ?? [];
-    await sql.exec(`update mentoria_groups set plan_disciplines = $2, plan_order = $3, plan_keys = $4, updated_at = now() where id = $1`, [id, chosen, mode, keys]);
+    await sql.exec(`update mentoria_groups set plan_disciplines = $2, plan_order = $3, plan_keys = $4, updated_at = now() where id = $1`, [
+      id,
+      chosen,
+      mode,
+      keys,
+    ]);
     // Quem já tem cronograma: entram os assuntos novos e saem os que ele ainda não estudou (o progresso fica)
     await syncGroup(id, undefined, old.length ? { add: keys.filter((k) => !old.includes(k)), remove: old.filter((k) => !keys.includes(k)) } : undefined);
     refresh(id);
@@ -126,7 +133,9 @@ export async function setGroupAssuntos(id: string, keys: string[]): Promise<Acti
     if (!g) return { error: 'Grupo não encontrado.' };
     const wanted = new Set((keys ?? []).filter((k) => ASSUNTO_BY_KEY.has(k)));
     const kept = g.plan_keys.filter((k) => wanted.has(k));
-    const added = [...wanted].filter((k) => !g.plan_keys.includes(k)).sort((a, b) => ASSUNTO_BY_KEY.get(b)!.priority - ASSUNTO_BY_KEY.get(a)!.priority || ASSUNTO_BY_KEY.get(a)!.index - ASSUNTO_BY_KEY.get(b)!.index);
+    const added = [...wanted]
+      .filter((k) => !g.plan_keys.includes(k))
+      .sort((a, b) => ASSUNTO_BY_KEY.get(b)!.priority - ASSUNTO_BY_KEY.get(a)!.priority || ASSUNTO_BY_KEY.get(a)!.index - ASSUNTO_BY_KEY.get(b)!.index);
     const next = [...kept, ...added];
     const discs = [...new Set(next.map((k) => ASSUNTO_BY_KEY.get(k)!.discipline))];
     await sql.exec(`update mentoria_groups set plan_keys = $2, plan_disciplines = $3, updated_at = now() where id = $1`, [id, next, discs]);

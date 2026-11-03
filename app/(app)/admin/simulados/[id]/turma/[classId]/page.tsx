@@ -25,10 +25,17 @@ export default async function ClassReport({ params }: { params: Promise<{ id: st
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/admin/simulados/${simulado.id}`} className="mb-3 inline-flex max-w-full items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+        <Link
+          href={`/admin/simulados/${simulado.id}`}
+          className="mb-3 inline-flex max-w-full items-center gap-1 text-sm font-semibold text-muted hover:text-ink"
+        >
           <ChevronLeft className="size-4 shrink-0" /> <span className="truncate">{simulado.title}</span>
         </Link>
-        <PageHeader eyebrow="Turma" title={className(cid)} subtitle={pos >= 0 ? `${pos + 1}º lugar entre ${ranking.length} turma${ranking.length === 1 ? '' : 's'}` : undefined} />
+        <PageHeader
+          eyebrow="Turma"
+          title={className(cid)}
+          subtitle={pos >= 0 ? `${pos + 1}º lugar entre ${ranking.length} turma${ranking.length === 1 ? '' : 's'}` : undefined}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

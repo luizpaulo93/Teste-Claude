@@ -23,7 +23,7 @@ import { mml2omml } from 'mathml2omml';
 import sharp from 'sharp';
 import { source, type ListQuestion } from '@/lib/list-html';
 import type { ListTemplate } from '@/lib/question-lists';
-import type { QImg } from '@/lib/question-types';
+import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 
 /**
  * Lista em Word (.docx): coluna dupla, margem estreita (1,27 cm), Arial 10.
@@ -154,16 +154,18 @@ function loadImg(url: string) {
   return imgCache.get(url)!;
 }
 
-async function imageRun(i: QImg | { url: string; largura?: number | null }, maxPx: number) {
+async function imageRun(i: QImg | { url: string; largura?: number | null }, maxPx: number, maxH = Infinity) {
   if (!i.url) return null;
   const got = await loadImg(i.url);
   if (!got) return null;
-  const want = Math.min(maxPx, i.largura ? i.largura * 0.75 : got.w * 0.75);
+  let want = Math.min(maxPx, i.largura ? i.largura * 0.75 : got.w * 0.75);
+  if ((want * got.h) / got.w > maxH) want = (maxH * got.w) / got.h;
   return new ImageRun({ type: 'png', data: got.data, transformation: { width: Math.round(want), height: Math.round((want * got.h) / got.w) } });
 }
 
 async function imagePara(i: QImg, align: (typeof AlignmentType)[keyof typeof AlignmentType] = AlignmentType.CENTER, indent?: number) {
-  const run = await imageRun(i, COL_PX - (indent ? 20 : 0));
+  // imagem de alternativa (com recuo): 60% da coluna e no máximo 3 cm de altura
+  const run = indent ? await imageRun(i, Math.round(COL_PX * 0.6), 113) : await imageRun(i, COL_PX);
   return run ? new Paragraph({ alignment: align, spacing: { before: 60, after: 60 }, indent: indent ? { left: indent } : undefined, children: [run] }) : null;
 }
 
@@ -206,12 +208,13 @@ async function questionBlocks(q: ListQuestion, n: number) {
       if (b.legenda) out.push(...textParas(b.legenda, { align: AlignmentType.CENTER, size: 16 }));
     }
   }
-  const ia = Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : [];
+  const ia = altImagesToShow(q);
   for (const i of ia) {
     const p = await imagePara(i);
     if (p) out.push(p);
   }
-  for (const a of q.alternativas) {
+  // letras desenhadas na imagem (sem recorte): não repete "A) B) C)…" vazias embaixo
+  for (const a of ia.length && blankAlternatives(q) ? [] : q.alternativas) {
     const segs = paragraphs(a.texto);
     out.push(
       new Paragraph({

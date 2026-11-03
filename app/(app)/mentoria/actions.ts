@@ -74,7 +74,10 @@ export async function scoreCard(
   if (!q) return { error: 'Informe quantas questões você fez e quantas acertou.' };
   const f = [1, 2, 3].includes(Number(feel)) ? Number(feel) : 0;
   if (!f) return { error: 'Diga como foi o assunto: de boas, mais ou menos ou ladeira abaixo.' };
-  const card = await sql.one<{ level: number; history: unknown[]; pinned_on: string | null }>(`select level, history, pinned_on::text as pinned_on from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
+  const card = await sql.one<{ level: number; history: unknown[]; pinned_on: string | null }>(
+    `select level, history, pinned_on::text as pinned_on from mentoria_cards where id = $1 and mentoria_id = $2`,
+    [id, a.id],
+  );
   if (!card) return { error: 'Card não encontrado.' };
   const today = todayBR();
   const r = afterScore(card.level, q, c, today, f);
@@ -127,7 +130,15 @@ export async function setPlanAssuntos(keys: string[], mentoriaId: string): Promi
       `insert into mentoria_cards (id, mentoria_id, item_key, discipline, title, priority, ord)
        select v.id, $1, v.k, v.d, v.t, v.p, v.o from unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::int[], $7::int[]) as v(id, k, d, t, p, o)
        on conflict (mentoria_id, item_key) do nothing`,
-      [a.id, add.map(() => newId()), add.map((x) => x.key), add.map((x) => x.discipline), add.map((x) => x.title), add.map((x) => x.priority), add.map(() => ord++)],
+      [
+        a.id,
+        add.map(() => newId()),
+        add.map((x) => x.key),
+        add.map((x) => x.discipline),
+        add.map((x) => x.title),
+        add.map((x) => x.priority),
+        add.map(() => ord++),
+      ],
     );
   const discs = [...new Set([...wanted].map((k) => ASSUNTO_BY_KEY.get(k)!.discipline))];
   await sql.exec(`update mentorias set plan_disciplines = $2, updated_at = now() where id = $1`, [a.id, discs]);
@@ -150,7 +161,12 @@ export async function addToDay(itemKey: string, day: string, mentoriaId?: string
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < today || day > shift(today, 6)) return { error: 'Escolha hoje ou um dos próximos dias.' };
   const card = await sql.one<{ id: string; step: string }>(`select id, step from mentoria_cards where mentoria_id = $1 and item_key = $2`, [a.id, itemKey]);
   if (card?.step === 'questions') return { error: 'Esse assunto já está em andamento hoje.' };
-  if (card) await sql.exec(`update mentoria_cards set pinned_on = $3, span_end = null, block_id = null, updated_at = now() where id = $1 and mentoria_id = $2`, [card.id, a.id, day]);
+  if (card)
+    await sql.exec(`update mentoria_cards set pinned_on = $3, span_end = null, block_id = null, updated_at = now() where id = $1 and mentoria_id = $2`, [
+      card.id,
+      a.id,
+      day,
+    ]);
   else {
     const max = await sql.one<{ m: number }>(`select coalesce(max(ord), -1)::int as m from mentoria_cards where mentoria_id = $1`, [a.id]);
     await sql.exec(
@@ -168,8 +184,12 @@ export async function addToDay(itemKey: string, day: string, mentoriaId?: string
 export async function removeFromDay(id: string, mentoriaId?: string): Promise<Result> {
   const a = await access(mentoriaId);
   if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
-  const del = await sql.exec(`delete from mentoria_cards where id = $1 and mentoria_id = $2 and added_by_student and block_id is null and attempts = 0 and step = 'study'`, [id, a.id]);
-  if (!del) await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2 and block_id is null`, [id, a.id]);
+  const del = await sql.exec(
+    `delete from mentoria_cards where id = $1 and mentoria_id = $2 and added_by_student and block_id is null and attempts = 0 and step = 'study'`,
+    [id, a.id],
+  );
+  if (!del)
+    await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2 and block_id is null`, [id, a.id]);
   await reschedule(a.id);
   refresh(a.id);
   return { ok: true };

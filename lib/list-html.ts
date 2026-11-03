@@ -1,5 +1,5 @@
 import 'server-only';
-import type { QImg } from '@/lib/question-types';
+import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 import type { ListTemplate } from '@/lib/question-lists';
 import type { Question } from '@/lib/questions';
 import { pdfFontsCss } from '@/lib/pdf-fonts';
@@ -36,25 +36,36 @@ export function questionHtml(q: ListQuestion, n: number) {
       parts.push(`<table>${b.legenda ? `<caption>${rich(b.legenda, true)}</caption>` : ''}${head}<tbody>${body}</tbody></table>`);
     }
   }
-  const ia = Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : [];
+  const ia = altImagesToShow(q);
   for (const i of ia) parts.push(`<div class="fig">${img(i)}</div>`);
   const alts = q.alternativas
     .map(
       (a) =>
-        `<li><b class="l">${esc(a.letra)}</b><div class="at">${a.texto ? rich(a.texto) : ''}${a.imagem ? `<div class="fig left">${img(a.imagem)}</div>` : ''}</div></li>`,
+        `<li><b class="l">${esc(a.letra)}</b><div class="at">${a.texto ? rich(a.texto) : ''}${a.imagem ? `<div class="fig left alt">${img(a.imagem)}</div>` : ''}</div></li>`,
     )
     .join('');
   const src = source(q);
-  return `<section class="q"><h3>QUESTÃO ${String(n).padStart(2, '0')}${src ? ` <span>(${esc(src)})</span>` : ''}</h3>${parts.join('')}<ol class="alts">${alts}</ol></section>`;
+  // letras desenhadas na imagem (sem recorte): não repete "A) B) C)…" vazias embaixo
+  const list = ia.length && blankAlternatives(q) ? '' : `<ol class="alts">${alts}</ol>`;
+  return `<section class="q"><h3>QUESTÃO ${String(n).padStart(2, '0')}${src ? ` <span>(${esc(src)})</span>` : ''}</h3>${parts.join('')}${list}</section>`;
 }
 
 /** HTML da lista para virar PDF: coluna dupla, margem estreita, Arial 10, fórmulas e imagens no lugar. */
-export function listHtml(title: string, qs: ListQuestion[], t: ListTemplate | null, opts: { answers?: boolean } = {}) {
+export function listHtml(title: string, qs: ListQuestion[], t: ListTemplate | null, opts: { answers?: boolean; resolutions?: boolean } = {}) {
   const footer = footerHeightMm(t);
   const key = opts.answers
     ? `<section class="key"><h2>Gabarito</h2><div class="grid">${qs
         .map((q, i) => `<span><b>${i + 1}.</b> ${q.status === 'anulada' ? 'Anulada' : esc(q.gabarito || '–')}</span>`)
-        .join('')}</div></section>`
+        .join('')}</div></section>${
+        opts.resolutions
+          ? `<section class="res"><h2>Resolução</h2>${qs
+              .map(
+                (q, i) =>
+                  `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3>${q.resolucao ? `<div class="t">${rich(q.resolucao)}</div>` : '<div class="t">Sem resolução.</div>'}</div>`,
+              )
+              .join('')}</section>`
+          : ''
+      }`
     : '';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>${pdfFontsCss()}</style>
@@ -76,6 +87,8 @@ h1.title { font-size: 12pt; margin: 0 0 3mm; text-align: center; }
 .eq { text-align: center; margin: 1.5mm 0; break-inside: avoid; }
 .fig { text-align: center; margin: 1.5mm 0; break-inside: avoid; }
 .fig.left { text-align: left; margin: 0.5mm 0 0; }
+/* imagem da alternativa: visível, sem ocupar a coluna inteira */
+.fig.alt img { width: auto !important; max-width: 60%; max-height: 30mm; }
 .fig img { max-width: 100%; height: auto; }
 table { border-collapse: collapse; margin: 1.5mm auto; font-size: 9pt; break-inside: avoid; max-width: 100%; }
 th, td { border: 0.5pt solid #000; padding: 0.8mm 1.6mm; text-align: center; }
@@ -91,6 +104,10 @@ ol.alts .at p { margin: 0; }
 .key { break-before: page; column-span: all; }
 .key h2 { font-size: 11pt; margin: 0 0 3mm; }
 .key .grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 1.5mm 3mm; }
+.res { margin-top: 6mm; column-count: 2; column-gap: 7mm; column-rule: 0.5pt solid #888; }
+.res h2 { column-span: all; font-size: 11pt; margin: 0 0 3mm; }
+.res .r { margin: 0 0 4mm; }
+.res .r h3 { font-size: 10pt; margin: 0 0 1mm; break-after: avoid; }
 </style></head><body>
 ${t?.header_url ? `<img class="header" src="${esc(t.header_url)}" alt="">` : `<h1 class="title">${esc(title)}</h1>`}
 <main class="cols">${qs.map((q, i) => questionHtml(q, i + 1)).join('\n')}</main>

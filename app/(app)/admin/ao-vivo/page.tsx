@@ -17,7 +17,8 @@ const NOTICES: Record<string, string> = {
 
 const REASONS: Record<string, string> = {
   cliente: 'O Google recusou o ID ou a chave secreta. Confira GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET na Vercel (sem espaços) e faça Redeploy.',
-  redirect: 'O endereço de retorno não confere. No Google Cloud → Clientes, o URI de redirecionamento deve ser exatamente o deste site + /api/youtube/callback.',
+  redirect:
+    'O endereço de retorno não confere. No Google Cloud → Clientes, o URI de redirecionamento deve ser exatamente o deste site + /api/youtube/callback.',
   expirou: 'A autorização expirou ou já foi usada. Toque em Conectar de novo.',
   api: 'A YouTube Data API v3 não está ativada no projeto do Google Cloud desse cliente. Ative em APIs e serviços → Biblioteca e tente de novo após 2 minutos.',
   canal: 'Essa conta Google não tem canal no YouTube. Conecte com a conta (ou conta de marca) dona do canal.',
@@ -36,7 +37,12 @@ export default async function AdminLives({ searchParams }: { searchParams: Promi
   ]);
   const h = await headers();
   const origin = `${h.get('x-forwarded-proto') ?? 'https'}://${h.get('x-forwarded-host') ?? h.get('host')}`;
-  const yt = { oauth: oauthConfigured(), channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '', notice: notice ? (notice === 'erro' && m ? `Não foi possível conectar: ${REASONS[m] ?? m}` : NOTICES[notice]) : undefined, origin };
+  const yt = {
+    oauth: oauthConfigured(),
+    channel: acc.refresh_token ? acc.channel_title || 'Seu canal' : '',
+    notice: notice ? (notice === 'erro' && m ? `Não foi possível conectar: ${REASONS[m] ?? m}` : NOTICES[notice]) : undefined,
+    origin,
+  };
   const courses = catalog.courses.map((c) => ({ id: c.id, title: c.title }));
   return (
     <>

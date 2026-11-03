@@ -33,7 +33,14 @@ export async function POST(req: NextRequest) {
          email = excluded.email,
          role = case when $6 then 'admin' else users.role end,
          avatar_url = case when users.avatar_url = '' then excluded.avatar_url else users.avatar_url end`,
-      [decoded.uid, email, String(decoded.name ?? '') || email.split('@')[0], String(decoded.picture ?? ''), isListedAdmin ? 'admin' : 'student', isListedAdmin],
+      [
+        decoded.uid,
+        email,
+        String(decoded.name ?? '') || email.split('@')[0],
+        String(decoded.picture ?? ''),
+        isListedAdmin ? 'admin' : 'student',
+        isListedAdmin,
+      ],
     );
     revalidateTag(`viewer-${decoded.uid}`, { expire: 0 }); // perfil novo/atualizado aparece na hora
   } catch (e) {

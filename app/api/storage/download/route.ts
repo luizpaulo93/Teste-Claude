@@ -23,8 +23,7 @@ export async function GET(req: NextRequest) {
     sql.query<{ mentoria_id: string }>(`select mentoria_id from mentoria_cycles where file_paths @> array[$1::text] limit 50`, [path]),
   ]);
   // O PDF abre se o usuário enxerga a aula em algum curso
-  const lessonOk =
-    (viewer.isAdmin && lessons.length > 0) || (await Promise.all(lessons.map((l) => lessonPlacement(viewer, l.id)))).some(Boolean);
+  const lessonOk = (viewer.isAdmin && lessons.length > 0) || (await Promise.all(lessons.map((l) => lessonPlacement(viewer, l.id)))).some(Boolean);
   const simOk = sims.some((s) => viewer.isAdmin || (s.is_published && viewer.isMember));
   // Apostila da mentoria: só quem participa daquela mentoria; PDF da live: quem pode ver a live
   const blockOk = (await Promise.all(blocks.map((b) => canUseSpace(viewer, b.space)))).some(Boolean);

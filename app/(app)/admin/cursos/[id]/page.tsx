@@ -45,13 +45,7 @@ export default async function AdminCourseEdit({ params }: { params: Promise<{ id
         }
       />
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_420px]">
-        <ModulesManager
-          courseId={id}
-          modules={modules}
-          lessons={lessons}
-          folders={folders}
-          bank={bank}
-        />
+        <ModulesManager courseId={id} modules={modules} lessons={lessons} folders={folders} bank={bank} />
         <Card className="p-5 xl:sticky xl:top-6 xl:self-start">
           <p className="mb-4 text-sm font-bold text-ink">Dados do curso</p>
           <CourseForm course={course} tags={(await getCatalogData()).tags} />

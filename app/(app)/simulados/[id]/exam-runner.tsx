@@ -159,7 +159,9 @@ export function ExamRunner({
                   aria-pressed={on}
                   className={cn(
                     'grid size-8 place-items-center rounded-full border text-xs font-bold transition-all active:scale-90',
-                    on ? 'border-brand bg-brand text-white shadow-[0_0_0_3px_var(--brand-soft)]' : 'border-line-strong text-ink-2 hover:border-brand hover:text-brand',
+                    on
+                      ? 'border-brand bg-brand text-white shadow-[0_0_0_3px_var(--brand-soft)]'
+                      : 'border-line-strong text-ink-2 hover:border-brand hover:text-brand',
                   )}
                 >
                   {o}
@@ -228,7 +230,10 @@ export function ExamRunner({
               key={t}
               type="button"
               onClick={() => setTab(t)}
-              className={cn('flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold', tab === t ? 'bg-surface text-ink shadow-card' : 'text-muted')}
+              className={cn(
+                'flex items-center justify-center gap-2 rounded-lg py-2 text-sm font-semibold',
+                tab === t ? 'bg-surface text-ink shadow-card' : 'text-muted',
+              )}
             >
               {t === 'prova' ? <FileText className="size-4" /> : <ListChecks className="size-4" />}
               {t === 'prova' ? 'Prova' : 'Cartão-resposta'}
@@ -241,13 +246,22 @@ export function ExamRunner({
         {pdfUrl && (
           <Card className={cn('overflow-hidden', tab !== 'prova' && 'hidden lg:block')}>
             {stamped ? (
-              <iframe src={`${stamped}#toolbar=0&navpanes=0&view=FitH`} title="Caderno de questões" className="h-[70dvh] w-full bg-white lg:h-[calc(100dvh-180px)]" />
+              <iframe
+                src={`${stamped}#toolbar=0&navpanes=0&view=FitH`}
+                title="Caderno de questões"
+                className="h-[70dvh] w-full bg-white lg:h-[calc(100dvh-180px)]"
+              />
             ) : (
               <div className="grid h-[70dvh] place-items-center bg-surface-2 lg:h-[calc(100dvh-180px)]">
                 <Spinner />
               </div>
             )}
-            <a href={stamped || '#'} target="_blank" rel="noopener noreferrer" className="block border-t border-line py-2.5 text-center text-xs font-semibold text-brand lg:hidden">
+            <a
+              href={stamped || '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block border-t border-line py-2.5 text-center text-xs font-semibold text-brand lg:hidden"
+            >
               Abrir prova em tela cheia
             </a>
           </Card>

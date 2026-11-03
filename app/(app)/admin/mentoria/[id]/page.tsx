@@ -33,21 +33,23 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
         <BlocksPanel space={`m:${m.id}`} blocks={blocks.filter((b) => b.space === `m:${m.id}`)} today={todayBR()} />
       </Card>
       {m.scope !== 'especifica' && (
-      <Card className="p-4 sm:p-5">
-        <PlanBuilder mentoriaId={m.id} disciplines={disciplines} chosen={m.plan_disciplines} order={m.plan_order} hasSchedule={Boolean(m.diagnosed_at)} />
-        {list.length > 0 && (
-          <p className="mt-4 rounded-xl bg-surface-2/60 p-3 text-xs text-ink-2">
-            Cronograma até <strong className="text-ink">{formatDate(end)}</strong>
-            {m.end_date ? ' (fim da mentoria)' : m.exam_date ? ' (data da prova)' : ' (6 meses; cadastre o fim da mentoria em Editar)'}:{' '}
-            <strong className="text-ink">{list.length - out}</strong> de {list.length} assuntos cabem no período
-            {out > 0 && <span className="text-warning"> · {out} menos cobrados ficaram de fora — aumente os horários ou o período</span>}.
-          </p>
-        )}
-      </Card>
+        <Card className="p-4 sm:p-5">
+          <PlanBuilder mentoriaId={m.id} disciplines={disciplines} chosen={m.plan_disciplines} order={m.plan_order} hasSchedule={Boolean(m.diagnosed_at)} />
+          {list.length > 0 && (
+            <p className="mt-4 rounded-xl bg-surface-2/60 p-3 text-xs text-ink-2">
+              Cronograma até <strong className="text-ink">{formatDate(end)}</strong>
+              {m.end_date ? ' (fim da mentoria)' : m.exam_date ? ' (data da prova)' : ' (6 meses; cadastre o fim da mentoria em Editar)'}:{' '}
+              <strong className="text-ink">{list.length - out}</strong> de {list.length} assuntos cabem no período
+              {out > 0 && <span className="text-warning"> · {out} menos cobrados ficaram de fora — aumente os horários ou o período</span>}.
+            </p>
+          )}
+        </Card>
       )}
       {extras.length > 0 && (
         <Card className="border-violet-500/40 p-4 sm:p-5">
-          <p className="text-sm font-bold text-ink">O aluno acrescentou {extras.length} assunto{extras.length > 1 ? 's' : ''}</p>
+          <p className="text-sm font-bold text-ink">
+            O aluno acrescentou {extras.length} assunto{extras.length > 1 ? 's' : ''}
+          </p>
           <ul className="mt-2 space-y-1 text-xs text-ink-2">
             {extras.map((c) => (
               <li key={c.id}>
@@ -61,7 +63,9 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
         <details className="group" open={m.scope === 'especifica' && list.length === 0}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden">
             <span>
-              <span className="block text-sm font-bold text-ink">{m.scope === 'especifica' ? 'Assuntos da mentoria específica' : 'Escolher assuntos manualmente'}</span>
+              <span className="block text-sm font-bold text-ink">
+                {m.scope === 'especifica' ? 'Assuntos da mentoria específica' : 'Escolher assuntos manualmente'}
+              </span>
               <span className="block text-xs text-muted">{list.length} assuntos no cronograma · adicione ou tire qualquer um</span>
             </span>
             <span className="text-xs font-semibold text-brand group-open:hidden">Abrir</span>

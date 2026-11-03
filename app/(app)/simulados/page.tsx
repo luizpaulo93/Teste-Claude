@@ -69,7 +69,9 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
                 <ComboChart points={chart} min={0} max={100} ticks={[0, 25, 50, 75, 100]} barName="% de acertos" lineName="Evolução" />
               )
             ) : (
-              <p className="py-8 text-center text-sm text-muted">{tab === 'tri' ? 'Nenhuma prova com TRI corrigida ainda.' : 'Nenhuma prova sem TRI corrigida ainda.'}</p>
+              <p className="py-8 text-center text-sm text-muted">
+                {tab === 'tri' ? 'Nenhuma prova com TRI corrigida ainda.' : 'Nenhuma prova sem TRI corrigida ainda.'}
+              </p>
             )}
           </Card>
 
@@ -109,10 +111,30 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
             const st = subBy.get(s.id);
             const r = resBy.get(s.id);
             let badge = <Badge tone="brand">Disponível</Badge>;
-            if (r) badge = <Badge tone="success"><Trophy className="size-3" /> {s.use_tri === false ? `${r.correct}/${s.question_count} acertos` : `${Number(r.tri_score).toFixed(0)} pts`}</Badge>;
-            else if (st === 'completed') badge = <Badge tone="warning"><Hourglass className="size-3" /> Aguardando resultado</Badge>;
-            else if (st === 'in_progress') badge = <Badge tone="warning"><Clock className="size-3" /> Em andamento</Badge>;
-            else if (s.results_released) badge = <Badge><Lock className="size-3" /> Encerrado</Badge>;
+            if (r)
+              badge = (
+                <Badge tone="success">
+                  <Trophy className="size-3" /> {s.use_tri === false ? `${r.correct}/${s.question_count} acertos` : `${Number(r.tri_score).toFixed(0)} pts`}
+                </Badge>
+              );
+            else if (st === 'completed')
+              badge = (
+                <Badge tone="warning">
+                  <Hourglass className="size-3" /> Aguardando resultado
+                </Badge>
+              );
+            else if (st === 'in_progress')
+              badge = (
+                <Badge tone="warning">
+                  <Clock className="size-3" /> Em andamento
+                </Badge>
+              );
+            else if (s.results_released)
+              badge = (
+                <Badge>
+                  <Lock className="size-3" /> Encerrado
+                </Badge>
+              );
             return (
               <Link key={s.id} href={`/simulados/${s.id}`} className="group">
                 <Card className="h-full p-5 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-brand/40 group-hover:shadow-glow">
@@ -123,8 +145,12 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
                   <p className="mt-4 line-clamp-2 font-bold text-ink">{s.title}</p>
                   <p className="mt-1 text-xs text-muted">{ENEM_AREAS[s.area]}</p>
                   <div className="mt-4 flex gap-4 text-xs text-ink-2">
-                    <span className="flex items-center gap-1.5"><ClipboardCheck className="size-3.5" /> {s.question_count} questões</span>
-                    <span className="flex items-center gap-1.5"><Clock className="size-3.5" /> {s.time_limit_minutes ? `${s.time_limit_minutes} min` : 'Tempo livre'}</span>
+                    <span className="flex items-center gap-1.5">
+                      <ClipboardCheck className="size-3.5" /> {s.question_count} questões
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <Clock className="size-3.5" /> {s.time_limit_minutes ? `${s.time_limit_minutes} min` : 'Tempo livre'}
+                    </span>
                   </div>
                   {r && (
                     <p className="mt-3 flex items-center gap-1.5 text-xs text-success">
@@ -138,7 +164,11 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
         </div>
       ) : (
         !simulados.length && (
-          <EmptyState icon={<ClipboardCheck className="size-6" />} title="Nenhum simulado publicado" description="Quando um novo simulado for liberado ele aparece aqui." />
+          <EmptyState
+            icon={<ClipboardCheck className="size-6" />}
+            title="Nenhum simulado publicado"
+            description="Quando um novo simulado for liberado ele aparece aqui."
+          />
         )
       )}
     </>
@@ -148,7 +178,9 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
 /** Admin: média geral de cada prova → turmas em ranking. */
 async function AdminOverview({ kind }: { kind: 'tri' | 'sem' }) {
   const o = await loadOverview(kind);
-  const points: ComboPoint[] = o.perSim(() => true).map((s) => ({ label: s.title, bar: s.mean, barLabel: fmt(kind, s.mean!), href: `/admin/simulados/${s.id}` }));
+  const points: ComboPoint[] = o
+    .perSim(() => true)
+    .map((s) => ({ label: s.title, bar: s.mean, barLabel: fmt(kind, s.mean!), href: `/admin/simulados/${s.id}` }));
   const q = kind === 'sem' ? '?v=sem' : '';
   return (
     <section className="mb-8 space-y-4">

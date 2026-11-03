@@ -90,12 +90,23 @@ export function ClassesManager({
             <Field label="Descrição">
               <Textarea name="description" defaultValue={edit.cls?.description} rows={2} maxLength={1000} />
             </Field>
-            <Switch name="access_all" defaultChecked={edit.cls?.access_all} label="Acesso total" description="Libera todos os cursos, inclusive os criados no futuro" />
+            <Switch
+              name="access_all"
+              defaultChecked={edit.cls?.access_all}
+              label="Acesso total"
+              description="Libera todos os cursos, inclusive os criados no futuro"
+            />
             <div>
               <p className="mb-2 text-xs font-semibold text-ink-2">Cursos liberados</p>
               <div className="grid max-h-64 gap-2 overflow-y-auto rounded-xl border border-line p-3 sm:grid-cols-2">
                 {courses.map((c) => (
-                  <Checkbox key={c.id} name="course_ids" value={c.id} defaultChecked={edit.cls ? coursesOf(edit.cls.id).includes(c.id) : false} label={c.title} />
+                  <Checkbox
+                    key={c.id}
+                    name="course_ids"
+                    value={c.id}
+                    defaultChecked={edit.cls ? coursesOf(edit.cls.id).includes(c.id) : false}
+                    label={c.title}
+                  />
                 ))}
                 {!courses.length && <p className="text-sm text-muted">Crie cursos primeiro.</p>}
               </div>

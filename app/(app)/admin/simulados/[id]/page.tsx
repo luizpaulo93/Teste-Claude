@@ -36,9 +36,16 @@ export default async function AdminSimulado({ params }: { params: Promise<{ id: 
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Entregas" value={sum.entregas} hint={sum.fazendo ? `${sum.fazendo} fazendo agora` : undefined} />
-        {useTri ? <Stat label="Média TRI" value={sum.meanTri ?? '—'} hint={simulado.results_released ? undefined : 'Sai ao liberar'} /> : <Stat label="Tipo" value="Sem TRI" hint="Só acertos" />}
+        {useTri ? (
+          <Stat label="Média TRI" value={sum.meanTri ?? '—'} hint={simulado.results_released ? undefined : 'Sai ao liberar'} />
+        ) : (
+          <Stat label="Tipo" value="Sem TRI" hint="Só acertos" />
+        )}
         <Stat label="Média de acertos" value={sum.meanCorrect ?? '—'} hint={sum.meanAccuracy != null ? `${sum.meanAccuracy}% da prova` : undefined} />
-        <Stat label="Status" value={<span className="text-base">{simulado.results_released ? 'Liberado' : simulado.is_published ? 'Aberto' : 'Rascunho'}</span>} />
+        <Stat
+          label="Status"
+          value={<span className="text-base">{simulado.results_released ? 'Liberado' : simulado.is_published ? 'Aberto' : 'Rascunho'}</span>}
+        />
       </div>
 
       <QuestionChart items={questionHits(rows, answerKey, simulado.question_count)} />

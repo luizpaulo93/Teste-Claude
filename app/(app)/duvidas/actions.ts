@@ -74,7 +74,10 @@ export async function toggleLike(doubtId: string, value: boolean) {
   if (!viewer || !isDocId(doubtId)) return { error: 'Sem acesso.' };
   await tx(async (t) => {
     const changed = value
-      ? await t.exec(`insert into doubt_likes (doubt_id, user_id) select $1, $2 where exists (select 1 from doubts where id = $1) on conflict do nothing`, [doubtId, viewer.userId])
+      ? await t.exec(`insert into doubt_likes (doubt_id, user_id) select $1, $2 where exists (select 1 from doubts where id = $1) on conflict do nothing`, [
+          doubtId,
+          viewer.userId,
+        ])
       : await t.exec(`delete from doubt_likes where doubt_id = $1 and user_id = $2`, [doubtId, viewer.userId]);
     if (changed) await t.exec(`update doubts set likes_count = greatest(0, likes_count + $2) where id = $1`, [doubtId, value ? 1 : -1]);
   });

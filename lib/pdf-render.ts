@@ -11,9 +11,11 @@ async function launch(): Promise<Browser> {
   const puppeteer = await import('puppeteer-core');
   if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
     const chromium = (await import('@sparticuz/chromium')).default;
+    chromium.setGraphicsMode = false; // sem WebGL: abre mais rápido e usa menos memória
     // Chrome que vai junto com o app; se a Vercel não tiver incluído os arquivos, baixa o pacote oficial (fica em /tmp)
     const exe = await chromium.executablePath().catch(() => chromium.executablePath(CHROMIUM_PACK));
-    return puppeteer.launch({ args: chromium.args, executablePath: exe, headless: true });
+    // modo "shell": é o Chrome próprio para servidor (recomendado pelo pacote)
+    return puppeteer.launch({ args: await puppeteer.defaultArgs({ args: chromium.args, headless: 'shell' }), executablePath: exe, headless: 'shell' });
   }
   const local = [process.env.CHROME_PATH, '/opt/pw-browsers/chromium', '/usr/bin/chromium', '/usr/bin/google-chrome'].find((p) => p && existsSync(p));
   if (!local) throw new Error('Chrome não encontrado para gerar o PDF.');

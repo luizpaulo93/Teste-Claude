@@ -77,7 +77,12 @@ export default async function AdminSimulados({ searchParams }: { searchParams: P
           ))}
         </div>
       ) : (
-        <EmptyState icon={<ClipboardCheck className="size-6" />} title="Nenhum simulado" description="Crie o primeiro simulado com PDF e gabarito." action={<NewSimuladoButton />} />
+        <EmptyState
+          icon={<ClipboardCheck className="size-6" />}
+          title="Nenhum simulado"
+          description="Crie o primeiro simulado com PDF e gabarito."
+          action={<NewSimuladoButton />}
+        />
       )}
     </>
   );

@@ -38,7 +38,11 @@ export function CourseList({ courses, counts }: { courses: Course[]; counts: Rec
       {courses.map((c, i) => (
         <Card key={c.id} className="flex items-center gap-3 p-3 sm:gap-4">
           <div className="relative aspect-[2/3] w-14 shrink-0 overflow-hidden rounded-lg bg-surface-2 sm:w-16">
-            {coverImage(c.cover_url) ? <Img src={c.cover_url} className="size-full object-cover" /> : <CoverFallback title="" seed={c.id} color={coverColor(c.cover_url)} />}
+            {coverImage(c.cover_url) ? (
+              <Img src={c.cover_url} className="size-full object-cover" />
+            ) : (
+              <CoverFallback title="" seed={c.id} color={coverColor(c.cover_url)} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <Link href={`/admin/cursos/${c.id}`} className="line-clamp-1 font-bold text-ink hover:text-brand">

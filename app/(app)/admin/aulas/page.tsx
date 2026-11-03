@@ -20,12 +20,10 @@ export default async function AdminLessons({ searchParams }: { searchParams: Pro
          from lessons l order by l.position, l.created_at`,
     ),
   ]);
-  const current = f === 'none' ? null : folders.find((x) => x.id === f)?.id ?? (f ? null : (folders[0]?.id ?? null));
+  const current = f === 'none' ? null : (folders.find((x) => x.id === f)?.id ?? (f ? null : (folders[0]?.id ?? null)));
   return (
     <>
-      <PageHeader
-        title="Banco de aulas"
-      />
+      <PageHeader title="Banco de aulas" />
       <LessonBank folders={folders} lessons={lessons as (BankLesson & Lesson)[]} current={current} />
     </>
   );

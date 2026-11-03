@@ -74,22 +74,15 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
 const LETTERS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 function fitKey(key: string, count: number) {
-  const clean = key.toUpperCase().replace(/[^A-E]/g, '').slice(0, count);
+  const clean = key
+    .toUpperCase()
+    .replace(/[^A-E]/g, '')
+    .slice(0, count);
   return clean + 'A'.repeat(Math.max(0, count - clean.length));
 }
 
 /** Botão do gabarito: abre um popup com as bolhas para marcar. */
-function AnswerKeyButton({
-  simuladoId,
-  count,
-  value,
-  onChange,
-}: {
-  simuladoId?: string;
-  count: number;
-  value: string;
-  onChange: (key: string) => void;
-}) {
+function AnswerKeyButton({ simuladoId, count, value, onChange }: { simuladoId?: string; count: number; value: string; onChange: (key: string) => void }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(value);
   const [pending, start] = useTransition();
@@ -120,7 +113,10 @@ function AnswerKeyButton({
         </span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-ink">Gabarito oficial</span>
-          <span className="block truncate font-mono text-xs tracking-wider text-muted">{value.slice(0, 40)}{value.length > 40 ? '…' : ''}</span>
+          <span className="block truncate font-mono text-xs tracking-wider text-muted">
+            {value.slice(0, 40)}
+            {value.length > 40 ? '…' : ''}
+          </span>
         </span>
         <span className="shrink-0 text-xs font-semibold text-brand">Editar</span>
       </button>

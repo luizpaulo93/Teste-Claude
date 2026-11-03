@@ -42,7 +42,15 @@ export default async function AdminMentoradoLayout({ children, params }: { child
               <ReportDownload target={`m:${m.id}`} />
             </>
           }
-          subtitle={[m.scope === 'especifica' ? 'Mentoria específica' : 'Mentoria completa', m.exam_target, left !== null && left >= 0 ? `${left} dias para a prova` : ''].filter(Boolean).join(' · ') || m.student_email}
+          subtitle={
+            [
+              m.scope === 'especifica' ? 'Mentoria específica' : 'Mentoria completa',
+              m.exam_target,
+              left !== null && left >= 0 ? `${left} dias para a prova` : '',
+            ]
+              .filter(Boolean)
+              .join(' · ') || m.student_email
+          }
         />
       </div>
       <MentoriaTabs

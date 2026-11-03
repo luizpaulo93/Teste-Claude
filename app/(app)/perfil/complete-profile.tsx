@@ -10,7 +10,10 @@ import { completeProfile } from './actions';
 
 const maskCpf = (v: string) => {
   const d = v.replace(/\D/g, '').slice(0, 11);
-  return d.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3').replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
+  return d
+    .replace(/(\d{3})(\d)/, '$1.$2')
+    .replace(/(\d{3})\.(\d{3})(\d)/, '$1.$2.$3')
+    .replace(/\.(\d{3})(\d{1,2})$/, '.$1-$2');
 };
 
 /** Tela que aparece a partir do 3º dia até o aluno completar o perfil. */
@@ -28,7 +31,11 @@ export function CompleteProfile({
   const [state, action] = useActionState(completeProfile, null);
   // Campos controlados: se algo der errado, o que o aluno digitou continua lá
   const [v, setV] = useState({ full_name: profile.full_name, birth_date: profile.birth_date ?? '', cpf: '' });
-  const bind = (k: keyof typeof v) => ({ name: k, value: v[k], onChange: (e: React.ChangeEvent<HTMLInputElement>) => setV((o) => ({ ...o, [k]: k === 'cpf' ? maskCpf(e.target.value) : e.target.value })) });
+  const bind = (k: keyof typeof v) => ({
+    name: k,
+    value: v[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setV((o) => ({ ...o, [k]: k === 'cpf' ? maskCpf(e.target.value) : e.target.value })),
+  });
   useEffect(() => {
     if (state?.error) toast.error(state.error);
     else if (state?.ok) {

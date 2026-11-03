@@ -10,15 +10,7 @@ import { Badge, Button, Card, EmptyState, Img, Input } from '@/components/ui';
 import { ActionButton, Modal, Spinner } from '@/components/ui-client';
 import type { Lesson, LessonFolder } from '@/lib/types';
 import { cn, youtubeThumb } from '@/lib/utils';
-import {
-  deleteFolder,
-  deleteLesson,
-  moveFolder,
-  moveLessonInFolder,
-  moveLessonsToFolder,
-  saveFolder,
-  toggleLessonFlag,
-} from '../content-actions';
+import { deleteFolder, deleteLesson, moveFolder, moveLessonInFolder, moveLessonsToFolder, saveFolder, toggleLessonFlag } from '../content-actions';
 
 export type BankLesson = Pick<
   Lesson,
@@ -33,7 +25,8 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
 
-  const inFolder = (id: string | null) => lessons.filter((l) => (l.folder_id ?? null) === id || (id === null && l.folder_id && !folders.some((f) => f.id === l.folder_id)));
+  const inFolder = (id: string | null) =>
+    lessons.filter((l) => (l.folder_id ?? null) === id || (id === null && l.folder_id && !folders.some((f) => f.id === l.folder_id)));
   const list = inFolder(current);
   const currentName = current ? (folders.find((f) => f.id === current)?.name ?? 'Pasta') : 'Sem pasta';
   const hrefFor = (id: string | null) => `/admin/aulas?f=${id ?? 'none'}`;
@@ -62,7 +55,12 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
             const active = f.id === current;
             return (
               <li key={f.id} className={cn('group flex items-center gap-1 rounded-xl', active ? 'bg-brand-soft' : 'hover:bg-surface-2')}>
-                <Link href={hrefFor(f.id)} scroll={false} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2.5" onClick={() => setSelected(new Set())}>
+                <Link
+                  href={hrefFor(f.id)}
+                  scroll={false}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2.5"
+                  onClick={() => setSelected(new Set())}
+                >
                   <Folder className={cn('size-4 shrink-0', active ? 'fill-brand/20 text-brand' : 'text-muted')} />
                   <span className={cn('truncate text-sm', active ? 'font-bold text-ink' : 'text-ink-2')}>{f.name}</span>
                   <span className="ml-auto text-[11px] text-muted tabular-nums">{count}</span>
@@ -71,7 +69,14 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                   <ActionButton action={() => moveFolder(f.id, -1)} variant="ghost" size="sm" className="px-1" title="Subir pasta" disabled={i === 0}>
                     <ArrowUp className="size-3.5" />
                   </ActionButton>
-                  <ActionButton action={() => moveFolder(f.id, 1)} variant="ghost" size="sm" className="px-1" title="Descer pasta" disabled={i === folders.length - 1}>
+                  <ActionButton
+                    action={() => moveFolder(f.id, 1)}
+                    variant="ghost"
+                    size="sm"
+                    className="px-1"
+                    title="Descer pasta"
+                    disabled={i === folders.length - 1}
+                  >
                     <ArrowDown className="size-3.5" />
                   </ActionButton>
                 </div>
@@ -136,8 +141,17 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
             {list.map((l, i) => {
               const pdfs = l.materials?.length ?? 0;
               return (
-                <div key={l.id} className={cn('flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:px-4', selected.has(l.id) && 'bg-brand-soft/60')}>
-                  <input type="checkbox" checked={selected.has(l.id)} onChange={() => toggleSel(l.id)} aria-label="Selecionar" className="size-4 shrink-0 accent-[#3b82f6]" />
+                <div
+                  key={l.id}
+                  className={cn('flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2.5 sm:flex-nowrap sm:px-4', selected.has(l.id) && 'bg-brand-soft/60')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(l.id)}
+                    onChange={() => toggleSel(l.id)}
+                    aria-label="Selecionar"
+                    className="size-4 shrink-0 accent-[#3b82f6]"
+                  />
                   <span className="w-5 shrink-0 text-center text-[11px] font-bold text-muted tabular-nums">{i + 1}</span>
                   <div className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-lg bg-surface-2 sm:w-24">
                     {l.thumbnail_url || l.youtube_id ? (
@@ -155,7 +169,11 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                         {l.title}
                       </Link>
                     ) : (
-                      <button type="button" onClick={() => setLessonModal({ lesson: l })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
+                      <button
+                        type="button"
+                        onClick={() => setLessonModal({ lesson: l })}
+                        className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand"
+                      >
                         {l.title}
                       </button>
                     )}
@@ -173,14 +191,23 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
                       )}
                       {!l.is_published && <Badge>Oculta</Badge>}
                       {l.is_free && <Badge tone="success">Grátis</Badge>}
-                      <span className="text-[11px] text-muted">{l.uses ? `em ${l.uses} módulo${l.uses > 1 ? 's' : ''}` : 'ainda não está em nenhum curso'}</span>
+                      <span className="text-[11px] text-muted">
+                        {l.uses ? `em ${l.uses} módulo${l.uses > 1 ? 's' : ''}` : 'ainda não está em nenhum curso'}
+                      </span>
                     </div>
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-line/60 max-sm:pt-1.5">
                     <ActionButton action={() => moveLessonInFolder(l.id, -1)} variant="ghost" size="sm" className="px-1.5" title="Subir" disabled={i === 0}>
                       <ArrowUp className="size-3.5" />
                     </ActionButton>
-                    <ActionButton action={() => moveLessonInFolder(l.id, 1)} variant="ghost" size="sm" className="px-1.5" title="Descer" disabled={i === list.length - 1}>
+                    <ActionButton
+                      action={() => moveLessonInFolder(l.id, 1)}
+                      variant="ghost"
+                      size="sm"
+                      className="px-1.5"
+                      title="Descer"
+                      disabled={i === list.length - 1}
+                    >
                       <ArrowDown className="size-3.5" />
                     </ActionButton>
                     <ActionButton
@@ -209,11 +236,7 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
             })}
           </Card>
         ) : (
-          <EmptyState
-            icon={<Folder className="size-6" />}
-            title="Pasta vazia"
-            description="Crie uma aula com vídeo do YouTube e/ou PDFs."
-          />
+          <EmptyState icon={<Folder className="size-6" />} title="Pasta vazia" description="Crie uma aula com vídeo do YouTube e/ou PDFs." />
         )}
       </div>
 
@@ -245,7 +268,12 @@ export function LessonBank({ folders, lessons, current }: { folders: LessonFolde
       </Modal>
 
       {/* Aula: criar/editar */}
-      <Modal open={Boolean(lessonModal)} onClose={() => setLessonModal(null)} title={lessonModal?.lesson ? 'Editar aula' : `Nova aula em “${currentName}”`} size="lg">
+      <Modal
+        open={Boolean(lessonModal)}
+        onClose={() => setLessonModal(null)}
+        title={lessonModal?.lesson ? 'Editar aula' : `Nova aula em “${currentName}”`}
+        size="lg"
+      >
         {lessonModal && <LessonForm lesson={lessonModal.lesson} folders={folders} folderId={current} onDone={() => setLessonModal(null)} />}
       </Modal>
 

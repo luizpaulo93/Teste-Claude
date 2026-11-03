@@ -83,7 +83,12 @@ export function DoubtComposer({
           <div className="relative mt-2 inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={preview} alt="" className="max-h-40 rounded-xl border border-line" />
-            <button type="button" onClick={() => pick(null)} className="absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-danger text-white" aria-label="Remover imagem">
+            <button
+              type="button"
+              onClick={() => pick(null)}
+              className="absolute -top-2 -right-2 grid size-6 place-items-center rounded-full bg-danger text-white"
+              aria-label="Remover imagem"
+            >
               <X className="size-3.5" />
             </button>
           </div>

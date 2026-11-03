@@ -16,7 +16,9 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
   const args: unknown[] = [];
   if (term) {
     args.push(`%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
-    where.push(`(lower(s.name) like $${args.length} or s.email like $${args.length} or s.phone like $${args.length} or lower(coalesce(c.name, '')) like $${args.length})`);
+    where.push(
+      `(lower(s.name) like $${args.length} or s.email like $${args.length} or s.phone like $${args.length} or lower(coalesce(c.name, '')) like $${args.length})`,
+    );
   }
   // Por padrão: só quem está em alguma turma
   if (turma === 'none') where.push('s.class_id is null');
@@ -51,15 +53,7 @@ export default async function AdminStudents({ searchParams }: { searchParams: Pr
   return (
     <>
       <PageHeader title="Alunos" />
-      <StudentsManager
-        students={students}
-        classes={classes}
-        profiles={profiles}
-        total={count}
-        page={page}
-        pageSize={PAGE}
-        filters={{ q, turma, status }}
-      />
+      <StudentsManager students={students} classes={classes} profiles={profiles} total={count} page={page} pageSize={PAGE} filters={{ q, turma, status }} />
     </>
   );
 }

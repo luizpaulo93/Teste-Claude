@@ -22,7 +22,9 @@ export interface CycleInput {
 
 function clean(d: CycleInput) {
   return {
-    title: String(d.title ?? '').trim().slice(0, 120),
+    title: String(d.title ?? '')
+      .trim()
+      .slice(0, 120),
     exam_date: date(d.exam_date),
     start_date: date(d.start_date) ?? new Date().toISOString().slice(0, 10),
     end_date: date(d.end_date),
@@ -51,7 +53,12 @@ export async function newCycle(mentoriaId: string, data: CycleInput): Promise<Ac
       `update mentorias set exam_target = $2, exam_date = $3, start_date = $4, end_date = $5, scope = $6, status = 'active', updated_at = now() where id = $1`,
       [mentoriaId, c.title, c.exam_date, c.start_date, c.end_date, c.scope],
     );
-    if (c.scope === 'completa') await writePlan(mentoriaId, DISCIPLINES.map((d) => d.key), 'prioridade');
+    if (c.scope === 'completa')
+      await writePlan(
+        mentoriaId,
+        DISCIPLINES.map((d) => d.key),
+        'prioridade',
+      );
     else await sql.exec(`update mentorias set plan_disciplines = '{}' where id = $1`, [mentoriaId]);
     await reschedule(mentoriaId);
     refresh();
@@ -77,7 +84,16 @@ export async function newGroupCycle(groupId: string, data: CycleInput): Promise<
     await sql.exec(
       `update mentoria_groups set exam_target = $2, exam_date = $3, start_date = $4, end_date = $5, scope = $6,
          plan_keys = $7, plan_disciplines = $8, plan_order = 'prioridade', updated_at = now() where id = $1`,
-      [groupId, c.title, c.exam_date, c.start_date, c.end_date, c.scope, c.scope === 'completa' ? orderedKeys(all, 'prioridade') : [], c.scope === 'completa' ? all : []],
+      [
+        groupId,
+        c.title,
+        c.exam_date,
+        c.start_date,
+        c.end_date,
+        c.scope,
+        c.scope === 'completa' ? orderedKeys(all, 'prioridade') : [],
+        c.scope === 'completa' ? all : [],
+      ],
     );
     await syncGroup(groupId);
     refresh();

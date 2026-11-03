@@ -1,19 +1,25 @@
 'use client';
 
-import { Filter, Search, X } from 'lucide-react';
+import { Check, ChevronDown, Download, Filter, Search, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
+import { usePdfOwner } from '@/components/pdf-owner';
+import { toast } from '@/components/toast';
 import { Button, Field, Input, Select } from '@/components/ui';
-import { Modal } from '@/components/ui-client';
+import { Modal, Spinner } from '@/components/ui-client';
+import { fetchFile, saveBlob } from '@/lib/download';
+import { stampedPdfUrl } from '@/lib/pdf-stamp';
 import { DIFFICULTY } from '@/lib/question-types';
+import { cn } from '@/lib/utils';
 
+type Multi = 'disciplina' | 'assunto' | 'especifico' | 'habilidade' | 'ano' | 'prova';
 export interface FilterState {
-  disciplina?: string;
-  assunto?: string;
-  especifico?: string;
-  habilidade?: string;
-  ano?: string;
-  prova?: string;
+  disciplina?: string[];
+  assunto?: string[];
+  especifico?: string[];
+  habilidade?: string[];
+  ano?: string[];
+  prova?: string[];
   dif?: string;
   sit?: string;
   q?: string;
@@ -29,6 +35,9 @@ export interface FilterRowView {
   paper_id: string;
 }
 
+/** Máximo de questões num PDF do filtro (acima disso, filtre mais). */
+export const PDF_LIMIT = 200;
+
 const LABELS: Record<keyof FilterState, string> = {
   disciplina: 'Disciplina',
   assunto: 'Assunto',
@@ -42,8 +51,116 @@ const LABELS: Record<keyof FilterState, string> = {
   topico: 'Assunto do cronograma',
 };
 const SIT: Record<string, string> = { nao: 'Não respondidas', erradas: 'Que errei', certas: 'Que acertei' };
+const MULTI: Multi[] = ['disciplina', 'assunto', 'especifico', 'habilidade', 'ano', 'prova'];
 
-/** Filtros do banco de questões num popup (botão "Filtros"); os escolhidos aparecem como etiquetas. */
+export function toQuery(f: FilterState) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(f))
+    if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+    else if (v) p.set(k, v);
+  return p;
+}
+
+/** Campo de várias escolhas: abre a lista com caixas de marcar (com busca nas listas longas). */
+function MultiField({
+  label,
+  options,
+  value,
+  onChange,
+  show = (v) => v,
+}: {
+  label: string;
+  options: string[];
+  value: string[];
+  onChange: (v: string[]) => void;
+  show?: (v: string) => string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState('');
+  const term = q.trim().toLowerCase();
+  // os já marcados aparecem mesmo se os outros filtros os esconderem
+  const list = [...new Set([...value, ...options])].filter((v) => !term || show(v).toLowerCase().includes(term));
+  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  return (
+    <div className="rounded-xl border border-line">
+      <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
+        <span className="text-xs font-semibold text-ink-2">{label}</span>
+        <span className="min-w-0 flex-1 truncate text-right text-xs text-muted">{value.length ? value.map(show).join(', ') : 'Todos'}</span>
+        <ChevronDown className={cn('size-4 shrink-0 text-muted transition', open && 'rotate-180')} />
+      </button>
+      {open && (
+        <div className="space-y-2 border-t border-line p-2">
+          {options.length > 8 && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder={`Buscar ${label.toLowerCase()}`}
+                className="h-9 pl-9"
+                aria-label={`Buscar ${label}`}
+              />
+            </div>
+          )}
+          <ul className="max-h-56 overflow-y-auto" role="group" aria-label={label}>
+            {list.map((v) => {
+              const on = value.includes(v);
+              return (
+                <li key={v}>
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggle(v)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-[13px] text-ink hover:bg-surface-2"
+                  >
+                    <span
+                      className={cn('grid size-4.5 shrink-0 place-items-center rounded border', on ? 'border-brand bg-brand text-white' : 'border-line-strong')}
+                    >
+                      {on && <Check className="size-3" />}
+                    </span>
+                    <span className="min-w-0 flex-1 break-words">{show(v)}</span>
+                  </button>
+                </li>
+              );
+            })}
+            {!list.length && <li className="px-2 py-3 text-center text-xs text-muted">Nada encontrado.</li>}
+          </ul>
+          {value.length > 0 && (
+            <button type="button" onClick={() => onChange([])} className="px-2 text-[11px] font-semibold text-muted hover:text-ink">
+              Desmarcar todos
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Baixa todas as questões do filtro num PDF, com gabarito e resolução no fim. */
+function FilterPdf({ value, total }: { value: FilterState; total: number }) {
+  const owner = usePdfOwner();
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    if (total > PDF_LIMIT) return toast.error(`São ${total} questões. Filtre até ${PDF_LIMIT} para baixar o PDF.`);
+    setBusy(true);
+    toast('Gerando o PDF…');
+    try {
+      const blob = await fetchFile(`/api/questoes/pdf?${toQuery(value)}`, 'pdf');
+      saveBlob(await stampedPdfUrl(URL.createObjectURL(blob), owner), 'Questões.pdf');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Não foi possível gerar o PDF agora.');
+    }
+    setBusy(false);
+  }
+  return (
+    <Button variant="secondary" size="sm" onClick={go} disabled={busy || !total}>
+      {busy ? <Spinner /> : <Download className="size-4" />} Baixar PDF
+    </Button>
+  );
+}
+
+/** Filtros do banco de questões num popup (botão "Filtros"); vários valores por campo; os escolhidos aparecem como etiquetas. */
 export function QuestionFilters({
   value,
   rows,
@@ -61,21 +178,21 @@ export function QuestionFilters({
   const [d, setD] = useState<FilterState>(value);
 
   const go = (next: FilterState) => {
-    const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(next)) if (v) p.set(k, v);
+    const p = toQuery(next);
     router.push(`${path}${p.size ? `?${p}` : ''}`);
   };
 
   // opções de cada campo respeitando o que já foi escolhido nos outros
   const opts = useMemo(() => {
-    const match = (r: FilterRowView, skip: string) =>
-      (skip === 'disciplina' || !d.disciplina || r.disciplina === d.disciplina) &&
-      (skip === 'assunto' || !d.assunto || r.assunto_geral === d.assunto) &&
-      (skip === 'especifico' || !d.especifico || r.assunto_especifico === d.especifico) &&
-      (skip === 'habilidade' || !d.habilidade || r.habilidade === d.habilidade) &&
-      (skip === 'ano' || !d.ano || String(r.ano) === d.ano) &&
-      (skip === 'prova' || !d.prova || r.paper_id === d.prova);
-    const uniq = (skip: string, get: (r: FilterRowView) => string) =>
+    const has = (list: string[] | undefined, v: string) => !list?.length || list.includes(v);
+    const match = (r: FilterRowView, skip: Multi) =>
+      (skip === 'disciplina' || has(d.disciplina, r.disciplina)) &&
+      (skip === 'assunto' || has(d.assunto, r.assunto_geral)) &&
+      (skip === 'especifico' || has(d.especifico, r.assunto_especifico)) &&
+      (skip === 'habilidade' || has(d.habilidade, r.habilidade)) &&
+      (skip === 'ano' || has(d.ano, String(r.ano))) &&
+      (skip === 'prova' || has(d.prova, r.paper_id));
+    const uniq = (skip: Multi, get: (r: FilterRowView) => string) =>
       [
         ...new Set(
           rows
@@ -90,32 +207,22 @@ export function QuestionFilters({
       especifico: uniq('especifico', (r) => r.assunto_especifico),
       habilidade: uniq('habilidade', (r) => r.habilidade),
       ano: uniq('ano', (r) => (r.ano ? String(r.ano) : '')).reverse(),
-      prova: new Set(rows.filter((r) => match(r, 'prova')).map((r) => r.paper_id)),
+      prova: papers.map((p) => p.id).filter((id) => rows.some((r) => r.paper_id === id && match(r, 'prova'))),
     };
-  }, [rows, d]);
+  }, [rows, d, papers]);
 
-  const active = (Object.keys(LABELS) as (keyof FilterState)[]).filter((k) => value[k] && k !== 'topico');
-  const show = (k: keyof FilterState, v: string) =>
-    k === 'prova' ? (papers.find((p) => p.id === v)?.label ?? v) : k === 'dif' ? (DIFFICULTY.find((x) => x.key === v)?.label ?? v) : k === 'sit' ? SIT[v] : v;
-  const pick = (k: keyof FilterState, v: string) =>
-    setD((o) => ({
-      ...o,
-      [k]: v,
-      ...(k === 'disciplina' ? { assunto: '', especifico: '' } : k === 'assunto' ? { especifico: '' } : {}),
-    }));
-
-  const sel = (k: 'disciplina' | 'assunto' | 'especifico' | 'habilidade' | 'ano', all: string) => (
-    <Field label={LABELS[k]}>
-      <Select value={d[k] ?? ''} onChange={(e) => pick(k, e.target.value)} aria-label={LABELS[k]} className="min-w-0">
-        <option value="">{all}</option>
-        {opts[k].map((v) => (
-          <option key={v} value={v}>
-            {v}
-          </option>
-        ))}
-      </Select>
-    </Field>
-  );
+  const paperName = (id: string) => papers.find((p) => p.id === id)?.label ?? id;
+  const chips = [
+    ...MULTI.flatMap((k) => (value[k] ?? []).map((v) => ({ k: k as keyof FilterState, v, label: `${LABELS[k]}: ${k === 'prova' ? paperName(v) : v}` }))),
+    ...(['dif', 'sit', 'q'] as const)
+      .filter((k) => value[k])
+      .map((k) => ({
+        k: k as keyof FilterState,
+        v: value[k]!,
+        label: `${LABELS[k]}: ${k === 'dif' ? (DIFFICULTY.find((x) => x.key === value.dif)?.label ?? '') : k === 'sit' ? SIT[value.sit!] : value.q}`,
+      })),
+  ];
+  const remove = (k: keyof FilterState, v: string) => go({ ...value, [k]: MULTI.includes(k as Multi) ? (value[k as Multi] ?? []).filter((x) => x !== v) : '' });
 
   return (
     <div className="space-y-2">
@@ -128,27 +235,28 @@ export function QuestionFilters({
             setOpen(true);
           }}
         >
-          <Filter className="size-4" /> Filtros{active.length ? ` (${active.length})` : ''}
+          <Filter className="size-4" /> Filtros{chips.length ? ` (${chips.length})` : ''}
         </Button>
+        <FilterPdf value={value} total={total} />
         <span className="text-xs text-muted">
           {total} {total === 1 ? 'questão' : 'questões'}
         </span>
-        {active.length > 0 && (
-          <button type="button" onClick={() => go({})} className="ml-auto text-xs font-semibold text-muted hover:text-ink">
+        {chips.length > 0 && (
+          <button type="button" onClick={() => go({ topico: value.topico })} className="ml-auto text-xs font-semibold text-muted hover:text-ink">
             Limpar
           </button>
         )}
       </div>
-      {active.length > 0 && (
+      {chips.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
-          {active.map((k) => (
+          {chips.map((c) => (
             <button
-              key={k}
+              key={`${c.k}-${c.v}`}
               type="button"
-              onClick={() => go({ ...value, [k]: '', ...(k === 'disciplina' ? { assunto: '', especifico: '' } : k === 'assunto' ? { especifico: '' } : {}) })}
+              onClick={() => remove(c.k, c.v)}
               className="flex max-w-full items-center gap-1 rounded-lg bg-brand/12 px-2 py-1 text-left text-[11px] font-semibold break-words text-brand"
             >
-              {LABELS[k]}: {show(k, value[k]!)} <X className="size-3 shrink-0" />
+              {c.label} <X className="size-3 shrink-0" />
             </button>
           ))}
         </div>
@@ -160,7 +268,7 @@ export function QuestionFilters({
         title="Filtros"
         footer={
           <>
-            <Button variant="ghost" onClick={() => setD({})}>
+            <Button variant="ghost" onClick={() => setD({ topico: value.topico })}>
               Limpar
             </Button>
             <Button
@@ -174,50 +282,46 @@ export function QuestionFilters({
           </>
         }
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {sel('disciplina', 'Todas')}
-          {sel('assunto', 'Todos')}
-          <div className="sm:col-span-2">{sel('especifico', 'Todos')}</div>
-          {sel('habilidade', 'Todas')}
-          {sel('ano', 'Todos')}
-          <Field label="Prova" className="sm:col-span-2">
-            <Select value={d.prova ?? ''} onChange={(e) => pick('prova', e.target.value)} aria-label="Prova" className="min-w-0">
-              <option value="">Todas</option>
-              {papers
-                .filter((p) => opts.prova.has(p.id))
-                .map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.label}
+        <div className="space-y-2.5">
+          <p className="text-[11px] text-muted">Dá para marcar mais de um em cada campo.</p>
+          {MULTI.map((k) => (
+            <MultiField
+              key={k}
+              label={LABELS[k]}
+              options={opts[k]}
+              value={d[k] ?? []}
+              show={k === 'prova' ? paperName : undefined}
+              onChange={(v) => setD((o) => ({ ...o, [k]: v }))}
+            />
+          ))}
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
+            <Field label="Dificuldade">
+              <Select value={d.dif ?? ''} onChange={(e) => setD((o) => ({ ...o, dif: e.target.value }))} aria-label="Dificuldade" className="min-w-0">
+                <option value="">Qualquer</option>
+                {DIFFICULTY.map((x) => (
+                  <option key={x.key} value={x.key}>
+                    {x.label}
                   </option>
                 ))}
-            </Select>
-          </Field>
-          <Field label="Dificuldade">
-            <Select value={d.dif ?? ''} onChange={(e) => pick('dif', e.target.value)} aria-label="Dificuldade" className="min-w-0">
-              <option value="">Qualquer</option>
-              {DIFFICULTY.map((x) => (
-                <option key={x.key} value={x.key}>
-                  {x.label}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Situação">
-            <Select value={d.sit ?? ''} onChange={(e) => pick('sit', e.target.value)} aria-label="Situação" className="min-w-0">
-              <option value="">Todas</option>
-              {Object.entries(SIT).map(([k, l]) => (
-                <option key={k} value={k}>
-                  {l}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Trecho da questão" className="sm:col-span-2">
+              </Select>
+            </Field>
+            <Field label="Situação">
+              <Select value={d.sit ?? ''} onChange={(e) => setD((o) => ({ ...o, sit: e.target.value }))} aria-label="Situação" className="min-w-0">
+                <option value="">Todas</option>
+                {Object.entries(SIT).map(([k, l]) => (
+                  <option key={k} value={k}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <Field label="Trecho da questão">
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
               <Input
                 value={d.q ?? ''}
-                onChange={(e) => pick('q', e.target.value)}
+                onChange={(e) => setD((o) => ({ ...o, q: e.target.value }))}
                 placeholder="Palavras do enunciado, assunto ou habilidade (ex.: H19)"
                 className="pl-9"
                 aria-label="Trecho da questão"

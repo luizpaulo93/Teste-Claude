@@ -36,7 +36,12 @@ export async function saveLive(fd: FormData): Promise<ActionResult> {
       mats = (Array.isArray(raw) ? raw : [])
         .filter((m) => typeof m?.file_path === 'string' && /^lives\/[\w/-]+\.pdf$/.test(m.file_path))
         .slice(0, 30)
-        .map((m) => ({ id: String(m.id || newId()).slice(0, 40), title: String(m.title || 'Material').slice(0, 160), file_path: m.file_path, size_label: String(m.size_label ?? '').slice(0, 20) }));
+        .map((m) => ({
+          id: String(m.id || newId()).slice(0, 40),
+          title: String(m.title || 'Material').slice(0, 160),
+          file_path: m.file_path,
+          size_label: String(m.size_label ?? '').slice(0, 20),
+        }));
     } catch {
       /* sem PDFs */
     }
@@ -139,7 +144,8 @@ async function liveModuleFor(classId: string) {
     );
     course = (await sql.one<{ id: string }>(`select id from courses where live_class_id = $1`, [classId])) ?? course;
   }
-  if (!(cls.course_ids ?? []).includes(course.id)) await sql.exec(`update classes set course_ids = array_append(course_ids, $2), updated_at = now() where id = $1`, [classId, course.id]);
+  if (!(cls.course_ids ?? []).includes(course.id))
+    await sql.exec(`update classes set course_ids = array_append(course_ids, $2), updated_at = now() where id = $1`, [classId, course.id]);
   let mod = await sql.one<{ id: string }>(`select id from modules where course_id = $1 order by position limit 1`, [course.id]);
   if (!mod) {
     mod = { id: newId() };
@@ -171,10 +177,16 @@ async function placeInClassCourses(lessonId: string, audience: string[]) {
  * PDFs da live, e coloca no curso "Live" de cada turma que recebeu a live.
  */
 async function archiveAsLesson(id: string): Promise<ActionResult> {
-  const live = await sql.one<{ title: string; description: string; youtube_id: string; cover_url: string; audience: string[]; materials: LessonMaterial[]; lesson_id: string | null; starts_at: string }>(
-    `select title, description, youtube_id, cover_url, audience, materials, lesson_id, starts_at from live_sessions where id = $1`,
-    [id],
-  );
+  const live = await sql.one<{
+    title: string;
+    description: string;
+    youtube_id: string;
+    cover_url: string;
+    audience: string[];
+    materials: LessonMaterial[];
+    lesson_id: string | null;
+    starts_at: string;
+  }>(`select title, description, youtube_id, cover_url, audience, materials, lesson_id, starts_at from live_sessions where id = $1`, [id]);
   if (!live) return { error: 'Transmissão não encontrada.' };
   if (!live.youtube_id) return { error: 'A live não tem link do YouTube.' };
   const existing = live.lesson_id
@@ -192,11 +204,16 @@ async function archiveAsLesson(id: string): Promise<ActionResult> {
     return { ok: true };
   }
   // Uma pasta só para as lives (a antiga "Lives" vira "Live")
-  let folder = await sql.one<{ id: string }>(`select id from lesson_folders where lower(name) in ('live', 'lives') order by (lower(name) = 'live') desc limit 1`);
+  let folder = await sql.one<{ id: string }>(
+    `select id from lesson_folders where lower(name) in ('live', 'lives') order by (lower(name) = 'live') desc limit 1`,
+  );
   if (folder) await sql.exec(`update lesson_folders set name = $2 where id = $1 and name <> $2`, [folder.id, LIVE_FOLDER]);
   if (!folder) {
     folder = { id: newId() };
-    await sql.exec(`insert into lesson_folders (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from lesson_folders`, [folder.id, LIVE_FOLDER]);
+    await sql.exec(`insert into lesson_folders (id, name, position) select $1, $2, coalesce(max(position), -1) + 1 from lesson_folders`, [
+      folder.id,
+      LIVE_FOLDER,
+    ]);
   }
   const lessonId = newId();
   const mats = live.materials ?? [];
@@ -205,7 +222,16 @@ async function archiveAsLesson(id: string): Promise<ActionResult> {
   await sql.exec(
     `insert into lessons (id, title, description, youtube_id, thumbnail_url, is_published, folder_id, materials, material_paths, position)
      select $1, $2, $3, $4, $5, true, $6, $7, $8, coalesce(max(position), -1) + 1 from lessons where folder_id = $6`,
-    [lessonId, `${live.title} · ${when.date}`.slice(0, 160), description, live.youtube_id, live.cover_url, folder.id, JSON.stringify(mats), mats.map((m) => m.file_path)],
+    [
+      lessonId,
+      `${live.title} · ${when.date}`.slice(0, 160),
+      description,
+      live.youtube_id,
+      live.cover_url,
+      folder.id,
+      JSON.stringify(mats),
+      mats.map((m) => m.file_path),
+    ],
   );
   await sql.exec(`update live_sessions set lesson_id = $2 where id = $1`, [id, lessonId]);
   await placeInClassCourses(lessonId, live.audience ?? []);
@@ -217,13 +243,19 @@ async function archiveAsLesson(id: string): Promise<ActionResult> {
 
 /** Os PDFs da live também ficam na aula salva (sem apagar os que o mentor pôs direto na aula). */
 async function syncLessonMaterials(liveId: string, removedPath?: string) {
-  const live = await sql.one<{ lesson_id: string | null; materials: LessonMaterial[] }>(`select lesson_id, materials from live_sessions where id = $1`, [liveId]);
+  const live = await sql.one<{ lesson_id: string | null; materials: LessonMaterial[] }>(`select lesson_id, materials from live_sessions where id = $1`, [
+    liveId,
+  ]);
   if (!live?.lesson_id) return;
   const lesson = await sql.one<{ materials: LessonMaterial[] }>(`select materials from lessons where id = $1`, [live.lesson_id]);
   if (!lesson) return;
   const paths = new Set((lesson.materials ?? []).map((m) => m.file_path));
   const merged = [...(lesson.materials ?? []).filter((m) => m.file_path !== removedPath), ...(live.materials ?? []).filter((m) => !paths.has(m.file_path))];
-  await sql.exec(`update lessons set materials = $2, material_paths = $3, updated_at = now() where id = $1`, [live.lesson_id, JSON.stringify(merged), merged.map((m) => m.file_path)]);
+  await sql.exec(`update lessons set materials = $2, material_paths = $3, updated_at = now() where id = $1`, [
+    live.lesson_id,
+    JSON.stringify(merged),
+    merged.map((m) => m.file_path),
+  ]);
   refreshCatalog();
 }
 
@@ -258,7 +290,11 @@ export async function removeLiveMaterial(liveId: string, fileId: string): Promis
     if (!live) return { error: 'Transmissão não encontrada.' };
     const gone = (live.materials ?? []).find((m) => m.id === fileId);
     const rest = (live.materials ?? []).filter((m) => m.id !== fileId);
-    await sql.exec(`update live_sessions set materials = $2, material_paths = $3, updated_at = now() where id = $1`, [liveId, JSON.stringify(rest), rest.map((m) => m.file_path)]);
+    await sql.exec(`update live_sessions set materials = $2, material_paths = $3, updated_at = now() where id = $1`, [
+      liveId,
+      JSON.stringify(rest),
+      rest.map((m) => m.file_path),
+    ]);
     if (gone) await syncLessonMaterials(liveId, gone.file_path);
     refresh(liveId);
     return { ok: true };
@@ -295,7 +331,10 @@ export async function startStudio(id: string): Promise<ActionResult & { videoId?
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const live = await sql.one<{ title: string; description: string; youtube_id: string }>(`select title, description, youtube_id from live_sessions where id = $1`, [id]);
+    const live = await sql.one<{ title: string; description: string; youtube_id: string }>(
+      `select title, description, youtube_id from live_sessions where id = $1`,
+      [id],
+    );
     if (!live) return { error: 'Transmissão não encontrada.' };
     const acc = await getAccount();
     let videoId = live.youtube_id;
@@ -318,7 +357,9 @@ export async function stopStudio(id: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const live = await sql.one<{ youtube_id: string }>(`update live_sessions set status = 'ended', updated_at = now() where id = $1 returning youtube_id`, [id]);
+    const live = await sql.one<{ youtube_id: string }>(`update live_sessions set status = 'ended', updated_at = now() where id = $1 returning youtube_id`, [
+      id,
+    ]);
     await sql.exec(`delete from integrations where id = $1`, [`ingest:${id}`]);
     const acc = await getAccount();
     if (live?.youtube_id && oauthConfigured() && acc.refresh_token) await endBroadcast(live.youtube_id);
@@ -338,12 +379,19 @@ export async function saveLiveLesson(lessonId: string, data: { title: string; ma
   try {
     await requireAdminAction();
     if (!isDocId(lessonId)) return { error: 'Inválido.' };
-    const title = String(data.title ?? '').trim().slice(0, 160);
+    const title = String(data.title ?? '')
+      .trim()
+      .slice(0, 160);
     if (!title) return { error: 'Dê um nome à aula.' };
     const mats = (Array.isArray(data.materials) ? data.materials : [])
       .filter((m) => typeof m?.file_path === 'string' && /^(lives|lessons|mentoria)\/[\w/-]+\.pdf$/.test(m.file_path))
       .slice(0, 40)
-      .map((m) => ({ id: String(m.id || newId()).slice(0, 40), title: String(m.title || 'Material').slice(0, 160), file_path: m.file_path, size_label: String(m.size_label ?? '').slice(0, 20) }));
+      .map((m) => ({
+        id: String(m.id || newId()).slice(0, 40),
+        title: String(m.title || 'Material').slice(0, 160),
+        file_path: m.file_path,
+        size_label: String(m.size_label ?? '').slice(0, 20),
+      }));
     const n = await sql.exec(`update lessons set title = $2, materials = $3, material_paths = $4, updated_at = now() where id = $1`, [
       lessonId,
       title,

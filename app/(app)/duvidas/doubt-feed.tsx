@@ -13,17 +13,7 @@ import { deleteDoubt, deleteReply, listReplies, setResolved, toggleLike } from '
 import { cn, timeAgo } from '@/lib/utils';
 import { DoubtComposer } from './doubt-composer';
 
-export function DoubtFeed({
-  doubts,
-  likedIds,
-  viewerId,
-  isAdmin,
-}: {
-  doubts: Doubt[];
-  likedIds: string[];
-  viewerId: string;
-  isAdmin: boolean;
-}) {
+export function DoubtFeed({ doubts, likedIds, viewerId, isAdmin }: { doubts: Doubt[]; likedIds: string[]; viewerId: string; isAdmin: boolean }) {
   const liked = useMemo(() => new Set(likedIds), [likedIds]);
   const [zoom, setZoom] = useState('');
 
@@ -33,14 +23,7 @@ export function DoubtFeed({
   return (
     <div className="space-y-4">
       {doubts.map((d) => (
-        <DoubtCard
-          key={d.id}
-          doubt={d}
-          initiallyLiked={liked.has(d.id)}
-          viewerId={viewerId}
-          isAdmin={isAdmin}
-          onZoom={setZoom}
-        />
+        <DoubtCard key={d.id} doubt={d} initiallyLiked={liked.has(d.id)} viewerId={viewerId} isAdmin={isAdmin} onZoom={setZoom} />
       ))}
       <Modal open={Boolean(zoom)} onClose={() => setZoom('')} size="xl" title="Imagem">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -156,12 +139,20 @@ function DoubtCard({
           <button
             type="button"
             onClick={like}
-            className={cn('flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:bg-surface-2', liked ? 'text-danger' : 'text-muted')}
+            className={cn(
+              'flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:bg-surface-2',
+              liked ? 'text-danger' : 'text-muted',
+            )}
           >
             <Heart className={cn('size-4', liked && 'fill-current')} /> {likes}
           </button>
-          <button type="button" onClick={toggleOpen} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-muted transition hover:bg-surface-2">
-            <MessageCircle className="size-4" /> {(() => {
+          <button
+            type="button"
+            onClick={toggleOpen}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-muted transition hover:bg-surface-2"
+          >
+            <MessageCircle className="size-4" />{' '}
+            {(() => {
               const n = replies?.length ?? doubt.replies_count;
               return open ? `${n} · ocultar` : n === 0 ? 'Responder' : `${n} resposta${n === 1 ? '' : 's'}`;
             })()}
@@ -203,7 +194,12 @@ function DoubtCard({
                         {r.author_role === 'admin' && <ShieldCheck className="size-3.5 text-brand" />}
                         <span className="text-[11px] text-muted">{timeAgo(r.created_at)}</span>
                         {(r.author_id === viewerId || isAdmin) && (
-                          <button type="button" onClick={() => removeReply(r.id)} aria-label="Excluir resposta" className="ml-auto text-muted hover:text-danger">
+                          <button
+                            type="button"
+                            onClick={() => removeReply(r.id)}
+                            aria-label="Excluir resposta"
+                            className="ml-auto text-muted hover:text-danger"
+                          >
                             <Trash2 className="size-3.5" />
                           </button>
                         )}

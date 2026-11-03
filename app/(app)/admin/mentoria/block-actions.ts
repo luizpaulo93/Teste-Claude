@@ -38,8 +38,15 @@ export async function saveBlock(data: {
     const files = (data.files ?? [])
       .filter((f) => typeof f.file_path === 'string' && /^mentoria\/[\w/-]+\.pdf$/.test(f.file_path))
       .slice(0, 40)
-      .map((f) => ({ id: String(f.id || newId()).slice(0, 40), title: String(f.title || 'Apostila').slice(0, 160), file_path: f.file_path, size_label: String(f.size_label ?? '').slice(0, 20) }));
-    const title = String(data.title ?? '').trim().slice(0, 160);
+      .map((f) => ({
+        id: String(f.id || newId()).slice(0, 40),
+        title: String(f.title || 'Apostila').slice(0, 160),
+        file_path: f.file_path,
+        size_label: String(f.size_label ?? '').slice(0, 20),
+      }));
+    const title = String(data.title ?? '')
+      .trim()
+      .slice(0, 160);
     if (!keys.length && !files.length) return { error: 'Escolha pelo menos um assunto ou envie uma apostila.' };
 
     let id = data.id;
@@ -54,10 +61,16 @@ export async function saveBlock(data: {
       );
     } else {
       id = newId();
-      await sql.exec(
-        `insert into mentoria_blocks (id, space, title, item_keys, start_on, end_on, files, file_paths) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
-        [id, data.space, title, keys, data.start_on, data.end_on, JSON.stringify(files), files.map((f) => f.file_path)],
-      );
+      await sql.exec(`insert into mentoria_blocks (id, space, title, item_keys, start_on, end_on, files, file_paths) values ($1, $2, $3, $4, $5, $6, $7, $8)`, [
+        id,
+        data.space,
+        title,
+        keys,
+        data.start_on,
+        data.end_on,
+        JSON.stringify(files),
+        files.map((f) => f.file_path),
+      ]);
     }
     const b = await getBlock(id);
     if (b) await applyBlock(b);

@@ -51,17 +51,24 @@ export function ResultView({
               </p>
             </div>
           </div>
-          {tri && <div className="relative mt-6">
-            <div className="relative h-2 rounded-full bg-white/20">
-              <div className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-lg" style={{ left: `${Math.max(0, Math.min(100, pos))}%` }} />
+          {tri && (
+            <div className="relative mt-6">
+              <div className="relative h-2 rounded-full bg-white/20">
+                <div
+                  className="absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-brand shadow-lg"
+                  style={{ left: `${Math.max(0, Math.min(100, pos))}%` }}
+                />
+              </div>
+              <div className="mt-2 flex justify-between text-[11px] text-white/70 tabular-nums">
+                <span>mín {min.toFixed(0)}</span>
+                <span>média {mean.toFixed(0)}</span>
+                <span>máx {max.toFixed(0)}</span>
+              </div>
+              <p className="mt-2 text-xs text-white/60">
+                Faixa possível para {result.correct} acertos. Sua posição depende da coerência pedagógica das respostas.
+              </p>
             </div>
-            <div className="mt-2 flex justify-between text-[11px] text-white/70 tabular-nums">
-              <span>mín {min.toFixed(0)}</span>
-              <span>média {mean.toFixed(0)}</span>
-              <span>máx {max.toFixed(0)}</span>
-            </div>
-            <p className="mt-2 text-xs text-white/60">Faixa possível para {result.correct} acertos. Sua posição depende da coerência pedagógica das respostas.</p>
-          </div>}
+          )}
         </div>
       </Card>
 
@@ -77,31 +84,33 @@ export function ResultView({
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {tri && <Card className="p-5">
-          <p className="mb-4 text-sm font-bold text-ink">Desempenho por dificuldade</p>
-          <div className="space-y-4">
-            {(['easy', 'medium', 'hard'] as Tier[]).map((t) => {
-              const v = result.tiers?.[t] ?? { correct: 0, total: 0 };
-              const p = v.total ? Math.round((v.correct / v.total) * 100) : 0;
-              return (
-                <div key={t}>
-                  <div className="mb-1.5 flex justify-between text-xs">
-                    <span className="font-semibold text-ink-2">{TIER_LABEL[t]}</span>
-                    <span className="text-muted tabular-nums">
-                      {v.correct}/{v.total} · {p}%
-                    </span>
+        {tri && (
+          <Card className="p-5">
+            <p className="mb-4 text-sm font-bold text-ink">Desempenho por dificuldade</p>
+            <div className="space-y-4">
+              {(['easy', 'medium', 'hard'] as Tier[]).map((t) => {
+                const v = result.tiers?.[t] ?? { correct: 0, total: 0 };
+                const p = v.total ? Math.round((v.correct / v.total) * 100) : 0;
+                return (
+                  <div key={t}>
+                    <div className="mb-1.5 flex justify-between text-xs">
+                      <span className="font-semibold text-ink-2">{TIER_LABEL[t]}</span>
+                      <span className="text-muted tabular-nums">
+                        {v.correct}/{v.total} · {p}%
+                      </span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                      <div
+                        className={cn('h-full rounded-full', t === 'easy' ? 'bg-success' : t === 'medium' ? 'bg-warning' : 'bg-danger')}
+                        style={{ width: `${p}%` }}
+                      />
+                    </div>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-surface-3">
-                    <div
-                      className={cn('h-full rounded-full', t === 'easy' ? 'bg-success' : t === 'medium' ? 'bg-warning' : 'bg-danger')}
-                      style={{ width: `${p}%` }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Card>}
+                );
+              })}
+            </div>
+          </Card>
+        )}
         {stats && stats.completed > 0 && (
           <Card className="p-5">
             <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
@@ -112,9 +121,17 @@ export function ResultView({
               {tri && <Row label="Média TRI da turma" value={stats.meanTri.toFixed(1)} />}
               <Row label="Média de acertos" value={stats.meanCorrect} />
               {tri ? (
-                <Row label="Você vs. média" value={`${score >= stats.meanTri ? '+' : ''}${(score - stats.meanTri).toFixed(1)}`} highlight={score >= stats.meanTri} />
+                <Row
+                  label="Você vs. média"
+                  value={`${score >= stats.meanTri ? '+' : ''}${(score - stats.meanTri).toFixed(1)}`}
+                  highlight={score >= stats.meanTri}
+                />
               ) : (
-                <Row label="Você vs. média" value={`${result.correct >= stats.meanCorrect ? '+' : ''}${(result.correct - stats.meanCorrect).toFixed(1)} acertos`} highlight={result.correct >= stats.meanCorrect} />
+                <Row
+                  label="Você vs. média"
+                  value={`${result.correct >= stats.meanCorrect ? '+' : ''}${(result.correct - stats.meanCorrect).toFixed(1)} acertos`}
+                  highlight={result.correct >= stats.meanCorrect}
+                />
               )}
             </dl>
           </Card>
@@ -134,9 +151,15 @@ export function ResultView({
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm font-bold text-ink">Gabarito comentado</p>
           <div className="flex gap-3 text-[11px] text-muted">
-            <span className="flex items-center gap-1"><span className="size-2.5 rounded-full bg-success" /> acerto</span>
-            <span className="flex items-center gap-1"><span className="size-2.5 rounded-full bg-danger" /> erro</span>
-            <span className="flex items-center gap-1"><span className="size-2.5 rounded-full bg-surface-3" /> branco</span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full bg-success" /> acerto
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full bg-danger" /> erro
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="size-2.5 rounded-full bg-surface-3" /> branco
+            </span>
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 min-[480px]:grid-cols-4 sm:grid-cols-6 lg:grid-cols-9">

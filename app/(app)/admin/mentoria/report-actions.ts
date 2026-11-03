@@ -20,7 +20,10 @@ export async function weeklyReport(target: string, monday: string): Promise<{ re
       return { report: await buildReport(ids, g.name, week) };
     }
     if (target.startsWith('m:')) {
-      const m = await sql.one<{ id: string; name: string }>(`select id, coalesce(nullif(student_name, ''), student_email) as name from mentorias where id = $1`, [target.slice(2)]);
+      const m = await sql.one<{ id: string; name: string }>(
+        `select id, coalesce(nullif(student_name, ''), student_email) as name from mentorias where id = $1`,
+        [target.slice(2)],
+      );
       if (!m) return { error: 'Mentoria não encontrada.' };
       return { report: await buildReport([m.id], m.name, week) };
     }

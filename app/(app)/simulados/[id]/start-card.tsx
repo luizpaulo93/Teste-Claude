@@ -45,7 +45,12 @@ export function StartCard({ simulado, submission }: { simulado: Simulado; submis
             <CheckCircle2 className="mx-auto size-8 text-success" />
             <p className="mt-2 font-bold text-ink">Prova entregue!</p>
             <p className="mt-1 text-sm text-muted">
-              Tempo de prova: {formatClock(submission!.duration_seconds)}. {simulado.results_released ? 'Seu resultado está sendo processado.' : simulado.use_tri === false ? 'Você verá seus acertos assim que o professor liberar os resultados.' : 'Você verá sua nota TRI assim que o professor liberar os resultados.'}
+              Tempo de prova: {formatClock(submission!.duration_seconds)}.{' '}
+              {simulado.results_released
+                ? 'Seu resultado está sendo processado.'
+                : simulado.use_tri === false
+                  ? 'Você verá seus acertos assim que o professor liberar os resultados.'
+                  : 'Você verá sua nota TRI assim que o professor liberar os resultados.'}
             </p>
             <p className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-warning">
               <Hourglass className="size-3.5" /> Aguardando liberação
@@ -61,7 +66,12 @@ export function StartCard({ simulado, submission }: { simulado: Simulado; submis
           <>
             <ul className="space-y-2 text-sm text-ink-2">
               <li>• Suas respostas são salvas automaticamente a cada marcação.</li>
-              <li>• {simulado.time_limit_minutes ? 'Ao fim do tempo a prova é entregue automaticamente.' : 'Não há limite de tempo, mas o cronômetro registra sua duração.'}</li>
+              <li>
+                •{' '}
+                {simulado.time_limit_minutes
+                  ? 'Ao fim do tempo a prova é entregue automaticamente.'
+                  : 'Não há limite de tempo, mas o cronômetro registra sua duração.'}
+              </li>
               <li>• Depois de entregar, não é possível alterar as respostas.</li>
             </ul>
             <button type="button" onClick={start} disabled={loading} className={buttonClass('primary', 'lg', 'w-full')}>

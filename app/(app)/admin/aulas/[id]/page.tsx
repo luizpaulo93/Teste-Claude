@@ -25,12 +25,13 @@ export default async function LiveLessonPage({ params }: { params: Promise<{ id:
       order by (lesson_id = $1) desc nulls last limit 1`,
     [id, lesson.youtube_id, lesson.folder_id],
   );
-  const messages = live
-    ? await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at limit 2000`, [live.id])
-    : [];
+  const messages = live ? await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at limit 2000`, [live.id]) : [];
   return (
     <div className="mx-auto max-w-5xl space-y-4">
-      <Link href={`/admin/aulas${lesson.folder_id ? `?f=${lesson.folder_id}` : ''}`} className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+      <Link
+        href={`/admin/aulas${lesson.folder_id ? `?f=${lesson.folder_id}` : ''}`}
+        className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink"
+      >
         <ChevronLeft className="size-4" /> Banco de aulas
       </Link>
       <LiveLessonEditor lesson={lesson} startsAt={live?.starts_at ?? null} messages={messages} />

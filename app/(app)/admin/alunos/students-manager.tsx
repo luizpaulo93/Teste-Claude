@@ -113,7 +113,11 @@ export function StudentsManager({
       {selected.size > 0 && (
         <Card className="flex animate-slide-up flex-wrap items-center gap-2 border-brand/30 bg-brand-soft p-3">
           <span className="mr-2 text-sm font-semibold text-ink">{selected.size} selecionados</span>
-          <Select onChange={(e) => e.target.value && bulk({ class_id: e.target.value === 'none' ? null : e.target.value }, 'Turma atualizada')} defaultValue="" className="h-9 w-auto text-xs">
+          <Select
+            onChange={(e) => e.target.value && bulk({ class_id: e.target.value === 'none' ? null : e.target.value }, 'Turma atualizada')}
+            defaultValue=""
+            className="h-9 w-auto text-xs"
+          >
             <option value="">Mover para turma…</option>
             <option value="none">Sem turma</option>
             {classes.map((c) => (
@@ -128,7 +132,11 @@ export function StudentsManager({
           <Button size="sm" variant="secondary" onClick={() => bulk({ status: 'blocked' }, 'Alunos bloqueados')}>
             <Ban className="size-3.5" /> Bloquear
           </Button>
-          <Button size="sm" variant="danger" onClick={async () => (await confirmDialog(`Remover ${selected.size} alunos da lista?`)) && bulk({ remove: true }, 'Alunos removidos')}>
+          <Button
+            size="sm"
+            variant="danger"
+            onClick={async () => (await confirmDialog(`Remover ${selected.size} alunos da lista?`)) && bulk({ remove: true }, 'Alunos removidos')}
+          >
             <Trash2 className="size-3.5" /> Remover
           </Button>
           {pending && <Spinner className="text-brand" />}
@@ -139,14 +147,29 @@ export function StudentsManager({
         {students.length ? (
           <ul className="divide-y divide-line">
             <li className="flex items-center gap-3 bg-surface-2/60 px-4 py-2.5 text-xs font-semibold text-muted">
-              <input type="checkbox" checked={selected.size === students.length} onChange={toggleAll} className="size-4 accent-[var(--brand)]" aria-label="Selecionar todos" />
+              <input
+                type="checkbox"
+                checked={selected.size === students.length}
+                onChange={toggleAll}
+                className="size-4 accent-[var(--brand)]"
+                aria-label="Selecionar todos"
+              />
               Selecionar todos
             </li>
             {students.map((s) => {
               const prof = profileBy.get(s.email.toLowerCase());
               return (
-                <li key={s.id} className={cn('flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50', selected.has(s.id) && 'bg-brand-soft/50')}>
-                  <input type="checkbox" checked={selected.has(s.id)} onChange={() => toggle(s.id)} className="size-4 shrink-0 accent-[var(--brand)]" aria-label={`Selecionar ${s.email}`} />
+                <li
+                  key={s.id}
+                  className={cn('flex items-center gap-3 px-4 py-3 transition-colors hover:bg-surface-2/50', selected.has(s.id) && 'bg-brand-soft/50')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(s.id)}
+                    onChange={() => toggle(s.id)}
+                    className="size-4 shrink-0 accent-[var(--brand)]"
+                    aria-label={`Selecionar ${s.email}`}
+                  />
                   <Avatar name={s.name || prof?.full_name || s.email} src={prof?.avatar_url} size={34} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-ink">{s.name || prof?.full_name || s.email}</p>
@@ -171,7 +194,15 @@ export function StudentsManager({
                     <Button variant="ghost" size="sm" className="px-2" onClick={() => setEdit({ student: s })} aria-label="Editar">
                       <Pencil className="size-4" />
                     </Button>
-                    <ActionButton action={() => deleteStudent(s.id)} confirm={`Remover ${s.email} da lista?`} success="Aluno removido" variant="ghost" size="sm" className="px-2 hover:text-danger" title="Remover">
+                    <ActionButton
+                      action={() => deleteStudent(s.id)}
+                      confirm={`Remover ${s.email} da lista?`}
+                      success="Aluno removido"
+                      variant="ghost"
+                      size="sm"
+                      className="px-2 hover:text-danger"
+                      title="Remover"
+                    >
                       <Trash2 className="size-4" />
                     </ActionButton>
                   </div>
@@ -250,7 +281,15 @@ export function StudentsManager({
         )}
       </Modal>
 
-      <AddUsersModal open={addOpen} onClose={() => setAddOpen(false)} classes={classes} onManual={() => { setAddOpen(false); setEdit({}); }} />
+      <AddUsersModal
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        classes={classes}
+        onManual={() => {
+          setAddOpen(false);
+          setEdit({});
+        }}
+      />
 
       <Modal open={importOpen} onClose={() => setImportOpen(false)} title="Importar alunos" size="lg">
         <ActionForm
@@ -297,10 +336,13 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
   useEffect(() => {
     if (!open) return;
     let alive = true;
-    const t = window.setTimeout(async () => {
-      const r = await listUnassignedUsers(q);
-      if (alive) setUsers(r.users ?? []);
-    }, q ? 250 : 0);
+    const t = window.setTimeout(
+      async () => {
+        const r = await listUnassignedUsers(q);
+        if (alive) setUsers(r.users ?? []);
+      },
+      q ? 250 : 0,
+    );
     return () => {
       alive = false;
       window.clearTimeout(t);
@@ -366,7 +408,12 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
           <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
             {users.map((u) => (
               <li key={u.email}>
-                <label className={cn('flex cursor-pointer items-center gap-3 px-3.5 py-2.5 transition hover:bg-surface-2', picked.has(u.email) && 'bg-brand-soft/60')}>
+                <label
+                  className={cn(
+                    'flex cursor-pointer items-center gap-3 px-3.5 py-2.5 transition hover:bg-surface-2',
+                    picked.has(u.email) && 'bg-brand-soft/60',
+                  )}
+                >
                   <input type="checkbox" checked={picked.has(u.email)} onChange={() => toggle(u.email)} className="size-4 shrink-0 accent-[var(--brand)]" />
                   <Avatar name={u.name || u.email} src={u.avatar_url} size={30} />
                   <span className="min-w-0 flex-1">

@@ -27,15 +27,17 @@ export default async function GroupPlan({ params }: { params: Promise<{ gid: str
         <BlocksPanel space={`g:${g.id}`} blocks={blocks} today={todayBR()} />
       </Card>
       {g.scope !== 'especifica' && (
-      <Card className="p-4 sm:p-5">
-        <PlanBuilder groupId={g.id} disciplines={disciplines} chosen={g.plan_disciplines} order={g.plan_order} hasSchedule />
-      </Card>
+        <Card className="p-4 sm:p-5">
+          <PlanBuilder groupId={g.id} disciplines={disciplines} chosen={g.plan_disciplines} order={g.plan_order} hasSchedule />
+        </Card>
       )}
       <Card className="p-4 sm:p-5">
         <details className="group" open={g.scope === 'especifica' && g.plan_keys.length === 0}>
           <summary className="flex cursor-pointer list-none items-center justify-between gap-2 select-none [&::-webkit-details-marker]:hidden">
             <span>
-              <span className="block text-sm font-bold text-ink">{g.scope === 'especifica' ? 'Assuntos da mentoria específica' : 'Escolher assuntos manualmente'}</span>
+              <span className="block text-sm font-bold text-ink">
+                {g.scope === 'especifica' ? 'Assuntos da mentoria específica' : 'Escolher assuntos manualmente'}
+              </span>
               <span className="block text-xs text-muted">{g.plan_keys.length} assuntos no cronograma do grupo · adicione ou tire qualquer um</span>
             </span>
             <span className="text-xs font-semibold text-brand group-open:hidden">Abrir</span>

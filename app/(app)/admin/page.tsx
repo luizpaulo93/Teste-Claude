@@ -43,9 +43,22 @@ export default async function AdminHome() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Alunos na lista" value={students} hint={`${active} ativos`} icon={<Users className="size-4" />} />
         <Stat label="Contas criadas" value={users} hint="Pessoas que já entraram" icon={<UserCheck className="size-4" />} />
-        <Stat label="Cursos / aulas" value={`${catalog.courses.length} / ${new Set(catalog.lessons.map((l) => l.id)).size}`} icon={<BookOpen className="size-4" />} />
+        <Stat
+          label="Cursos / aulas"
+          value={`${catalog.courses.length} / ${new Set(catalog.lessons.map((l) => l.id)).size}`}
+          icon={<BookOpen className="size-4" />}
+        />
         <Stat label="Turmas" value={catalog.classes.length} hint="Grupos de acesso" icon={<PlayCircle className="size-4" />} />
-        <Stat label="Dúvidas abertas" value={openDoubts} hint={<Link href="/duvidas?f=abertas" className="text-brand">Responder</Link>} icon={<MessageCircleQuestion className="size-4" />} />
+        <Stat
+          label="Dúvidas abertas"
+          value={openDoubts}
+          hint={
+            <Link href="/duvidas?f=abertas" className="text-brand">
+              Responder
+            </Link>
+          }
+          icon={<MessageCircleQuestion className="size-4" />}
+        />
         <Stat label="Simulados publicados" value={sims} icon={<ClipboardCheck className="size-4" />} />
       </div>
 
@@ -66,7 +79,15 @@ export default async function AdminHome() {
                   <p className="truncate text-sm font-semibold text-ink">{u.full_name || '—'}</p>
                   <p className="truncate text-xs text-muted">{u.email}</p>
                 </div>
-                {u.role === 'admin' ? <Badge tone="brand">Admin</Badge> : st === 'active' ? <Badge tone="success">Liberado</Badge> : st === 'blocked' ? <Badge tone="danger">Bloqueado</Badge> : <Badge tone="warning">Fora da lista</Badge>}
+                {u.role === 'admin' ? (
+                  <Badge tone="brand">Admin</Badge>
+                ) : st === 'active' ? (
+                  <Badge tone="success">Liberado</Badge>
+                ) : st === 'blocked' ? (
+                  <Badge tone="danger">Bloqueado</Badge>
+                ) : (
+                  <Badge tone="warning">Fora da lista</Badge>
+                )}
                 <span className="hidden text-xs text-muted sm:block">{timeAgo(u.created_at)}</span>
               </li>
             );
@@ -76,4 +97,3 @@ export default async function AdminHome() {
     </>
   );
 }
-

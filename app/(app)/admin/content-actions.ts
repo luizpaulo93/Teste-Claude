@@ -77,7 +77,10 @@ export async function saveCourse(fd: FormData): Promise<ActionResult> {
 export async function saveTag(id: string | null, name: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    const n = String(name ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+    const n = String(name ?? '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .slice(0, 40);
     if (!n) return { error: 'Dê um nome à tag.' };
     const dup = await sql.one(`select 1 from course_tags where lower(name) = lower($1) and id <> coalesce($2, '')`, [n, id]);
     if (dup) return { error: 'Já existe uma tag com esse nome.' };
@@ -113,7 +116,10 @@ export async function moveTag(id: string, dir: -1 | 1): Promise<ActionResult> {
     const j = i + dir;
     if (i < 0 || j < 0 || j >= list.length) return { ok: true };
     [list[i], list[j]] = [list[j], list[i]];
-    await sql.exec(`update course_tags t set position = v.p from unnest($1::text[], $2::int[]) as v(id, p) where t.id = v.id`, [list.map((t) => t.id), list.map((_, k) => k)]);
+    await sql.exec(`update course_tags t set position = v.p from unnest($1::text[], $2::int[]) as v(id, p) where t.id = v.id`, [
+      list.map((t) => t.id),
+      list.map((_, k) => k),
+    ]);
     revalidateContent();
     revalidatePath('/admin/cursos');
     return { ok: true };
@@ -187,10 +193,15 @@ export async function saveModule(fd: FormData): Promise<ActionResult> {
         cover,
       ]);
     } else {
-      await sql.exec(
-        `insert into modules (id, course_id, title, description, is_published, position, cover_url) values ($1, $2, $3, $4, $5, $6, $7)`,
-        [newId(), course_id, title, description, published, await nextPosition('modules', course_id), cover],
-      );
+      await sql.exec(`insert into modules (id, course_id, title, description, is_published, position, cover_url) values ($1, $2, $3, $4, $5, $6, $7)`, [
+        newId(),
+        course_id,
+        title,
+        description,
+        published,
+        await nextPosition('modules', course_id),
+        cover,
+      ]);
     }
     revalidateContent(course_id);
     return { ok: true };
@@ -346,10 +357,9 @@ export async function moveLessonInFolder(id: string, dir: -1 | 1): Promise<Actio
     await tx(async (t) => {
       const me = await t.one<{ folder_id: string | null }>(`select folder_id from lessons where id = $1`, [id]);
       if (!me) return;
-      const list = await t.query<{ id: string }>(
-        `select id from lessons where folder_id is not distinct from $1 order by position, created_at for update`,
-        [me.folder_id],
-      );
+      const list = await t.query<{ id: string }>(`select id from lessons where folder_id is not distinct from $1 order by position, created_at for update`, [
+        me.folder_id,
+      ]);
       const i = list.findIndex((x) => x.id === id);
       const j = i + dir;
       if (i < 0 || j < 0 || j >= list.length) return;
@@ -391,7 +401,9 @@ export async function moveLessonsToFolder(ids: string[], folderId: string | null
 export async function saveFolder(id: string, name: string): Promise<ActionResult> {
   try {
     await requireAdminAction();
-    const n = String(name ?? '').trim().slice(0, 120);
+    const n = String(name ?? '')
+      .trim()
+      .slice(0, 120);
     if (!n) return { error: 'Informe o nome da pasta.' };
     if (id) {
       if (!isDocId(id)) return { error: 'Inválido.' };
@@ -432,7 +444,9 @@ export async function moveFolder(id: string, dir: -1 | 1): Promise<ActionResult>
       const j = i + dir;
       if (i < 0 || j < 0 || j >= list.length) return;
       [list[i], list[j]] = [list[j], list[i]];
-      await t.exec(`update lesson_folders f set position = v.pos - 1 from unnest($1::text[]) with ordinality as v(id, pos) where f.id = v.id`, [list.map((x) => x.id)]);
+      await t.exec(`update lesson_folders f set position = v.pos - 1 from unnest($1::text[]) with ordinality as v(id, pos) where f.id = v.id`, [
+        list.map((x) => x.id),
+      ]);
     });
     revalidatePath('/admin/aulas');
     return { ok: true };

@@ -1,6 +1,23 @@
 'use client';
 
-import { ArrowDown, ArrowLeft, ArrowUp, Check, ChevronRight, Eye, EyeOff, FileText, Folder, FolderPlus, Inbox, Pencil, Plus, Trash2, Video, X } from 'lucide-react';
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Eye,
+  EyeOff,
+  FileText,
+  Folder,
+  FolderPlus,
+  Inbox,
+  Pencil,
+  Plus,
+  Trash2,
+  Video,
+  X,
+} from 'lucide-react';
 import { useState, useTransition } from 'react';
 import { ActionForm } from '@/components/admin/action-form';
 import { LessonForm } from '@/components/admin/lesson-form';
@@ -42,12 +59,7 @@ export function ModulesManager({
         </Button>
       </div>
 
-      {!modules.length && (
-        <EmptyState
-          icon={<FolderPlus className="size-6" />}
-          title="Nenhum módulo ainda"
-        />
-      )}
+      {!modules.length && <EmptyState icon={<FolderPlus className="size-6" />} title="Nenhum módulo ainda" />}
 
       {modules.map((m, mi) => {
         const ml = lessons.filter((l) => l.module_id === m.id);
@@ -61,10 +73,24 @@ export function ModulesManager({
                   {ml.length} aulas {!m.is_published && '· oculto'}
                 </p>
               </div>
-              <ActionButton action={() => moveItem('modules', m.id, -1, { column: 'course_id', value: courseId })} variant="ghost" size="sm" className="px-1.5" title="Subir" disabled={mi === 0}>
+              <ActionButton
+                action={() => moveItem('modules', m.id, -1, { column: 'course_id', value: courseId })}
+                variant="ghost"
+                size="sm"
+                className="px-1.5"
+                title="Subir"
+                disabled={mi === 0}
+              >
                 <ArrowUp className="size-4" />
               </ActionButton>
-              <ActionButton action={() => moveItem('modules', m.id, 1, { column: 'course_id', value: courseId })} variant="ghost" size="sm" className="px-1.5" title="Descer" disabled={mi === modules.length - 1}>
+              <ActionButton
+                action={() => moveItem('modules', m.id, 1, { column: 'course_id', value: courseId })}
+                variant="ghost"
+                size="sm"
+                className="px-1.5"
+                title="Descer"
+                disabled={mi === modules.length - 1}
+              >
                 <ArrowDown className="size-4" />
               </ActionButton>
               <Button variant="ghost" size="sm" className="px-1.5" onClick={() => setModuleModal({ module: m })} aria-label="Editar módulo">
@@ -96,7 +122,11 @@ export function ModulesManager({
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <button type="button" onClick={() => setLessonModal({ lesson: l, moduleId: m.id })} className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand">
+                    <button
+                      type="button"
+                      onClick={() => setLessonModal({ lesson: l, moduleId: m.id })}
+                      className="line-clamp-2 text-left text-sm font-semibold text-ink hover:text-brand"
+                    >
                       {l.title}
                     </button>
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -116,10 +146,24 @@ export function ModulesManager({
                     </div>
                   </div>
                   <div className="ml-auto flex shrink-0 items-center gap-0.5 max-sm:w-full max-sm:justify-end max-sm:border-t max-sm:border-line/60 max-sm:pt-1.5">
-                    <ActionButton action={() => moveLessonInModule(m.id, l.id, -1)} variant="ghost" size="sm" className="px-1.5" title="Subir" disabled={li === 0}>
+                    <ActionButton
+                      action={() => moveLessonInModule(m.id, l.id, -1)}
+                      variant="ghost"
+                      size="sm"
+                      className="px-1.5"
+                      title="Subir"
+                      disabled={li === 0}
+                    >
                       <ArrowUp className="size-3.5" />
                     </ActionButton>
-                    <ActionButton action={() => moveLessonInModule(m.id, l.id, 1)} variant="ghost" size="sm" className="px-1.5" title="Descer" disabled={li === ml.length - 1}>
+                    <ActionButton
+                      action={() => moveLessonInModule(m.id, l.id, 1)}
+                      variant="ghost"
+                      size="sm"
+                      className="px-1.5"
+                      title="Descer"
+                      disabled={li === ml.length - 1}
+                    >
                       <ArrowDown className="size-3.5" />
                     </ActionButton>
                     <ActionButton
@@ -131,7 +175,14 @@ export function ModulesManager({
                     >
                       {l.is_published ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
                     </ActionButton>
-                    <ActionButton action={() => removeLessonFromModule(m.id, l.id)} success="Aula removida do módulo" variant="ghost" size="sm" className="px-1.5 hover:text-danger" title="Tirar do módulo (continua no banco de aulas)">
+                    <ActionButton
+                      action={() => removeLessonFromModule(m.id, l.id)}
+                      success="Aula removida do módulo"
+                      variant="ghost"
+                      size="sm"
+                      className="px-1.5 hover:text-danger"
+                      title="Tirar do módulo (continua no banco de aulas)"
+                    >
                       <X className="size-4" />
                     </ActionButton>
                   </div>
@@ -139,7 +190,11 @@ export function ModulesManager({
               ))}
             </ul>
             <div className="border-t border-line">
-              <button type="button" onClick={() => setPicker(m)} className="flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold text-brand transition hover:bg-brand-soft">
+              <button
+                type="button"
+                onClick={() => setPicker(m)}
+                className="flex w-full items-center justify-center gap-2 py-3 text-sm font-semibold text-brand transition hover:bg-brand-soft"
+              >
                 <Folder className="size-4" /> Adicionar aulas das pastas
               </button>
             </div>
@@ -172,9 +227,19 @@ export function ModulesManager({
         )}
       </Modal>
 
-      <Modal open={Boolean(lessonModal)} onClose={() => setLessonModal(null)} title={lessonModal?.lesson ? 'Editar aula' : 'Nova aula (entra no banco de aulas e neste módulo)'} size="lg">
+      <Modal
+        open={Boolean(lessonModal)}
+        onClose={() => setLessonModal(null)}
+        title={lessonModal?.lesson ? 'Editar aula' : 'Nova aula (entra no banco de aulas e neste módulo)'}
+        size="lg"
+      >
         {lessonModal && (
-          <LessonForm lesson={lessonModal.lesson} folders={folders} addToModule={lessonModal.lesson ? undefined : lessonModal.moduleId} onDone={() => setLessonModal(null)} />
+          <LessonForm
+            lesson={lessonModal.lesson}
+            folders={folders}
+            addToModule={lessonModal.lesson ? undefined : lessonModal.moduleId}
+            onDone={() => setLessonModal(null)}
+          />
         )}
       </Modal>
 
@@ -244,7 +309,10 @@ function LessonPicker({
                 key={l.id}
                 type="button"
                 onClick={() => toggle(l.id)}
-                className={cn('flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition', on ? 'border-brand bg-brand/15' : 'border-line bg-surface-2 hover:border-brand/50')}
+                className={cn(
+                  'flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition',
+                  on ? 'border-brand bg-brand/15' : 'border-line bg-surface-2 hover:border-brand/50',
+                )}
               >
                 <span className="relative aspect-video w-16 shrink-0 overflow-hidden rounded-md bg-surface-3">
                   {l.thumbnail_url || l.youtube_id ? (
@@ -254,7 +322,12 @@ function LessonPicker({
                   )}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{l.title}</span>
-                <span className={cn('grid size-6 shrink-0 place-items-center rounded-full', on ? 'bg-brand text-white' : 'border border-line-strong text-transparent')}>
+                <span
+                  className={cn(
+                    'grid size-6 shrink-0 place-items-center rounded-full',
+                    on ? 'bg-brand text-white' : 'border border-line-strong text-transparent',
+                  )}
+                >
                   {on ? <span className="text-[10px] font-bold">{chosen.indexOf(l.id) + 1}</span> : <Check className="size-3.5" />}
                 </span>
               </button>
@@ -286,7 +359,11 @@ function LessonPicker({
 
 function FolderRow({ name, count, onClick, inbox }: { name: string; count: number; onClick: () => void; inbox?: boolean }) {
   return (
-    <button type="button" onClick={onClick} className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-left transition hover:border-brand/50">
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-4 py-3 text-left transition hover:border-brand/50"
+    >
       <span className="flex min-w-0 items-center gap-3">
         {inbox ? <Inbox className="size-4 shrink-0 text-muted" /> : <Folder className="size-4 shrink-0 text-brand" />}
         <span className="truncate text-sm font-bold text-ink">{name}</span>

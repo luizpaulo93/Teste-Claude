@@ -14,7 +14,9 @@ export async function POST(req: NextRequest) {
   const kind = body?.kind === 'materials' ? 'materials' : body?.kind === 'media' ? 'media' : null;
   const contentType = String(body?.contentType ?? '');
   const size = Number(body?.size ?? 0);
-  let folder = String(body?.folder ?? '').replace(/\.\.+/g, '').replace(/^\/+|\/+$/g, '');
+  let folder = String(body?.folder ?? '')
+    .replace(/\.\.+/g, '')
+    .replace(/^\/+|\/+$/g, '');
   if (!kind || !SAFE_FOLDER.test(folder)) return NextResponse.json({ error: 'Pedido inválido.' }, { status: 400 });
   if (size <= 0 || size > LIMITS[kind]) return NextResponse.json({ error: `Arquivo muito grande (máx. ${LIMITS[kind] / 1024 / 1024} MB).` }, { status: 400 });
 

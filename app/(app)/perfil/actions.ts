@@ -10,8 +10,12 @@ const okBirth = (d: string) => DATE.test(d) && d >= '1920-01-01' && d <= new Dat
 
 export async function updateProfile(_: unknown, form: FormData) {
   const viewer = await requireViewer();
-  const full_name = String(form.get('full_name') ?? '').trim().slice(0, 120);
-  const phone = String(form.get('phone') ?? '').replace(/[^\d+()\s-]/g, '').slice(0, 30);
+  const full_name = String(form.get('full_name') ?? '')
+    .trim()
+    .slice(0, 120);
+  const phone = String(form.get('phone') ?? '')
+    .replace(/[^\d+()\s-]/g, '')
+    .slice(0, 30);
   const birth = String(form.get('birth_date') ?? '');
   if (full_name.length < 2) return { error: 'Informe seu nome completo.' };
   if (birth && !okBirth(birth)) return { error: 'Data de nascimento inválida.' };
@@ -35,7 +39,10 @@ export async function updateProfile(_: unknown, form: FormData) {
  */
 export async function completeProfile(_: unknown, form: FormData) {
   const viewer = await requireViewer();
-  const full_name = String(form.get('full_name') ?? '').trim().replace(/\s+/g, ' ').slice(0, 120);
+  const full_name = String(form.get('full_name') ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 120);
   const birth = String(form.get('birth_date') ?? '');
   const current = viewer.student?.cpf || viewer.profile.cpf || '';
   const cpf = validCpf(current) ? current.replace(/\D/g, '') : String(form.get('cpf') ?? '').replace(/\D/g, '');
@@ -43,10 +50,11 @@ export async function completeProfile(_: unknown, form: FormData) {
   if (!okBirth(birth)) return { error: 'Informe uma data de nascimento válida.' };
   if (!validCpf(cpf)) return { error: 'CPF inválido. Confira os números.' };
   // O mesmo CPF não pode estar em outra conta
-  const other = await sql.one(
-    `select 1 from users where cpf = $1 and id <> $2 union all select 1 from students where cpf = $1 and id <> $3 limit 1`,
-    [cpf, viewer.userId, emailKey(viewer.email)],
-  );
+  const other = await sql.one(`select 1 from users where cpf = $1 and id <> $2 union all select 1 from students where cpf = $1 and id <> $3 limit 1`, [
+    cpf,
+    viewer.userId,
+    emailKey(viewer.email),
+  ]);
   if (other) return { error: 'Este CPF já está em outra conta. Fale com o seu mentor.' };
   try {
     await sql.exec(

@@ -1,6 +1,7 @@
 import 'server-only';
 import { sql } from '@/lib/db';
-import { publicUrlFor, removeObjects } from '@/lib/storage/server';
+import { splitBands } from '@/lib/split-alts';
+import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
 import { DIFFICULTY, fileName, imagesOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
 export interface Paper {
@@ -155,6 +156,7 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
   );
   // questões que saíram da prova numa reimportação
   await sql.exec(`delete from questions where paper_id = $1 and not (id = any($2::text[]))`, [id, rows.map((r) => r.id)]);
+  await splitAlternatives(id).catch(() => 0);
   await dropUnused(before);
   return { id, questions: rows.length, images: imgs.length, missing };
 }
@@ -204,9 +206,59 @@ export async function attachImages(paperId: string, urls: Record<string, string>
       ia === null || ia === undefined ? null : JSON.stringify(ia),
     ]);
   }
+  await splitAlternatives(paperId).catch(() => 0);
   await refreshPaperCounts(paperId);
   await dropUnused(replaced);
   return n;
+}
+
+/**
+ * Alternativas desenhadas numa imagem só: cada pedaço vai para a sua letra (A, B, C…).
+ * Várias imagens (uma por alternativa): cada uma vai direto para a sua letra.
+ * Se não der para recortar com segurança, a imagem continua inteira abaixo do enunciado.
+ */
+export async function splitAlternatives(paperId: string) {
+  const rows = await sql.query<{ id: string; alternativas: QAlternativa[]; imagem_alternativas: QImg | QImg[] | null }>(
+    `select id, alternativas, imagem_alternativas from questions where paper_id = $1 and imagem_alternativas is not null`,
+    [paperId],
+  );
+  let done = 0;
+  for (const q of rows) {
+    const alts = q.alternativas;
+    const list = (Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : [q.imagem_alternativas!]).filter(Boolean);
+    if (!alts.length || alts.some((a) => a.texto?.trim() || a.imagem?.url) || !list.length || list.some((i) => !i.url)) continue;
+    let pieces: QImg[] | null = null;
+    if (list.length === alts.length) pieces = list.map((i, k) => ({ ...i, alt: `Alternativa ${alts[k].letra}` }));
+    else if (list.length === 1) {
+      const r = await fetch(list[0].url!).catch(() => null);
+      if (!r?.ok) continue;
+      const parts = await splitBands(Buffer.from(await r.arrayBuffer()), alts.length).catch(() => null);
+      if (!parts) continue;
+      const base = fileName(list[0].arquivo).replace(/\.\w+$/, '');
+      pieces = [];
+      for (const [k, part] of parts.entries()) {
+        const key = `questoes/${paperId}/alternativas/${base}__alt-${alts[k].letra}.webp`;
+        await putObject('media', key, new Uint8Array(part.data), 'image/webp');
+        pieces.push({
+          arquivo: `alternativas/${base}__alt-${alts[k].letra}.webp`,
+          url: `${publicUrlFor(key)}?v=${Date.now().toString(36)}`,
+          largura: Math.round(part.w),
+          altura: Math.round(part.h),
+          alt: `Alternativa ${alts[k].letra}`,
+        });
+      }
+    }
+    if (!pieces) continue;
+    const next = alts.map((a, k) => ({ ...a, imagem: pieces![k] }));
+    const marked = Array.isArray(q.imagem_alternativas) ? list.map((i) => ({ ...i, dividida: true })) : { ...list[0], dividida: true };
+    await sql.exec(`update questions set alternativas = $2, imagem_alternativas = $3, updated_at = now() where id = $1`, [
+      q.id,
+      JSON.stringify(next),
+      JSON.stringify(marked),
+    ]);
+    done++;
+  }
+  return done;
 }
 
 /** Apaga do armazenamento as imagens antigas que nenhuma questão usa mais (sem lixo nem conflito). */
@@ -226,19 +278,24 @@ async function dropUnused(urls: string[]) {
 
 export async function refreshPaperCounts(paperId: string) {
   const { have, want } = await knownImages([paperId]);
-  const ok = Object.keys(have[paperId] ?? {}).length;
+  // os pedaços recortados das alternativas não contam (são da mesma imagem original)
+  const ok = Object.keys(have[paperId] ?? {}).filter((n) => !n.includes('__alt-')).length;
   const miss = (want[paperId] ?? []).length;
   await sql.exec(`update exam_papers set images = $2, missing_images = $3, updated_at = now() where id = $1`, [paperId, ok + miss, miss]);
 }
 
 // ---------------------------------------------------------------- banco de questões (filtros)
+/** Filtros que aceitam várias escolhas (ex.: Física e Química; Mecânica e Óptica). */
+export const MULTI = ['disciplina', 'assunto', 'especifico', 'habilidade', 'ano', 'prova'] as const;
+export type MultiKey = (typeof MULTI)[number];
+
 export interface QFilters {
-  disciplina?: string;
-  assunto?: string;
-  especifico?: string;
-  habilidade?: string;
-  ano?: string;
-  prova?: string;
+  disciplina?: string[];
+  assunto?: string[];
+  especifico?: string[];
+  habilidade?: string[];
+  ano?: string[];
+  prova?: string[];
   dif?: Difficulty | '';
   sit?: 'nao' | 'erradas' | 'certas' | '';
   q?: string;
@@ -284,15 +341,17 @@ export function topicWords(title: string) {
 
 export function readFilters(sp: Record<string, string | string[] | undefined>): QFilters {
   const one = (k: string) => (Array.isArray(sp[k]) ? sp[k]![0] : (sp[k] as string | undefined)) ?? '';
+  const many = (k: string, max: number) =>
+    [...new Set((Array.isArray(sp[k]) ? (sp[k] as string[]) : sp[k] ? [sp[k] as string] : []).map((v) => v.slice(0, max)).filter(Boolean))].slice(0, 60);
   const dif = one('dif');
   const sit = one('sit');
   return {
-    disciplina: one('disciplina').slice(0, 80),
-    assunto: one('assunto').slice(0, 200),
-    especifico: one('especifico').slice(0, 400),
-    habilidade: one('habilidade').slice(0, 20),
-    ano: /^\d{4}$/.test(one('ano')) ? one('ano') : '',
-    prova: one('prova').slice(0, 120),
+    disciplina: many('disciplina', 80),
+    assunto: many('assunto', 200),
+    especifico: many('especifico', 400),
+    habilidade: many('habilidade', 20),
+    ano: many('ano', 4).filter((a) => /^\d{4}$/.test(a)),
+    prova: many('prova', 120),
     dif: DIFFICULTY.some((d) => d.key === dif) ? (dif as Difficulty) : '',
     sit: sit === 'nao' || sit === 'erradas' || sit === 'certas' ? sit : '',
     q: one('q').slice(0, 80),
@@ -302,7 +361,9 @@ export function readFilters(sp: Record<string, string | string[] | undefined>): 
 
 export function filterQuery(f: QFilters, extra: Record<string, string> = {}) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries({ ...f, ...extra })) if (v) p.set(k, String(v));
+  for (const [k, v] of Object.entries({ ...f, ...extra }))
+    if (Array.isArray(v)) v.forEach((x) => p.append(k, x));
+    else if (v) p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : '';
 }
@@ -314,9 +375,9 @@ function where(f: QFilters, userId: string) {
     args.push(v);
     conds.push(sqlText.replace('$?', `$${args.length}`));
   };
-  if (f.disciplina) add('q.disciplina = $?', f.disciplina);
-  if (f.assunto) add('q.assunto_geral = $?', f.assunto);
-  if (f.prova) add('q.paper_id = $?', f.prova);
+  if (f.disciplina?.length) add('q.disciplina = any($?::text[])', f.disciplina);
+  if (f.assunto?.length) add('q.assunto_geral = any($?::text[])', f.assunto);
+  if (f.prova?.length) add('q.paper_id = any($?::text[])', f.prova);
   if (f.dif) {
     const i = DIFFICULTY.findIndex((d) => d.key === f.dif);
     const lo = i > 0 ? DIFFICULTY[i - 1].max : -Infinity;
@@ -336,9 +397,9 @@ function where(f: QFilters, userId: string) {
       conds.push(`(q.assunto_geral ilike any(${n}::text[]) or q.assunto_especifico ilike any(${n}::text[]))`);
     }
   }
-  if (f.especifico) add('q.assunto_especifico = $?', f.especifico);
-  if (f.habilidade) add('q.habilidade = $?', f.habilidade);
-  if (f.ano) add('coalesce(q.ano, p.ano) = $?', Number(f.ano));
+  if (f.especifico?.length) add('q.assunto_especifico = any($?::text[])', f.especifico);
+  if (f.habilidade?.length) add('q.habilidade = any($?::text[])', f.habilidade);
+  if (f.ano?.length) add('coalesce(q.ano, p.ano) = any($?::int[])', f.ano.map(Number));
   // trecho: enunciado, alternativas, assuntos ou habilidade
   if (f.q) {
     args.push(`%${f.q.replace(/[%_]/g, (c) => `\\${c}`)}%`);
@@ -387,6 +448,16 @@ export async function listQuestions(f: QFilters, userId: string, page = 1, perPa
 }
 
 /** Questões anterior e seguinte dentro do mesmo filtro (para ir de uma em uma). */
+/** Ids das questões do filtro, na ordem da lista (para o PDF do filtro). */
+export async function filteredIds(f: QFilters, userId: string, limit: number) {
+  const w = where(f, userId);
+  const rows = await sql.query<{ id: string }>(
+    `select q.id from questions q join exam_papers p on p.id = q.paper_id left join question_answers a on a.question_id = q.id and a.user_id = $1 ${w.sql} ${ORDER} limit ${limit + 1}`,
+    w.args,
+  );
+  return rows.map((r) => r.id);
+}
+
 export async function neighbors(f: QFilters, userId: string, id: string) {
   const w = where(f, userId);
   const args = w.args;

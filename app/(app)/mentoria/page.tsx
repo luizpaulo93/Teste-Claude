@@ -16,7 +16,10 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  const [has, blocks] = await Promise.all([sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]), spacesOfMentoria(m.id).then(blocksOf)]);
+  const [has, blocks] = await Promise.all([
+    sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]),
+    spacesOfMentoria(m.id).then(blocksOf),
+  ]);
   if (!has && !blocks.length) {
     return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>;
   }

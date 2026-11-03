@@ -8,7 +8,7 @@ import { QImage } from '@/components/questoes/q-image';
 import { QuestionBody } from '@/components/questoes/question-body';
 import { Badge, buttonClass, Card } from '@/components/ui';
 import { sql } from '@/lib/db';
-import { DIFFICULTY, difficultyOf, type QImg } from '@/lib/question-types';
+import { DIFFICULTY, difficultyOf, type QImg, altImagesToShow, blankAlternatives } from '@/lib/question-types';
 import { filterQuery, getQuestion, neighbors, paperLabel, readFilters } from '@/lib/questions';
 import { rich } from '@/lib/rich';
 import { requireViewer } from '@/lib/session';
@@ -36,7 +36,7 @@ export default async function QuestaoPage({
   const teacher = viewer.isAdmin;
   const dif = difficultyOf(q.param_b);
   const alts: AltView[] = q.alternativas.map((a) => ({ letra: a.letra, html: rich(a.texto), imagem: a.imagem ?? null }));
-  const altImgs: QImg[] = Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : [];
+  const altImgs: QImg[] = altImagesToShow(q);
   // gabarito e resolução só vão para a tela se o aluno já respondeu (ou no modo professor)
   const initial: Reveal | null =
     teacher || mine
@@ -94,7 +94,7 @@ export default async function QuestaoPage({
           <QImage key={i} img={img} />
         ))}
         <MathFit />
-        <Answer key={q.id} id={q.id} alts={alts} status={q.status} initial={initial} teacher={teacher} />
+        <Answer key={q.id} id={q.id} alts={alts} status={q.status} initial={initial} teacher={teacher} compact={blankAlternatives(q)} />
       </div>
 
       <div className="mt-6 flex items-center justify-between gap-2">

@@ -11,7 +11,7 @@ import { Badge, Card, PageHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import { source } from '@/lib/list-html';
 import { canSeeList, getList, questionsOf } from '@/lib/question-lists';
-import type { QImg } from '@/lib/question-types';
+import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 import { rich } from '@/lib/rich';
 import { requireViewer } from '@/lib/session';
 
@@ -79,7 +79,7 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
         {qs.map((q, i) => {
           const mine = by.get(q.id);
           const alts: AltView[] = q.alternativas.map((a) => ({ letra: a.letra, html: rich(a.texto), imagem: a.imagem ?? null }));
-          const altImgs: QImg[] = Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : [];
+          const altImgs: QImg[] = altImagesToShow(q);
           const show = reveal(q) && (mine || teacher || (test && finished));
           const initial: Reveal | null = show
             ? {
@@ -107,6 +107,7 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
                 status={q.status}
                 initial={initial}
                 teacher={teacher}
+                compact={blankAlternatives(q)}
                 listId={list.id}
                 test={test && !finished}
                 savedLetter={test && !finished ? (mine?.letter ?? '') : ''}

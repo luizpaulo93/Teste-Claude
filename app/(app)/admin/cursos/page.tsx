@@ -27,7 +27,12 @@ export default async function AdminCourses() {
       {courses.length ? (
         <CourseList courses={courses} counts={counts} />
       ) : (
-        <EmptyState icon={<BookOpen className="size-6" />} title="Nenhum curso criado" description="Comece criando seu primeiro curso." action={<NewCourseButton tags={tags} />} />
+        <EmptyState
+          icon={<BookOpen className="size-6" />}
+          title="Nenhum curso criado"
+          description="Comece criando seu primeiro curso."
+          action={<NewCourseButton tags={tags} />}
+        />
       )}
     </>
   );

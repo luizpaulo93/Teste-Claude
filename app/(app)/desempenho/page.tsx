@@ -89,7 +89,6 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       return { label: x.title, bar: mine.get(x.id)?.tri_score ?? null };
     });
 
-
   // Ranking de alunos: melhor média de TRI no recorte
   const byUser = new Map<string, Row[]>();
   scoped.forEach((r) => byUser.set(r.user_id, [...(byUser.get(r.user_id) ?? []), r]));
@@ -108,12 +107,20 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
 
   // Ranking de turmas (só admin)
   const byClass = new Map<string, Row[]>();
-  rows.filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id))).forEach((r) => {
-    const k = r.class_id ?? '';
-    byClass.set(k, [...(byClass.get(k) ?? []), r]);
-  });
+  rows
+    .filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id)))
+    .forEach((r) => {
+      const k = r.class_id ?? '';
+      byClass.set(k, [...(byClass.get(k) ?? []), r]);
+    });
   const classes = [...byClass.entries()]
-    .map(([id, list]) => ({ id, name: className(id || null), tri: byHits ? r1(avg(list.map((r) => r.correct))) : r1(avg(list.map((r) => r.tri_score))), coh: Math.round(avg(list.map((r) => r.coherence))), alunos: new Set(list.map((r) => r.user_id)).size }))
+    .map(([id, list]) => ({
+      id,
+      name: className(id || null),
+      tri: byHits ? r1(avg(list.map((r) => r.correct))) : r1(avg(list.map((r) => r.tri_score))),
+      coh: Math.round(avg(list.map((r) => r.coherence))),
+      alunos: new Set(list.map((r) => r.user_id)).size,
+    }))
     .sort((a, b) => b.tri - a.tri);
 
   // Questões mais difíceis do simulado escolhido
@@ -173,7 +180,15 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
             <Kpi
               icon={<Trophy className="size-4" />}
               label={byHits ? 'Seus acertos' : 'Sua média TRI'}
-              value={r1(avg([...mine.values()].filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id))).map((r) => (byHits ? r.correct : r.tri_score)))) || '—'}
+              value={
+                r1(
+                  avg(
+                    [...mine.values()]
+                      .filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id)))
+                      .map((r) => (byHits ? r.correct : r.tri_score)),
+                  ),
+                ) || '—'
+              }
             />
             <Kpi icon={<Users className="size-4" />} label="Média da turma" value={kpi.tri || '—'} />
             <Kpi
@@ -203,10 +218,26 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
           </div>
           <ol className="divide-y divide-line">
             {(admin ? ranking.slice(0, 50) : ranking.slice(0, 10)).map((r, i) => (
-              <RankRow key={r.user_id} href={admin ? `/desempenho/aluno/${r.user_id}` : r.user_id === viewer.userId ? '/desempenho/aluno/eu' : undefined} pos={i + 1} me={r.user_id === viewer.userId} name={admin ? r.name : r.user_id === viewer.userId ? 'Você' : short(r.name)} sub={admin ? className(r.class_id) : undefined} tri={r.tri} extra={byHits ? `${r.correct} acertos` : `${r.correct} acertos · coer. ${r.coh}%`} />
+              <RankRow
+                key={r.user_id}
+                href={admin ? `/desempenho/aluno/${r.user_id}` : r.user_id === viewer.userId ? '/desempenho/aluno/eu' : undefined}
+                pos={i + 1}
+                me={r.user_id === viewer.userId}
+                name={admin ? r.name : r.user_id === viewer.userId ? 'Você' : short(r.name)}
+                sub={admin ? className(r.class_id) : undefined}
+                tri={r.tri}
+                extra={byHits ? `${r.correct} acertos` : `${r.correct} acertos · coer. ${r.coh}%`}
+              />
             ))}
             {!admin && myPos >= 10 && (
-              <RankRow href="/desempenho/aluno/eu" pos={myPos + 1} me name="Você" tri={ranking[myPos].tri} extra={`${ranking[myPos].correct} acertos · coer. ${ranking[myPos].coh}%`} />
+              <RankRow
+                href="/desempenho/aluno/eu"
+                pos={myPos + 1}
+                me
+                name="Você"
+                tri={ranking[myPos].tri}
+                extra={`${ranking[myPos].correct} acertos · coer. ${ranking[myPos].coh}%`}
+              />
             )}
             {!ranking.length && <li className="p-4 text-sm text-muted">Nenhuma entrega neste recorte.</li>}
           </ol>
@@ -249,7 +280,9 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
                     </li>
                   ))}
                 </ul>
-                <p className="mt-3 text-[11px] text-muted">{ENEM_AREAS[sim.area]} · {sim.question_count} questões</p>
+                <p className="mt-3 text-[11px] text-muted">
+                  {ENEM_AREAS[sim.area]} · {sim.question_count} questões
+                </p>
               </Card>
             )}
           </div>
@@ -296,11 +329,28 @@ function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; val
 }
 
 function Medal({ pos }: { pos: number }) {
-  const color = pos === 1 ? 'bg-amber-400 text-black' : pos === 2 ? 'bg-slate-300 text-black' : pos === 3 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2';
+  const color =
+    pos === 1 ? 'bg-amber-400 text-black' : pos === 2 ? 'bg-slate-300 text-black' : pos === 3 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2';
   return <span className={cn('grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold tabular-nums', color)}>{pos}</span>;
 }
 
-function RankRow({ pos, name, sub, tri, extra, me, href }: { pos: number; name: string; sub?: string; tri: number; extra: string; me?: boolean; href?: string }) {
+function RankRow({
+  pos,
+  name,
+  sub,
+  tri,
+  extra,
+  me,
+  href,
+}: {
+  pos: number;
+  name: string;
+  sub?: string;
+  tri: number;
+  extra: string;
+  me?: boolean;
+  href?: string;
+}) {
   const inner = (
     <>
       <Medal pos={pos} />

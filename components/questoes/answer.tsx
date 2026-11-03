@@ -36,6 +36,7 @@ export function Answer({
   listId,
   test,
   savedLetter = '',
+  compact = false,
 }: {
   id: string;
   alts: AltView[];
@@ -47,6 +48,8 @@ export function Answer({
   /** teste: só guarda a resposta; o gabarito aparece quando o aluno finalizar */
   test?: boolean;
   savedLetter?: string;
+  /** letras desenhadas na imagem: só os botões A–E numa fileira */
+  compact?: boolean;
 }) {
   const [pick, setPick] = useState(initial?.letter ?? savedLetter);
   const [shown, setShown] = useState<Reveal | null>(initial);
@@ -70,7 +73,7 @@ export function Answer({
 
   return (
     <div className="space-y-4">
-      <ul className="space-y-2">
+      <ul className={compact ? 'grid grid-cols-5 gap-2' : 'space-y-2'}>
         {alts.map((a) => {
           const isKey = Boolean(shown?.gabarito) && a.letra === shown!.gabarito;
           const isMine = a.letra === (shown ? shown.letter : pick);
@@ -85,6 +88,7 @@ export function Answer({
                 aria-label={`Alternativa ${a.letra}`}
                 className={cn(
                   'flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition disabled:cursor-default',
+                  compact && 'justify-center p-2.5',
                   isKey
                     ? 'border-success bg-success/10'
                     : wrong
@@ -108,12 +112,14 @@ export function Answer({
                 >
                   {a.letra}
                 </span>
-                <span className="min-w-0 flex-1 space-y-2 pt-1">
-                  {a.html && <span className="q-rich block text-[15px] text-ink-2" dangerouslySetInnerHTML={{ __html: a.html }} />}
-                  {a.imagem && <QImage img={a.imagem} className="mx-0" />}
-                </span>
-                {isKey && <CheckCircle2 className="mt-1.5 size-5 shrink-0 text-success" />}
-                {wrong && <XCircle className="mt-1.5 size-5 shrink-0 text-danger" />}
+                {!compact && (
+                  <span className="min-w-0 flex-1 space-y-2 pt-1">
+                    {a.html && <span className="q-rich block text-[15px] text-ink-2" dangerouslySetInnerHTML={{ __html: a.html }} />}
+                    {a.imagem && <QImage img={a.imagem} className="mx-0 max-h-40 max-w-[75%] !w-auto sm:max-w-[60%]" />}
+                  </span>
+                )}
+                {!compact && isKey && <CheckCircle2 className="mt-1.5 size-5 shrink-0 text-success" />}
+                {!compact && wrong && <XCircle className="mt-1.5 size-5 shrink-0 text-danger" />}
               </button>
             </li>
           );

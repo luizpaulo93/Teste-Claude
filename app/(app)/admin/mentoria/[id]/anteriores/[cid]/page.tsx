@@ -12,7 +12,10 @@ export default async function MentoradoPreviousCycle({ params }: { params: Promi
   if (!cycle || cycle.mentoria_id !== mid) notFound();
   return (
     <div className="space-y-3">
-      <Link href={`/admin/mentoria/${encodeURIComponent(mid)}/anteriores`} className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+      <Link
+        href={`/admin/mentoria/${encodeURIComponent(mid)}/anteriores`}
+        className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink"
+      >
         <ChevronLeft className="size-4" /> Ciclos anteriores
       </Link>
       <CycleView cycle={cycle} today={todayBR()} />

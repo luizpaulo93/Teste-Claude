@@ -34,9 +34,7 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
       </Card>
     );
   }
-  const messages = (
-    await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at desc limit 80`, [id])
-  ).reverse();
+  const messages = (await sql.query<LiveMessage>(`select * from live_messages where live_id = $1 order by created_at desc limit 80`, [id])).reverse();
 
   // professor: iniciar e editar direto daqui (agendada ou no ar)
   const adminBar = viewer.isAdmin && live.status !== 'ended' ? <LiveRoomAdmin live={live} options={(await liveAudienceOptions()).options} /> : null;

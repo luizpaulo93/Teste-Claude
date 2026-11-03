@@ -5,6 +5,8 @@ export interface QImg {
   largura?: number | null;
   altura?: number | null;
   alt?: string | null;
+  /** imagem com todas as alternativas que já foi recortada (cada pedaço foi para a sua letra) */
+  dividida?: boolean;
 }
 export type QBloco =
   | { tipo: 'texto'; estilo?: 'corpo' | 'titulo' | 'fonte'; conteudo: string }
@@ -73,3 +75,13 @@ export function difficultyOf(b: number | null | undefined): Difficulty | null {
   if (b === null || b === undefined || !Number.isFinite(b)) return null;
   return DIFFICULTY.find((d) => b < d.max)!.key;
 }
+
+/** Imagem(ns) com as alternativas desenhadas, a mostrar abaixo do enunciado (nada se já foram para as letras). */
+export function altImagesToShow(q: { alternativas: QAlternativa[]; imagem_alternativas: QImg | QImg[] | null }) {
+  const list = Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : [];
+  if (q.alternativas.every((a) => a.imagem?.url) || list.some((i) => i.dividida)) return [];
+  return list;
+}
+
+/** Alternativas sem texto nem imagem (as letras estão desenhadas numa imagem só). */
+export const blankAlternatives = (q: { alternativas: QAlternativa[] }) => q.alternativas.every((a) => !a.texto?.trim() && !a.imagem?.url);

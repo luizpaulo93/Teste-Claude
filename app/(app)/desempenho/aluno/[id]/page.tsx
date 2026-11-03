@@ -73,22 +73,27 @@ export default async function StudentPerformance({ params }: { params: Promise<{
                 </span>
               </summary>
               <div className="space-y-4 border-t border-line p-4">
-                {r.use_tri !== false && <div className="grid grid-cols-3 gap-2">
-                  {(['easy', 'medium', 'hard'] as const).map((t) => (
-                    <div key={t} className="rounded-xl bg-surface-2 p-3 text-center">
-                      <p className="text-[11px] font-semibold text-muted">{TIER[t]}</p>
-                      <p className="text-lg font-extrabold text-ink tabular-nums">
-                        {r.tiers?.[t]?.correct ?? 0}/{r.tiers?.[t]?.total ?? 0}
-                      </p>
-                    </div>
-                  ))}
-                </div>}
+                {r.use_tri !== false && (
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['easy', 'medium', 'hard'] as const).map((t) => (
+                      <div key={t} className="rounded-xl bg-surface-2 p-3 text-center">
+                        <p className="text-[11px] font-semibold text-muted">{TIER[t]}</p>
+                        <p className="text-lg font-extrabold text-ink tabular-nums">
+                          {r.tiers?.[t]?.correct ?? 0}/{r.tiers?.[t]?.total ?? 0}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="grid grid-cols-5 gap-1.5 sm:grid-cols-10">
                   {(r.breakdown ?? []).map((b) => (
                     <div
                       key={b.q}
                       title={`Questão ${b.q}: marcou ${b.marked}, gabarito ${b.official}`}
-                      className={cn('rounded-lg border p-1.5 text-center text-[11px] tabular-nums', b.ok ? 'border-success/40 bg-success/10' : b.marked === '-' ? 'border-line bg-surface-2' : 'border-danger/40 bg-danger/10')}
+                      className={cn(
+                        'rounded-lg border p-1.5 text-center text-[11px] tabular-nums',
+                        b.ok ? 'border-success/40 bg-success/10' : b.marked === '-' ? 'border-line bg-surface-2' : 'border-danger/40 bg-danger/10',
+                      )}
                     >
                       <p className="font-bold text-ink">{b.q}</p>
                       <p className={b.ok ? 'text-success' : 'text-danger'}>

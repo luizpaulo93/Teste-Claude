@@ -49,7 +49,10 @@ export default async function MyLessonsPage({ searchParams }: { searchParams: Pr
             <Link key={l.id} href={`/aula/${l.id}`} className="group cv-auto">
               <div className="relative aspect-video overflow-hidden rounded-2xl border border-line bg-surface-2">
                 {l.thumbnail_url || l.youtube_id ? (
-                  <Img src={l.thumbnail_url || youtubeThumb(l.youtube_id)} className="size-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <Img
+                    src={l.thumbnail_url || youtubeThumb(l.youtube_id)}
+                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
                 ) : (
                   <CoverFallback title="" seed={l.id} />
                 )}

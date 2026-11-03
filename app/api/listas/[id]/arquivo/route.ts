@@ -29,6 +29,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     });
   } catch (e) {
     console.error('lista: falha ao gerar', e);
-    return NextResponse.json({ error: 'Não foi possível gerar o arquivo agora. Tente de novo.' }, { status: 500 });
+    // o professor vê a causa (ajuda a resolver); o aluno vê só o aviso
+    const why = viewer.isAdmin && e instanceof Error ? ` (${e.message.slice(0, 300)})` : '';
+    return NextResponse.json({ error: `Não foi possível gerar o arquivo agora. Tente de novo.${why}` }, { status: 500 });
   }
 }

@@ -5,7 +5,8 @@ import { SegTabs } from '@/components/simulado/report';
 import { Card } from '@/components/ui';
 import { cn } from '@/lib/utils';
 
-const medal = (i: number) => (i === 0 ? 'bg-amber-400 text-black' : i === 1 ? 'bg-slate-300 text-black' : i === 2 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2');
+const medal = (i: number) =>
+  i === 0 ? 'bg-amber-400 text-black' : i === 1 ? 'bg-slate-300 text-black' : i === 2 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2';
 export const fmt = (kind: 'tri' | 'sem', v: number) => (kind === 'tri' ? v.toFixed(0) : `${Math.round(v)}%`);
 
 export function KindTabs({ kind, base }: { kind: 'tri' | 'sem'; base: string }) {

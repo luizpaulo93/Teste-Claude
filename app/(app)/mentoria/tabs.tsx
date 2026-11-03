@@ -17,10 +17,15 @@ export function MentoriaTabs({ base, tabs }: { base: string; tabs: { href: strin
             key={t.href}
             href={href}
             scroll={false}
-            className={cn('relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition', active ? 'text-brand' : 'text-muted hover:text-ink')}
+            className={cn(
+              'relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition',
+              active ? 'text-brand' : 'text-muted hover:text-ink',
+            )}
           >
             {t.label}
-            {Boolean(t.badge) && <span className="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{t.badge}</span>}
+            {Boolean(t.badge) && (
+              <span className="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white">{t.badge}</span>
+            )}
             {active && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand" />}
           </Link>
         );

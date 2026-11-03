@@ -33,12 +33,14 @@ export default async function HomePage() {
   const mine = shown.filter((c) => canAccessCourse(viewer, c, restrict));
   const others = shown.filter((c) => !canAccessCourse(viewer, c, restrict));
   const liveNow = lives.filter((l) => l.status === 'live');
-  const soon = lives.filter((l) => l.status === 'scheduled').sort((a, b) => a.starts_at.localeCompare(b.starts_at)).slice(0, 10);
+  const soon = lives
+    .filter((l) => l.status === 'scheduled')
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 10);
   const name = firstName(viewer.profile.full_name);
 
   const resumeCourse = resume?.lesson ? courses.find((c) => c.id === resume.lesson!.course_id) : undefined;
-  const resumePct =
-    resume && resume.p.duration_sec > 0 ? Math.min(98, Math.max(4, Math.round((resume.p.position_sec / resume.p.duration_sec) * 100))) : 0;
+  const resumePct = resume && resume.p.duration_sec > 0 ? Math.min(98, Math.max(4, Math.round((resume.p.position_sec / resume.p.duration_sec) * 100))) : 0;
 
   return (
     <div className="mx-auto max-w-[1360px] space-y-9 pt-2 sm:pt-6">
@@ -183,32 +185,30 @@ export default async function HomePage() {
         <section>
           <SectionHeader title="Datas e eventos" href="/calendario" link="Calendário" />
           <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((e) => {
-            const color = EVENT_COLORS[eventColor(e.category, e.color)] ?? EVENT_COLORS.blue;
-            return (
-              <Link
-                key={e.id}
-                href={`/calendario?d=${e.start_date}`}
-                className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
-              >
-                <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
-                  <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
-                </span>
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
-                  <span className="block text-[11px] text-muted uppercase">
-                    {formatDate(e.start_date)}
-                    {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
+            {events.map((e) => {
+              const color = EVENT_COLORS[eventColor(e.category, e.color)] ?? EVENT_COLORS.blue;
+              return (
+                <Link
+                  key={e.id}
+                  href={`/calendario?d=${e.start_date}`}
+                  className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
+                >
+                  <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
+                    <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
                   </span>
-                </span>
-              </Link>
-            );
-          })}
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
+                    <span className="block text-[11px] text-muted uppercase">
+                      {formatDate(e.start_date)}
+                      {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
           </div>
         </section>
       )}
-
-
     </div>
   );
 }

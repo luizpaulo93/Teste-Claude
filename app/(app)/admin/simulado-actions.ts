@@ -23,11 +23,22 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
     const question_count = int(fd, 'question_count', 1, 180, 45);
     const title = str(fd, 'title', 160);
     if (!title) return { error: 'Informe o título.' };
-    const key = str(fd, 'answer_key', 400).toUpperCase().replace(/[^A-E]/g, '');
+    const key = str(fd, 'answer_key', 400)
+      .toUpperCase()
+      .replace(/[^A-E]/g, '');
     if (key && key.length !== question_count) return { error: `O gabarito tem ${key.length} letras, mas a prova tem ${question_count} questões.` };
     if (id && !isDocId(id)) return { error: 'Inválido.' };
     const simId = id || newId();
-    const values = [simId, title, area, question_count, int(fd, 'time_limit_minutes', 0, 600, 0), str(fd, 'pdf_path', 500), bool(fd, 'is_published'), bool(fd, 'use_tri')];
+    const values = [
+      simId,
+      title,
+      area,
+      question_count,
+      int(fd, 'time_limit_minutes', 0, 600, 0),
+      str(fd, 'pdf_path', 500),
+      bool(fd, 'is_published'),
+      bool(fd, 'use_tri'),
+    ];
 
     await tx(async (t) => {
       if (id) {
@@ -61,7 +72,9 @@ export async function saveAnswerKey(id: string, answerKey: string): Promise<Acti
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    const key = String(answerKey ?? '').toUpperCase().replace(/[^A-E]/g, '');
+    const key = String(answerKey ?? '')
+      .toUpperCase()
+      .replace(/[^A-E]/g, '');
     const sim = await sql.one<{ question_count: number }>(`select question_count from simulados where id = $1`, [id]);
     if (!sim) return { error: 'Simulado não encontrado.' };
     if (key.length !== sim.question_count) return { error: `O gabarito precisa de ${sim.question_count} respostas.` };

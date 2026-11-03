@@ -61,7 +61,10 @@ export async function importStudents(fd: FormData): Promise<ActionResult & { cou
     await requireAdminAction();
     const cls = str(fd, 'class_id', 64);
     const class_id = isDocId(cls) ? cls : null;
-    const lines = str(fd, 'lines', 200_000).split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const lines = str(fd, 'lines', 200_000)
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
     const rows = new Map<string, { id: string; email: string; name: string; phone: string }>();
     for (const line of lines) {
       const parts = line.split(/[;,\t]/).map((p) => p.trim());
@@ -129,7 +132,10 @@ export async function bulkStudents(ids: string[], op: { class_id?: string | null
 export async function listUnassignedUsers(q: string): Promise<{ users?: { email: string; name: string; avatar_url: string }[]; error?: string }> {
   try {
     await requireAdminAction();
-    const term = String(q ?? '').trim().toLowerCase().slice(0, 100);
+    const term = String(q ?? '')
+      .trim()
+      .toLowerCase()
+      .slice(0, 100);
     const like = `%${term.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const users = await sql.query<{ email: string; name: string; avatar_url: string }>(
       `select distinct on (lower(u.email)) lower(u.email) as email, coalesce(nullif(s.name, ''), u.full_name, '') as name, u.avatar_url
@@ -187,7 +193,11 @@ export async function saveClass(fd: FormData): Promise<ActionResult> {
       name,
       str(fd, 'description', 1000),
       bool(fd, 'access_all'),
-      fd.getAll('course_ids').map(String).filter((x) => isDocId(x)).slice(0, 500),
+      fd
+        .getAll('course_ids')
+        .map(String)
+        .filter((x) => isDocId(x))
+        .slice(0, 500),
     ];
     let classId = id;
     if (id) {

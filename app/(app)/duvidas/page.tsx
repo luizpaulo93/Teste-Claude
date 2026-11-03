@@ -54,13 +54,7 @@ export default async function DoubtsPage({ searchParams }: { searchParams: Promi
           </Link>
         ))}
       </div>
-      <DoubtFeed
-        key={`${f}-${limit}`}
-        doubts={doubts}
-        likedIds={likedIds}
-        viewerId={viewer.userId}
-        isAdmin={viewer.isAdmin}
-      />
+      <DoubtFeed key={`${f}-${limit}`} doubts={doubts} likedIds={likedIds} viewerId={viewer.userId} isAdmin={viewer.isAdmin} />
       {hasMore && (
         <div className="mt-6 text-center">
           <Link href={`/duvidas?f=${f}&n=${limit + 20}`} scroll={false} className="text-sm font-semibold text-brand">

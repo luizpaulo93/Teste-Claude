@@ -36,7 +36,11 @@ export default async function ModulePage({ params }: { params: Params }) {
   const ml = lessons.filter((l) => l.module_id === mod.id);
   // Bloqueado: aulas aparecem com cadeado (só o nome)
   const lockedTitles = locked
-    ? [...new Map(catalog.lessons.filter((l) => l.module_id === mod.id && l.is_published && !ml.some((x) => x.id === l.id)).map((l) => [l.id, l.title])).values()]
+    ? [
+        ...new Map(
+          catalog.lessons.filter((l) => l.module_id === mod.id && l.is_published && !ml.some((x) => x.id === l.id)).map((l) => [l.id, l.title]),
+        ).values(),
+      ]
     : [];
 
   return (
@@ -73,7 +77,12 @@ export default async function ModulePage({ params }: { params: Params }) {
                   ) : (
                     <FileText className="absolute inset-0 m-auto size-5 text-danger" />
                   )}
-                  <span className={cn('absolute right-1 bottom-1 grid size-5 place-items-center rounded-full', isDone ? 'bg-success text-white' : 'bg-black/60 text-white')}>
+                  <span
+                    className={cn(
+                      'absolute right-1 bottom-1 grid size-5 place-items-center rounded-full',
+                      isDone ? 'bg-success text-white' : 'bg-black/60 text-white',
+                    )}
+                  >
                     {isDone ? <CheckCircle2 className="size-3.5" /> : l.youtube_id ? <PlayCircle className="size-3.5" /> : <FileText className="size-3" />}
                   </span>
                 </span>

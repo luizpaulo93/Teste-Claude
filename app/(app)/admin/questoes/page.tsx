@@ -6,7 +6,7 @@ import { sql } from '@/lib/db';
 import { paperLabel, type Paper } from '@/lib/questions';
 import { requireAdmin } from '@/lib/session';
 import { QuestionsHub } from './hub';
-import { DeletePaper } from './importer';
+import { DeletePaper, OrganizeAlternatives } from './importer';
 
 export const metadata: Metadata = { title: 'Questões · Admin' };
 
@@ -26,6 +26,11 @@ export default async function AdminQuestoes() {
 
       <section>
         <SectionHeader title={`Provas no app (${papers.length})`} href="/questoes" link="Abrir banco de questões" />
+        {papers.length > 0 && (
+          <div className="mb-3">
+            <OrganizeAlternatives />
+          </div>
+        )}
         {papers.length ? (
           <div className="space-y-2">
             {papers.map((p) => (
