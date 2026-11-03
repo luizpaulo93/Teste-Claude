@@ -69,8 +69,8 @@ export async function moreComments(lessonId: string, before: string): Promise<Le
   const viewer = await getViewer();
   if (!viewer || !isDocId(lessonId) || !before) return [];
   if (!(await lessonFor(viewer, lessonId))) return [];
-  return sql.query<LessonComment>(
-    `select * from lesson_comments where lesson_id = $1 and created_at < $2 order by created_at desc limit 30`,
-    [lessonId, before],
-  );
+  return sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 and created_at < $2 order by created_at desc limit 30`, [
+    lessonId,
+    before,
+  ]);
 }

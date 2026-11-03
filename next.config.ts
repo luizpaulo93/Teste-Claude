@@ -2,6 +2,8 @@ import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Chrome do servidor para gerar os PDFs das listas (fica fora do pacote do Next)
+  serverExternalPackages: ['@sparticuz/chromium', 'puppeteer-core'],
   experimental: {
     serverActions: { bodySizeLimit: '4mb' },
     optimizePackageImports: ['lucide-react'],

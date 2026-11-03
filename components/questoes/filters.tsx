@@ -13,6 +13,7 @@ export interface FilterState {
   dif?: string;
   sit?: string;
   q?: string;
+  topico?: string;
 }
 
 /** Filtros do banco de questões (cada mudança atualiza a lista). */

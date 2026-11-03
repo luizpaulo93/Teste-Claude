@@ -74,5 +74,20 @@ export async function createDownloadUrl(key: string, expiresIn = 3600, downloadN
 export async function removeObjects(kind: BucketKind, keys: string[]) {
   const list = keys.filter(Boolean);
   if (!list.length || storageProblem()) return;
-  await Promise.all(list.map((k) => client().fetch(objectUrl(kind, k), { method: 'DELETE' }).catch(() => null)));
+  await Promise.all(
+    list.map((k) =>
+      client()
+        .fetch(objectUrl(kind, k), { method: 'DELETE' })
+        .catch(() => null),
+    ),
+  );
+}
+
+/** Grava um arquivo gerado no servidor (ex.: PDF do simulado montado a partir de uma lista). */
+export async function putObject(kind: BucketKind, key: string, data: Uint8Array, contentType: string) {
+  const problem = storageProblem();
+  if (problem) throw new Error(problem);
+  const r = await client().fetch(objectUrl(kind, key), { method: 'PUT', headers: { 'content-type': contentType }, body: data as BodyInit });
+  if (!r.ok) throw new Error('Falha ao gravar o arquivo.');
+  return key;
 }

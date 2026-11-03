@@ -1,12 +1,13 @@
-import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileQuestion, ListChecks } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { QuestionFilters } from '@/components/questoes/filters';
-import { Badge, buttonClass, Card, EmptyState, PageHeader } from '@/components/ui';
+import { Badge, buttonClass, Card, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import { DIFFICULTY, difficultyOf } from '@/lib/question-types';
 import { filterOptions, filterQuery, listQuestions, paperLabel, readFilters } from '@/lib/questions';
+import { listsForViewer } from '@/lib/question-lists';
 import { requireViewer } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -28,12 +29,14 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const f = readFilters(sp);
   const page = Math.max(1, Number(sp.page) || 1);
-  const [{ items, total }, opts, mine] = await Promise.all([
+  const [{ items, total }, opts, mine, myLists, done] = await Promise.all([
     listQuestions(f, viewer.userId, page, PER),
     filterOptions(),
     sql.one<{ n: number; ok: number }>(`select count(*)::int as n, count(*) filter (where correct)::int as ok from question_answers where user_id = $1`, [
       viewer.userId,
     ]),
+    viewer.isAdmin ? Promise.resolve([]) : listsForViewer(viewer),
+    sql.query<{ list_id: string; n: number }>(`select list_id, count(*)::int as n from list_responses where user_id = $1 group by 1`, [viewer.userId]),
   ]);
   const pages = Math.max(1, Math.ceil(total / PER));
   const qs = (extra: Record<string, string> = {}) => filterQuery(f, extra);
@@ -56,6 +59,33 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
         }
       />
 
+      {myLists.length > 0 && (
+        <section className="mb-8">
+          <SectionHeader title="Listas para você" icon={<ListChecks className="size-5 text-success" />} />
+          <div className="grid gap-2 sm:grid-cols-2">
+            {myLists.map((l) => {
+              const n = done.find((d) => d.list_id === l.id)?.n ?? 0;
+              return (
+                <Link key={l.id} href={`/listas/${l.id}`}>
+                  <Card className="flex h-full items-center gap-3 p-3.5 transition hover:border-brand/40">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success/12 text-success">
+                      <ListChecks className="size-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold break-words text-ink">{l.title}</span>
+                      <span className="block text-xs text-muted">
+                        {l.mode === 'teste' ? 'Teste' : 'Lista'} · {n} de {l.question_ids.length} respondidas
+                      </span>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted" />
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
       {opts.papers.length === 0 ? (
         <EmptyState
           icon={<FileQuestion className="size-5" />}
@@ -64,6 +94,16 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
         />
       ) : (
         <>
+          {f.topico && (
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-brand/30 bg-brand/8 p-3 text-sm">
+              <span className="min-w-0 flex-1 break-words text-ink">
+                Assunto do cronograma: <strong>{f.topico}</strong>
+              </span>
+              <Link href={`/questoes${filterQuery({ ...f, topico: '' })}`} className="text-xs font-semibold text-brand">
+                Ver todas
+              </Link>
+            </div>
+          )}
           <QuestionFilters value={f} disc={opts.disc} papers={opts.papers.map((p) => ({ id: p.id, label: paperLabel(p) }))} />
           <p className="mt-4 mb-2 text-xs text-muted">
             {total} {total === 1 ? 'questão' : 'questões'}

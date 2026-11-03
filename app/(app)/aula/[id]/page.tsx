@@ -1,10 +1,11 @@
-import { Lock } from 'lucide-react';
+import { ChevronRight, ListChecks, Lock } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Card } from '@/components/ui';
 import { getCourseTree, getMyState, lessonPlacement } from '@/lib/data';
 import { getCatalogData, sql } from '@/lib/db';
+import { listsOfLesson } from '@/lib/question-lists';
 import { requireViewer } from '@/lib/session';
 import type { Lesson, LessonComment } from '@/lib/types';
 import { isDocId } from '@/lib/utils';
@@ -18,12 +19,13 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
   // Tudo em paralelo (uma ida ao banco): aula, comentários e progresso do aluno
-  const [row, place, catalog, comments, state] = await Promise.all([
+  const [row, place, catalog, comments, state, lists] = await Promise.all([
     sql.one<Lesson>(`select * from lessons where id = $1`, [id]),
     lessonPlacement(viewer, id, c),
     getCatalogData(),
     sql.query<LessonComment>(`select * from lesson_comments where lesson_id = $1 order by created_at desc limit 30`, [id]),
     getMyState(viewer.userId),
+    listsOfLesson(id),
   ]);
   // A aula pode estar em vários cursos: usa o curso de onde o aluno veio (?c=) ou o primeiro liberado
   const lesson = row && (place || viewer.isAdmin) ? { ...row, course_id: place?.course_id ?? '', module_id: place?.module_id ?? '' } : null;
@@ -76,6 +78,29 @@ export default async function LessonPage({ params, searchParams }: { params: Pro
         userId={viewer.userId}
         pdfOwner={viewer.pdfOwner}
         watermark={`${viewer.profile.full_name || ''} · ${viewer.email}`.trim()}
+        extra={
+          lists.length > 0 && (
+            <section className="mt-6 space-y-2">
+              <h2 className="text-base font-bold text-ink">Exercícios da aula</h2>
+              {lists.map((l) => (
+                <Link key={l.id} href={`/listas/${l.id}`}>
+                  <Card className="flex items-center gap-3 p-3.5 transition hover:border-brand/40">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-success/12 text-success">
+                      <ListChecks className="size-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-bold break-words text-ink">{l.title}</span>
+                      <span className="block text-xs text-muted">
+                        {l.question_ids.length} questões · {l.mode === 'teste' ? 'teste' : 'lista'}
+                      </span>
+                    </span>
+                    <ChevronRight className="size-4 shrink-0 text-muted" />
+                  </Card>
+                </Link>
+              ))}
+            </section>
+          )
+        }
         comments={
           <LessonComments
             lessonId={id}

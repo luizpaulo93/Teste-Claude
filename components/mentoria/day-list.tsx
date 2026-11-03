@@ -84,7 +84,7 @@ export function DayList({
 
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-bold text-ink">
-          {day === today ? 'Hoje' : WEEKDAYS[week.indexOf(day)] ?? ''} · {formatDate(day)}
+          {day === today ? 'Hoje' : (WEEKDAYS[week.indexOf(day)] ?? '')} · {formatDate(day)}
         </p>
         <p className="text-[11px] text-muted tabular-nums">{free ? `${fmt(minutes)} de ${fmt(free)} livres` : day < today ? '' : 'sem estudo neste dia'}</p>
       </div>
@@ -141,7 +141,11 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
     const r = await scoreCard(it.id, total, right, feel, mentoriaId);
     setBusy(false);
     if (r.error) return toast.error(r.error);
-    toast(r.passed ? `${r.acc}% de acerto${r.goal ? ' — meta batida!' : ''} Próxima vez em ${formatDate(r.due!)}` : `${r.acc}% — meta de ${r.goal}% não batida. Volta em ${formatDate(r.due!)}`);
+    toast(
+      r.passed
+        ? `${r.acc}% de acerto${r.goal ? ' — meta batida!' : ''} Próxima vez em ${formatDate(r.due!)}`
+        : `${r.acc}% — meta de ${r.goal}% não batida. Volta em ${formatDate(r.due!)}`,
+    );
     router.refresh();
   }
 
@@ -170,11 +174,23 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
             )}
           </p>
           <p className="mt-0.5 text-[15px] leading-snug font-semibold text-ink">{it.title}</p>
+          {editable && (
+            <Link
+              href={`/questoes?disciplina=${encodeURIComponent(it.discipline)}&topico=${encodeURIComponent(it.title)}`}
+              className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand"
+            >
+              Responder questões do assunto <ArrowRight className="size-3" />
+            </Link>
+          )}
           {it.result ? (
             <p className={cn('mt-1.5 flex items-center gap-1 text-xs font-semibold', it.result.passed ? 'text-success' : 'text-danger')}>
               {it.result.passed ? <Check className="size-3.5" /> : <X className="size-3.5" />}
               {it.result.c}/{it.result.q} · {it.result.acc}% {it.result.goal ? `(meta ${it.result.goal}%)` : ''}
-              {it.result.f ? <span className="ml-1 font-normal text-muted">· {FEELS[it.result.f - 1].emoji} {FEELS[it.result.f - 1].label}</span> : null}
+              {it.result.f ? (
+                <span className="ml-1 font-normal text-muted">
+                  · {FEELS[it.result.f - 1].emoji} {FEELS[it.result.f - 1].label}
+                </span>
+              ) : null}
             </p>
           ) : (
             <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -186,7 +202,14 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
           )}
         </div>
         {it.extra && removable && step === 'study' && (
-          <button type="button" onClick={remove} disabled={busy} aria-label="Tirar do dia" title="Tirar do dia" className={buttonClass('ghost', 'icon', 'size-10 shrink-0 text-muted')}>
+          <button
+            type="button"
+            onClick={remove}
+            disabled={busy}
+            aria-label="Tirar do dia"
+            title="Tirar do dia"
+            className={buttonClass('ghost', 'icon', 'size-10 shrink-0 text-muted')}
+          >
             <X className="size-4" />
           </button>
         )}
@@ -206,8 +229,22 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
         <form onSubmit={save} className="mt-3 space-y-2 border-t border-line pt-3">
           <p className="text-xs font-semibold text-ink-2">Questões resolvidas</p>
           <div className="grid grid-cols-2 gap-2">
-            <Input value={q} onChange={(e) => setQ(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" placeholder="Feitas" aria-label="Questões feitas" className="h-10" />
-            <Input value={c} onChange={(e) => setC(e.target.value.replace(/\D/g, '').slice(0, 3))} inputMode="numeric" placeholder="Acertos" aria-label="Acertos" className="h-10" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              inputMode="numeric"
+              placeholder="Feitas"
+              aria-label="Questões feitas"
+              className="h-10"
+            />
+            <Input
+              value={c}
+              onChange={(e) => setC(e.target.value.replace(/\D/g, '').slice(0, 3))}
+              inputMode="numeric"
+              placeholder="Acertos"
+              aria-label="Acertos"
+              className="h-10"
+            />
           </div>
           <p className="pt-1 text-xs font-semibold text-ink-2">Como foi esse assunto?</p>
           <div className="grid grid-cols-3 gap-1.5">
@@ -219,7 +256,13 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
                 aria-pressed={feel === x.value}
                 className={cn(
                   'flex flex-col items-center gap-0.5 rounded-xl border px-1 py-2 text-[11px] font-semibold transition',
-                  feel === x.value ? (x.value === 3 ? 'border-danger bg-danger/10 text-danger' : x.value === 2 ? 'border-warning bg-warning/10 text-warning' : 'border-success bg-success/10 text-success') : 'border-line text-ink-2',
+                  feel === x.value
+                    ? x.value === 3
+                      ? 'border-danger bg-danger/10 text-danger'
+                      : x.value === 2
+                        ? 'border-warning bg-warning/10 text-warning'
+                        : 'border-success bg-success/10 text-success'
+                    : 'border-line text-ink-2',
                 )}
               >
                 <span className="text-lg leading-none">{x.emoji}</span>

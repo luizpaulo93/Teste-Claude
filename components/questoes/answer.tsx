@@ -3,6 +3,7 @@
 import { CheckCircle2, Eye, RotateCcw, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import { answerQuestion } from '@/app/(app)/questoes/actions';
+import { answerInList } from '@/app/(app)/questoes/list-actions';
 import { toast } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
@@ -32,24 +33,37 @@ export function Answer({
   status,
   initial,
   teacher,
+  listId,
+  test,
+  savedLetter = '',
 }: {
   id: string;
   alts: AltView[];
   status: 'valida' | 'anulada' | 'abandonado_na_calibracao';
   initial: Reveal | null;
   teacher: boolean;
+  /** questão dentro de uma lista (conta na lista e no banco) */
+  listId?: string;
+  /** teste: só guarda a resposta; o gabarito aparece quando o aluno finalizar */
+  test?: boolean;
+  savedLetter?: string;
 }) {
-  const [pick, setPick] = useState(initial?.letter ?? '');
+  const [pick, setPick] = useState(initial?.letter ?? savedLetter);
   const [shown, setShown] = useState<Reveal | null>(initial);
+  const [saved, setSaved] = useState(savedLetter);
   const [busy, setBusy] = useState(false);
-  const anulada = status === 'anulada';
+  const anulada = status === 'anulada' && !test;
   const locked = Boolean(shown) || anulada;
 
   async function send(letter: string) {
     setBusy(true);
-    const r = await answerQuestion(id, letter).catch(() => ({ error: 'Sem conexão. Tente de novo.' }));
+    const r = await (listId ? answerInList(listId, id, letter) : answerQuestion(id, letter)).catch(() => ({ error: 'Sem conexão. Tente de novo.' }));
     setBusy(false);
     if ('error' in r && r.error) return toast.error(r.error);
+    if ('saved' in r) {
+      setSaved(letter);
+      return toast(`Resposta ${letter} guardada`);
+    }
     const ok = r as { gabarito?: string; correct?: boolean | null; resolucao?: string };
     setShown({ letter, gabarito: ok.gabarito ?? '', correct: ok.correct ?? null, resolucao: ok.resolucao ?? '' });
   }
@@ -107,8 +121,20 @@ export function Answer({
       </ul>
 
       {!shown && !anulada && (
-        <Button onClick={() => send(pick)} disabled={!pick || busy} className="w-full">
-          {busy && <Spinner />} {pick ? `Responder ${pick}` : 'Escolha uma alternativa'}
+        <Button
+          onClick={() => send(pick)}
+          disabled={!pick || busy || (test && pick === saved)}
+          variant={test && pick === saved ? 'secondary' : 'primary'}
+          className="w-full"
+        >
+          {busy && <Spinner />}{' '}
+          {test && saved && pick === saved
+            ? `Resposta ${saved} guardada`
+            : test && saved
+              ? `Trocar para ${pick}`
+              : pick
+                ? `Responder ${pick}`
+                : 'Escolha uma alternativa'}
         </Button>
       )}
       {!shown && anulada && (
@@ -128,16 +154,18 @@ export function Answer({
             >
               {shown.correct ? <CheckCircle2 className="size-5" /> : <XCircle className="size-5" />}
               {shown.correct ? 'Você acertou!' : `Resposta certa: ${shown.gabarito}`}
-              <button
-                type="button"
-                onClick={() => {
-                  setShown(null);
-                  setPick('');
-                }}
-                className="ml-auto flex items-center gap-1 text-xs font-semibold text-ink-2"
-              >
-                <RotateCcw className="size-3.5" /> Refazer
-              </button>
+              {!listId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShown(null);
+                    setPick('');
+                  }}
+                  className="ml-auto flex items-center gap-1 text-xs font-semibold text-ink-2"
+                >
+                  <RotateCcw className="size-3.5" /> Refazer
+                </button>
+              )}
             </div>
           )}
           {shown.resolucao && (

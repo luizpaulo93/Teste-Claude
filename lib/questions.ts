@@ -239,6 +239,44 @@ export interface QFilters {
   dif?: Difficulty | '';
   sit?: 'nao' | 'erradas' | 'certas' | '';
   q?: string;
+  /** assunto do cronograma da mentoria (título da matriz): acha as questões pelas palavras do assunto */
+  topico?: string;
+}
+
+const STOP = new Set([
+  'para',
+  'entre',
+  'sobre',
+  'como',
+  'suas',
+  'seus',
+  'pela',
+  'pelo',
+  'pelas',
+  'pelos',
+  'outros',
+  'outras',
+  'geral',
+  'gerais',
+  'noções',
+  'estudo',
+  'conceitos',
+  'aplicações',
+  'tipos',
+  'introdução',
+  'básicos',
+  'básica',
+]);
+/** Palavras que identificam o assunto (sem as genéricas). Depois os assuntos da matriz e das questões vão ser alinhados. */
+export function topicWords(title: string) {
+  return [
+    ...new Set(
+      title
+        .toLowerCase()
+        .split(/[^a-zà-ú0-9]+/i)
+        .filter((w) => w.length >= 4 && !STOP.has(w)),
+    ),
+  ].slice(0, 8);
 }
 
 export function readFilters(sp: Record<string, string | string[] | undefined>): QFilters {
@@ -252,6 +290,7 @@ export function readFilters(sp: Record<string, string | string[] | undefined>): 
     dif: DIFFICULTY.some((d) => d.key === dif) ? (dif as Difficulty) : '',
     sit: sit === 'nao' || sit === 'erradas' || sit === 'certas' ? sit : '',
     q: one('q').slice(0, 80),
+    topico: one('topico').slice(0, 200),
   };
 }
 
@@ -283,6 +322,14 @@ function where(f: QFilters, userId: string) {
   if (f.sit === 'nao') conds.push('a.question_id is null');
   if (f.sit === 'erradas') conds.push('a.correct = false');
   if (f.sit === 'certas') conds.push('a.correct = true');
+  if (f.topico) {
+    const words = topicWords(f.topico);
+    if (words.length) {
+      args.push(words.map((w) => `%${w}%`));
+      const n = `$${args.length}`;
+      conds.push(`(q.assunto_geral ilike any(${n}::text[]) or q.assunto_especifico ilike any(${n}::text[]))`);
+    }
+  }
   if (f.q) {
     args.push(`%${f.q}%`);
     const n = `$${args.length}`;

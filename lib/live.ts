@@ -23,7 +23,7 @@ export async function canSeeLive(viewer: Viewer, live: LiveSession & { space?: s
   return Boolean(course && canAccessCourse(viewer, course, settings.restrict_to_student_list));
 }
 
-async function audienceMatch(viewer: Viewer, token: string) {
+export async function audienceMatch(viewer: Viewer, token: string) {
   const [kind, ...rest] = token.split(':');
   const id = rest.join(':');
   if (!id) return false;

@@ -5,7 +5,8 @@ import { Badge, Card, EmptyState, PageHeader, SectionHeader } from '@/components
 import { sql } from '@/lib/db';
 import { paperLabel, type Paper } from '@/lib/questions';
 import { requireAdmin } from '@/lib/session';
-import { DeletePaper, Importer } from './importer';
+import { QuestionsHub } from './hub';
+import { DeletePaper } from './importer';
 
 export const metadata: Metadata = { title: 'Questões · Admin' };
 
@@ -20,8 +21,7 @@ export default async function AdminQuestoes() {
     <>
       <PageHeader eyebrow="Banco de questões" title="Questões" />
       <section className="mb-8">
-        <SectionHeader title="Importar provas" />
-        <Importer />
+        <QuestionsHub />
       </section>
 
       <section>
@@ -29,12 +29,12 @@ export default async function AdminQuestoes() {
         {papers.length ? (
           <div className="space-y-2">
             {papers.map((p) => (
-              <Card key={p.id} className="flex flex-wrap items-center gap-3 p-3.5">
-                <div className="min-w-0 flex-1">
-                  <Link href={`/questoes?prova=${encodeURIComponent(p.id)}`} className="block truncate text-sm font-bold text-ink hover:text-brand">
+              <Card key={p.id} className="flex flex-wrap items-center gap-2 p-3.5">
+                <div className="w-full min-w-0">
+                  <Link href={`/questoes?prova=${encodeURIComponent(p.id)}`} className="block text-sm font-bold break-words text-ink hover:text-brand">
                     {paperLabel(p)}
                   </Link>
-                  <p className="mt-0.5 truncate text-[11px] text-muted">
+                  <p className="mt-0.5 text-[11px] break-words text-muted">
                     {p.caderno ? `Caderno ${p.caderno} · ` : ''}
                     {p.id}
                   </p>
@@ -48,7 +48,9 @@ export default async function AdminQuestoes() {
                 ) : (
                   p.images > 0 && <Badge tone="success">{p.images} imagens</Badge>
                 )}
-                <DeletePaper id={p.id} />
+                <span className="ml-auto">
+                  <DeletePaper id={p.id} />
+                </span>
               </Card>
             ))}
           </div>

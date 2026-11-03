@@ -316,3 +316,23 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 .q-rich .katex { font-size: 1.05em; }
 .q-rich .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; padding: 0.1em 0; }
 .q-rich .katex .katex-base.q-wide, .q-rich .katex .base.q-wide { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }
+
+/* Prévia da questão no montador de listas (mesmo HTML do PDF) */
+.qprev { line-height: 1.6; font-size: 14px; color: var(--color-ink-2); overflow-wrap: anywhere; }
+.qprev h3 { font-weight: 700; color: var(--color-ink); margin: 0 0 0.5em; }
+.qprev h3 span { font-weight: 400; color: var(--color-muted); }
+.qprev .t { margin: 0 0 0.5em; }
+.qprev .t p { margin: 0 0 0.4em; }
+.qprev .t.titulo { font-weight: 700; }
+.qprev .t.fonte { font-size: 11px; text-align: right; color: var(--color-muted); }
+.qprev .eq, .qprev .fig { text-align: center; margin: 0.5em 0; overflow-x: auto; }
+.qprev .fig.left { text-align: left; }
+.qprev .fig img { max-width: 100%; height: auto; background: #fff; border-radius: 6px; padding: 2px; display: inline-block; }
+.qprev table { border-collapse: collapse; margin: 0.5em auto; font-size: 0.9em; display: block; overflow-x: auto; max-width: 100%; width: max-content; }
+.qprev th, .qprev td { border: 1px solid var(--line-strong); padding: 0.3em 0.6em; text-align: center; }
+.qprev ol.alts { list-style: none; padding: 0; margin: 0.6em 0 0; }
+.qprev ol.alts li { display: flex; gap: 0.6em; margin: 0 0 0.35em; }
+.qprev ol.alts .l { flex: none; display: grid; place-items: center; width: 1.6em; height: 1.6em; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 0.8em; }
+.qprev ol.alts .at { flex: 1; min-width: 0; }
+.qprev ol.alts .at p { margin: 0; }
+.qprev .katex-display { overflow-x: auto; overflow-y: hidden; }

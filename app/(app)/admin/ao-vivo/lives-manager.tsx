@@ -50,7 +50,7 @@ export function LivesManager({
   const [edit, setEdit] = useState<{ live?: LiveSession } | null>(null);
   const [pdfs, setPdfs] = useState<string | null>(null);
   const pdfLive = lives.find((l) => l.id === pdfs);
-  const courseName = (id: string | null) => (id ? courses.find((c) => c.id === id)?.title ?? 'Curso removido' : 'Todos os alunos liberados');
+  const courseName = (id: string | null) => (id ? (courses.find((c) => c.id === id)?.title ?? 'Curso removido') : 'Todos os alunos liberados');
   const all = [...options.classes, ...options.mentorias, ...options.students, ...options.courses];
   const audience = (l: LiveSession) =>
     l.audience?.length
@@ -102,7 +102,13 @@ export function LivesManager({
                       </ActionButton>
                     )}
                     {l.status === 'ended' && (
-                      <ActionButton action={() => setLiveStatus(l.id, 'scheduled')} success="Voltou para agendada" size="sm" variant="ghost" title="Voltar para agendada">
+                      <ActionButton
+                        action={() => setLiveStatus(l.id, 'scheduled')}
+                        success="Voltou para agendada"
+                        size="sm"
+                        variant="ghost"
+                        title="Voltar para agendada"
+                      >
                         <RotateCcw className="size-3.5" />
                       </ActionButton>
                     )}
@@ -116,7 +122,15 @@ export function LivesManager({
                     <Button variant="ghost" size="sm" className="px-2" onClick={() => setEdit({ live: l })} aria-label="Editar">
                       <Pencil className="size-4" />
                     </Button>
-                    <ActionButton action={() => deleteLive(l.id)} confirm="Excluir esta transmissão e o chat?" success="Excluída" variant="ghost" size="sm" className="px-2 hover:text-danger" title="Excluir">
+                    <ActionButton
+                      action={() => deleteLive(l.id)}
+                      confirm="Excluir esta transmissão e o chat?"
+                      success="Excluída"
+                      variant="ghost"
+                      size="sm"
+                      className="px-2 hover:text-danger"
+                      title="Excluir"
+                    >
                       <Trash2 className="size-4" />
                     </ActionButton>
                   </div>
@@ -140,9 +154,7 @@ export function LivesManager({
       </Modal>
 
       <Modal open={Boolean(edit)} onClose={() => setEdit(null)} title={edit?.live ? 'Editar transmissão' : 'Agendar transmissão'} size="lg">
-        {edit && (
-          <LiveForm live={edit.live} options={options} onDone={() => setEdit(null)} />
-        )}
+        {edit && <LiveForm live={edit.live} options={options} onDone={() => setEdit(null)} />}
       </Modal>
     </div>
   );
@@ -239,13 +251,21 @@ export interface AudienceOptions {
 }
 
 /** Quem assiste: turmas, alunos, mentorias (individual ou grupo) e cursos. Nada marcado = todos os alunos liberados. */
-function AudiencePicker({ options, initial }: { options: AudienceOptions; initial: string[] }) {
+export function AudiencePicker({
+  options,
+  initial,
+  title = 'Quem pode assistir',
+  empty = 'Todos os alunos liberados (escolha abaixo para limitar).',
+}: {
+  options: AudienceOptions;
+  initial: string[];
+  title?: string;
+  empty?: string;
+}) {
   // Lives antigas com "turmas com acesso ao curso": viram as turmas que têm o curso
   const [sel, setSel] = useState<string[]>(() => [
     ...new Set(
-      initial.flatMap((t) =>
-        t.startsWith('course:') ? options.classes.filter((c) => c.all || c.courseIds?.includes(t.slice(7))).map((c) => c.key) : [t],
-      ),
+      initial.flatMap((t) => (t.startsWith('course:') ? options.classes.filter((c) => c.all || c.courseIds?.includes(t.slice(7))).map((c) => c.key) : [t])),
     ),
   ]);
   const [q, setQ] = useState('');
@@ -264,7 +284,10 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
               type="button"
               aria-pressed={sel.includes(x.key)}
               onClick={() => toggle(x.key)}
-              className={cn('rounded-lg border px-2.5 py-1 text-xs font-semibold transition', sel.includes(x.key) ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2')}
+              className={cn(
+                'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
+                sel.includes(x.key) ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2',
+              )}
             >
               {x.label}
             </button>
@@ -278,9 +301,9 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
         <input key={k} type="hidden" name="audience" value={k} />
       ))}
       <div>
-        <p className="text-xs font-semibold text-ink-2">Quem pode assistir</p>
+        <p className="text-xs font-semibold text-ink-2">{title}</p>
         <p className="text-[11px] text-muted">
-          {sel.length ? `${sel.length} escolhido${sel.length > 1 ? 's' : ''}: ${sel.map((k) => all.find((x) => x.key === k)?.label ?? k).join(', ')}` : 'Todos os alunos liberados (escolha abaixo para limitar).'}
+          {sel.length ? `${sel.length} escolhido${sel.length > 1 ? 's' : ''}: ${sel.map((k) => all.find((x) => x.key === k)?.label ?? k).join(', ')}` : empty}
         </p>
       </div>
       <Chips title="Turmas" list={options.classes} />
@@ -291,7 +314,12 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
           {sel
             .filter((k) => k.startsWith('u:'))
             .map((k) => (
-              <button key={k} type="button" onClick={() => toggle(k)} className="flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1 text-xs font-semibold text-white">
+              <button
+                key={k}
+                type="button"
+                onClick={() => toggle(k)}
+                className="flex items-center gap-1 rounded-lg bg-brand px-2.5 py-1 text-xs font-semibold text-white"
+              >
                 {all.find((x) => x.key === k)?.label ?? k.slice(2)} <X className="size-3" />
               </button>
             ))}
@@ -301,7 +329,14 @@ function AudiencePicker({ options, initial }: { options: AudienceOptions; initia
           <ul className="divide-y divide-line rounded-xl border border-line">
             {found.map((x) => (
               <li key={x.key}>
-                <button type="button" onClick={() => { toggle(x.key); setQ(''); }} className="w-full px-3 py-2 text-left text-xs hover:bg-surface-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggle(x.key);
+                    setQ('');
+                  }}
+                  className="w-full px-3 py-2 text-left text-xs hover:bg-surface-2"
+                >
                   <span className="font-semibold text-ink">{x.label}</span> <span className="text-muted">{x.sub}</span>
                 </button>
               </li>
@@ -335,7 +370,12 @@ function FormPdfs({ initial }: { initial: LessonMaterial[] }) {
           </button>
         </div>
       ))}
-      <PdfDrop folder="lives/pdfs" multiple label="Subir PDF" onUploaded={(r) => setList((l) => [...l, { id: crypto.randomUUID().slice(0, 12), title: r.title, file_path: r.path, size_label: r.size }])} />
+      <PdfDrop
+        folder="lives/pdfs"
+        multiple
+        label="Subir PDF"
+        onUploaded={(r) => setList((l) => [...l, { id: crypto.randomUUID().slice(0, 12), title: r.title, file_path: r.path, size_label: r.size }])}
+      />
     </div>
   );
 }

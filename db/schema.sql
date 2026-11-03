@@ -654,3 +654,55 @@ create table if not exists question_answers (
   primary key (user_id, question_id)
 );
 create index if not exists qanswers_user_idx on question_answers (user_id, answered_at desc);
+
+-- ============================================================================
+-- Versão 17: listas de questões (montadas pelo admin a partir do banco).
+-- A lista guarda só os ids (na ordem): editar a lista muda em todo lugar onde ela é usada.
+-- Público: turmas, mentorias e alunos (como nas lives) e aulas; um simulado pode nascer dela.
+-- ============================================================================
+create table if not exists list_templates (
+  id text primary key,
+  name text not null,
+  header_url text not null default '',
+  header_w int,
+  header_h int,
+  footer_url text not null default '',
+  footer_w int,
+  footer_h int,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists question_lists (
+  id text primary key,
+  title text not null,
+  question_ids text[] not null default '{}',
+  template_id text references list_templates (id) on delete set null,
+  mode text not null default 'lista',          -- lista (correção na hora) | teste (resultado no fim)
+  audience text[] not null default '{}',       -- c:<turma> | m:<mentoria> | g:<grupo> | u:<aluno>
+  lesson_ids text[] not null default '{}',
+  created_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists qlists_audience_idx on question_lists using gin (audience);
+create index if not exists qlists_lessons_idx on question_lists using gin (lesson_ids);
+
+create table if not exists list_responses (
+  list_id text not null references question_lists (id) on delete cascade,
+  user_id text not null,
+  question_id text not null,
+  letter text not null,
+  correct boolean not null,
+  answered_at timestamptz not null default now(),
+  primary key (list_id, user_id, question_id)
+);
+
+create table if not exists list_finishes (
+  list_id text not null references question_lists (id) on delete cascade,
+  user_id text not null,
+  finished_at timestamptz not null default now(),
+  primary key (list_id, user_id)
+);
+
+alter table simulados add column if not exists list_id text references question_lists (id) on delete set null;

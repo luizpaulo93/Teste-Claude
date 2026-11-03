@@ -11,17 +11,7 @@ import { addComment, deleteComment, moreComments } from './actions';
 import type { LessonComment, ProfileCard } from '@/lib/types';
 import { timeAgo } from '@/lib/utils';
 
-export function LessonComments({
-  lessonId,
-  initial,
-  me,
-  isAdmin,
-}: {
-  lessonId: string;
-  initial: LessonComment[];
-  me: ProfileCard;
-  isAdmin: boolean;
-}) {
+export function LessonComments({ lessonId, initial, me, isAdmin }: { lessonId: string; initial: LessonComment[]; me: ProfileCard; isAdmin: boolean }) {
   const [list, setList] = useState(initial);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -62,7 +52,10 @@ export function LessonComments({
       <p className="mb-4 flex items-center gap-2 text-sm font-bold text-ink">
         <MessageSquare className="size-4 text-brand" /> Comentários <span className="font-medium text-muted">({list.length})</span>
       </p>
-      <form onSubmit={send} className="mb-5 flex items-center gap-2 rounded-2xl border border-line-strong bg-bg-elev p-1.5 pl-2 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/15">
+      <form
+        onSubmit={send}
+        className="mb-5 flex items-center gap-2 rounded-2xl border border-line-strong bg-bg-elev p-1.5 pl-2 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/15"
+      >
         <Avatar name={me.full_name} src={me.avatar_url} size={30} />
         <input
           value={text}
@@ -71,7 +64,12 @@ export function LessonComments({
           placeholder="Envie sua mensagem…"
           className="min-w-0 flex-1 bg-transparent px-1 text-sm text-ink placeholder:text-muted/70 focus:outline-none"
         />
-        <button type="submit" disabled={sending || !text.trim()} aria-label="Enviar" className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand text-white transition hover:bg-brand-strong disabled:opacity-40">
+        <button
+          type="submit"
+          disabled={sending || !text.trim()}
+          aria-label="Enviar"
+          className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand text-white transition hover:bg-brand-strong disabled:opacity-40"
+        >
           {sending ? <Spinner /> : <Send className="size-4" />}
         </button>
       </form>
@@ -101,13 +99,16 @@ export function LessonComments({
         </ul>
       ) : null}
       {list.length > 0 && hasMore && (
-        <button type="button" onClick={loadMore} disabled={loadingMore} className="mt-4 w-full rounded-xl py-2 text-sm font-semibold text-brand hover:bg-brand-soft">
+        <button
+          type="button"
+          onClick={loadMore}
+          disabled={loadingMore}
+          className="mt-4 w-full rounded-xl py-2 text-sm font-semibold text-brand hover:bg-brand-soft"
+        >
           {loadingMore ? 'Carregando…' : 'Ver comentários anteriores'}
         </button>
       )}
-      {list.length ? null : (
-        <p className="text-sm text-muted">Seja o primeiro a comentar esta aula.</p>
-      )}
+      {list.length ? null : <p className="text-sm text-muted">Seja o primeiro a comentar esta aula.</p>}
     </Card>
   );
 }

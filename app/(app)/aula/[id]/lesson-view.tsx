@@ -32,6 +32,8 @@ interface Props {
   courseHref: string;
   watermark: string;
   comments?: ReactNode;
+  /** listas de questões ligadas à aula */
+  extra?: ReactNode;
 }
 
 export function LessonView(p: Props) {
@@ -174,7 +176,10 @@ export function LessonView(p: Props) {
                       aria-disabled={!p.prevId}
                       aria-label="Aula anterior"
                       onClick={() => setListOpen(false)}
-                      className={cn('grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2', !p.prevId && 'pointer-events-none opacity-40')}
+                      className={cn(
+                        'grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2',
+                        !p.prevId && 'pointer-events-none opacity-40',
+                      )}
                     >
                       <ChevronLeft className="size-4" />
                     </Link>
@@ -183,18 +188,23 @@ export function LessonView(p: Props) {
                       aria-disabled={!p.nextId}
                       aria-label="Próxima aula"
                       onClick={() => setListOpen(false)}
-                      className={cn('grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2', !p.nextId && 'pointer-events-none opacity-40')}
+                      className={cn(
+                        'grid size-8 place-items-center rounded-lg border border-line text-ink-2 hover:bg-surface-2',
+                        !p.nextId && 'pointer-events-none opacity-40',
+                      )}
                     >
                       <ChevronRight className="size-4" />
                     </Link>
                   </div>
                   <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
-                  {p.modules.map((m) => {
+                    {p.modules.map((m) => {
                       const items = p.lessons.filter((l) => l.module_id === m.id);
                       if (!items.length) return null;
                       return (
                         <div key={m.id}>
-                          <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">{m.title}</p>
+                          <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">
+                            {m.title}
+                          </p>
                           {items.map((l) => {
                             const active = l.id === p.lesson.id;
                             const isDone = doneSet.has(l.id);
@@ -204,7 +214,10 @@ export function LessonView(p: Props) {
                                 href={`/aula/${l.id}${q}`}
                                 scroll={false}
                                 onClick={() => setListOpen(false)}
-                                className={cn('flex items-center gap-3 border-l-2 px-3 py-2 text-sm transition', active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2')}
+                                className={cn(
+                                  'flex items-center gap-3 border-l-2 px-3 py-2 text-sm transition',
+                                  active ? 'border-brand bg-brand-soft font-semibold text-ink' : 'border-transparent text-ink-2 hover:bg-surface-2',
+                                )}
                               >
                                 <span className="relative aspect-video w-20 shrink-0 overflow-hidden rounded-md bg-surface-3">
                                   {l.thumb ? (
@@ -290,7 +303,10 @@ export function LessonView(p: Props) {
           aria-pressed={favorite}
           aria-label={favorite ? 'Remover dos favoritos' : 'Favoritar'}
           title={favorite ? 'Remover dos favoritos' : 'Favoritar'}
-          className={cn('grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface transition hover:bg-surface-2', favorite ? 'text-danger' : 'text-ink-2')}
+          className={cn(
+            'grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface transition hover:bg-surface-2',
+            favorite ? 'text-danger' : 'text-ink-2',
+          )}
         >
           <Heart className={cn('size-4', favorite && 'fill-current')} />
         </button>
@@ -344,6 +360,7 @@ export function LessonView(p: Props) {
         </details>
       )}
 
+      {p.extra}
       {p.comments}
 
       <Modal open={Boolean(pdf)} onClose={() => setPdf(null)} title={pdf?.title} size="full">
