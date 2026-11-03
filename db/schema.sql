@@ -706,3 +706,16 @@ create table if not exists list_finishes (
 );
 
 alter table simulados add column if not exists list_id text references question_lists (id) on delete set null;
+
+-- ============================================================================
+-- Versão 18: modelo de cabeçalho/rodapé padrão (o das apostilas do curso), usado nos PDFs que o aluno baixa.
+-- ============================================================================
+alter table list_templates add column if not exists is_default boolean not null default false;
+
+-- ============================================================================
+-- Versão 19: cabeçalho das outras páginas (diferente do da 1ª) ou o mesmo cabeçalho em todas.
+-- ============================================================================
+alter table list_templates add column if not exists header_rest_url text not null default '';
+alter table list_templates add column if not exists header_rest_w int;
+alter table list_templates add column if not exists header_rest_h int;
+alter table list_templates add column if not exists header_all boolean not null default false;

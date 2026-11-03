@@ -1,8 +1,44 @@
 import 'server-only';
 import { existsSync } from 'node:fs';
 import type { Browser } from 'puppeteer-core';
-import { footerHeightMm, PAGE } from '@/lib/list-html';
-import type { ListTemplate } from '@/lib/question-lists';
+import { footerHeightMm, HEADER_TOP_MM, imgHeightMm, PAGE } from '@/lib/list-html';
+import { headersOf, type ListTemplate } from '@/lib/question-lists';
+
+const MM = 72 / 25.4;
+
+/** Põe a imagem do cabeçalho no alto das páginas (a 1ª só se o cabeçalho for o mesmo em todas). */
+async function stampHeaders(pdf: Uint8Array, t: ListTemplate | null) {
+  const { first, rest } = headersOf(t);
+  const onFirst = Boolean(t?.header_all && first);
+  if (!rest && !onFirst) return pdf;
+  const [{ PDFDocument }, sharp] = await Promise.all([import('pdf-lib'), import('sharp').then((m) => m.default)]);
+  const doc = await PDFDocument.load(pdf);
+  const embed = async (url: string) => {
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const png = await sharp(Buffer.from(await r.arrayBuffer()))
+      .flatten({ background: '#ffffff' })
+      .png()
+      .toBuffer();
+    return doc.embedPng(png);
+  };
+  const imgs = new Map<string, Awaited<ReturnType<typeof embed>>>();
+  const get = async (u: string) => {
+    if (!imgs.has(u)) imgs.set(u, await embed(u));
+    return imgs.get(u)!;
+  };
+  for (const [i, page] of doc.getPages().entries()) {
+    const h = i === 0 ? (onFirst ? first : null) : rest;
+    if (!h) continue;
+    const image = await get(h.url);
+    if (!image) continue;
+    const { height } = page.getSize();
+    const w = (PAGE.widthMm - 2 * PAGE.marginMm) * MM;
+    const ih = imgHeightMm(h) * MM;
+    page.drawImage(image, { x: PAGE.marginMm * MM, y: height - HEADER_TOP_MM * MM - ih, width: w, height: ih });
+  }
+  return new Uint8Array(await doc.save());
+}
 
 const CHROMIUM_PACK = 'https://github.com/Sparticuz/chromium/releases/download/v153.0.0/chromium-v153.0.0-pack.x64.tar';
 
@@ -49,7 +85,7 @@ export async function htmlToPdf(html: string, t: ListTemplate | null): Promise<U
         ? `<div style="width:100%;padding:0 ${PAGE.marginMm}mm ${(PAGE.marginMm / 3).toFixed(1)}mm;margin:0;-webkit-print-color-adjust:exact"><img src="${footer}" style="display:block;width:100%;height:auto"></div>`
         : '<span></span>',
     });
-    return new Uint8Array(pdf);
+    return await stampHeaders(new Uint8Array(pdf), t);
   } finally {
     await browser.close().catch(() => {});
   }

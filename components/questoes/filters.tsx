@@ -237,7 +237,7 @@ export function QuestionFilters({
         >
           <Filter className="size-4" /> Filtros{chips.length ? ` (${chips.length})` : ''}
         </Button>
-        <FilterPdf value={value} total={total} />
+        {total > 2 && <FilterPdf value={value} total={total} />}
         <span className="text-xs text-muted">
           {total} {total === 1 ? 'questão' : 'questões'}
         </span>

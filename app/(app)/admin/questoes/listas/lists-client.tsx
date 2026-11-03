@@ -12,7 +12,16 @@ import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 import { AudiencePicker, type AudienceOptions } from '../../ao-vivo/lives-manager';
-import { createSimuladoFromList, deleteList, deleteTemplate, lessonOptions, saveListAudience, saveListLessons, saveTemplate } from './actions';
+import {
+  createSimuladoFromList,
+  deleteList,
+  deleteTemplate,
+  lessonOptions,
+  saveListAudience,
+  saveListLessons,
+  saveTemplate,
+  setDefaultTemplate,
+} from './actions';
 
 export interface ListSummary {
   id: string;
@@ -375,6 +384,8 @@ function TemplateModal({ t, onClose }: { t: ListTemplate | null; onClose: () => 
   const [name, setName] = useState(t?.name ?? '');
   const [header, setHeader] = useState({ url: t?.header_url ?? '', w: t?.header_w ?? 0, h: t?.header_h ?? 0 });
   const [footer, setFooter] = useState({ url: t?.footer_url ?? '', w: t?.footer_w ?? 0, h: t?.footer_h ?? 0 });
+  const [rest, setRest] = useState({ url: t?.header_rest_url ?? '', w: t?.header_rest_w ?? 0, h: t?.header_rest_h ?? 0 });
+  const [all, setAll] = useState(Boolean(t?.header_all));
   const [busy, setBusy] = useState(false);
   async function save() {
     setBusy(true);
@@ -387,6 +398,10 @@ function TemplateModal({ t, onClose }: { t: ListTemplate | null; onClose: () => 
       footer_url: footer.url,
       footer_w: footer.w,
       footer_h: footer.h,
+      header_rest_url: rest.url,
+      header_rest_w: rest.w,
+      header_rest_h: rest.h,
+      header_all: all,
     }).catch(() => ({ error: 'Não foi possível salvar.' }));
     setBusy(false);
     if ('error' in r && r.error) return toast.error(r.error);
@@ -414,7 +429,26 @@ function TemplateModal({ t, onClose }: { t: ListTemplate | null; onClose: () => 
         <Field label="Nome do modelo">
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex.: Simulado Vértice" aria-label="Nome do modelo" />
         </Field>
-        <ImageSlot label="Cabeçalho (1ª página)" value={header} onChange={setHeader} />
+        <div className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
+          {(
+            [
+              [false, '1ª página e demais'],
+              [true, 'Um só para todas'],
+            ] as const
+          ).map(([v, l]) => (
+            <button
+              key={l}
+              type="button"
+              aria-pressed={all === v}
+              onClick={() => setAll(v)}
+              className={cn('rounded-lg px-2 py-2 text-xs font-semibold transition', all === v ? 'bg-surface text-ink shadow' : 'text-muted')}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+        <ImageSlot label={all ? 'Cabeçalho (todas as páginas)' : 'Cabeçalho (1ª página)'} value={header} onChange={setHeader} />
+        {!all && <ImageSlot label="Cabeçalho das outras páginas (opcional)" value={rest} onChange={setRest} />}
         <ImageSlot label="Rodapé (todas as páginas)" value={footer} onChange={setFooter} />
         <p className="text-[11px] text-muted">As imagens ocupam a largura da folha. Use imagens largas (ex.: 1600 × 250 px).</p>
       </div>
@@ -434,7 +468,24 @@ export function TemplatesManager({ templates }: { templates: ListTemplate[] }) {
             {/* eslint-disable-next-line @next/next/no-img-element */}
             {t.footer_url ? <img src={t.footer_url} alt="" className="h-auto w-full rounded bg-white" /> : <span className="h-2 rounded bg-surface-3" />}
           </div>
-          <p className="min-w-0 flex-1 text-sm font-semibold break-words text-ink">{t.name}</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold break-words text-ink">{t.name}</p>
+            {t.is_default ? (
+              <Badge tone="success" className="mt-1">
+                Padrão das apostilas (alunos)
+              </Badge>
+            ) : (
+              <ActionButton
+                action={() => setDefaultTemplate(t.id)}
+                success="Modelo das apostilas definido"
+                variant="ghost"
+                size="sm"
+                className="mt-1 -ml-2 text-xs text-brand"
+              >
+                Usar nas apostilas dos alunos
+              </ActionButton>
+            )}
+          </div>
           <button type="button" onClick={() => setEdit(t)} aria-label="Editar modelo" className={buttonClass('ghost', 'icon', 'size-8')}>
             <Pencil className="size-3.5" />
           </button>

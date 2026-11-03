@@ -7,12 +7,29 @@ import type { Viewer } from '@/lib/session';
 export interface ListTemplate {
   id: string;
   name: string;
+  /** modelo das apostilas do curso: vai nos PDFs que o aluno baixa */
+  is_default?: boolean;
   header_url: string;
   header_w: number | null;
   header_h: number | null;
   footer_url: string;
   footer_w: number | null;
   footer_h: number | null;
+  /** cabeçalho das páginas depois da 1ª (vazio = sem cabeçalho nelas) */
+  header_rest_url?: string;
+  header_rest_w?: number | null;
+  header_rest_h?: number | null;
+  /** o mesmo cabeçalho em todas as páginas */
+  header_all?: boolean;
+}
+
+/** Qual imagem vai no alto da 1ª página e das demais. */
+export function headersOf(t: ListTemplate | null) {
+  if (!t) return { first: null, rest: null };
+  const img = (url: string | undefined, w: number | null | undefined, h: number | null | undefined) => (url && w && h ? { url, w, h } : null);
+  const first = img(t.header_url, t.header_w, t.header_h);
+  const rest = t.header_all ? first : img(t.header_rest_url, t.header_rest_w, t.header_rest_h);
+  return { first, rest };
 }
 
 export interface QList {
@@ -28,7 +45,8 @@ export interface QList {
 
 export const getList = (id: string) => sql.one<QList>(`select * from question_lists where id = $1`, [id]);
 export const getTemplate = (id: string | null) => (id ? sql.one<ListTemplate>(`select * from list_templates where id = $1`, [id]) : Promise.resolve(null));
-export const allTemplates = () => sql.query<ListTemplate>(`select * from list_templates order by name`);
+export const allTemplates = () => sql.query<ListTemplate>(`select * from list_templates order by is_default desc, name`);
+export const defaultTemplate = () => sql.one<ListTemplate>(`select * from list_templates where is_default limit 1`);
 
 /** Questões da lista, na ordem escolhida (questões apagadas do banco somem sozinhas). */
 export async function questionsOf(list: Pick<QList, 'question_ids'>) {

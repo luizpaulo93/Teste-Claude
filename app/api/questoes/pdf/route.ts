@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { listHtml } from '@/lib/list-html';
 import { htmlToPdf } from '@/lib/pdf-render';
-import { questionsOf } from '@/lib/question-lists';
+import { defaultTemplate, questionsOf } from '@/lib/question-lists';
 import { filteredIds, readFilters } from '@/lib/questions';
 import { getViewer } from '@/lib/session';
 
@@ -17,12 +17,13 @@ export async function GET(req: NextRequest) {
   for (const k of new Set(req.nextUrl.searchParams.keys())) sp[k] = req.nextUrl.searchParams.getAll(k);
   const f = readFilters(sp);
   const ids = await filteredIds(f, viewer.userId, LIMIT);
-  if (!ids.length) return NextResponse.json({ error: 'Nenhuma questão com esses filtros.' }, { status: 400 });
+  if (ids.length < 3) return NextResponse.json({ error: 'Escolha um filtro com pelo menos 3 questões.' }, { status: 400 });
   if (ids.length > LIMIT) return NextResponse.json({ error: `Filtre até ${LIMIT} questões para baixar o PDF.` }, { status: 400 });
   const title = ['Questões', [...(f.disciplina ?? []), ...(f.assunto ?? [])].join(', ')].filter(Boolean).join(' – ');
   try {
-    const qs = await questionsOf({ question_ids: ids });
-    const pdf = await htmlToPdf(listHtml(title, qs, null, { answers: true, resolutions: true }), null);
+    const [qs, t] = await Promise.all([questionsOf({ question_ids: ids }), defaultTemplate()]);
+    // cabeçalho e rodapé das apostilas do curso
+    const pdf = await htmlToPdf(listHtml(title, qs, t, { answers: true, resolutions: true }), t);
     return new NextResponse(pdf as BodyInit, {
       headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="questoes.pdf"`, 'Cache-Control': 'private, no-store' },
     });

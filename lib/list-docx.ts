@@ -10,6 +10,7 @@ import {
   LineRuleType,
   Packer,
   PageBreak,
+  SectionType,
   Paragraph,
   Table,
   TableCell,
@@ -21,8 +22,8 @@ import {
 import katex from 'katex';
 import { mml2omml } from 'mathml2omml';
 import sharp from 'sharp';
-import { source, type ListQuestion } from '@/lib/list-html';
-import type { ListTemplate } from '@/lib/question-lists';
+import { metaParts, stars, subjectsOf, type ListQuestion } from '@/lib/list-html';
+import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 
 /**
@@ -174,12 +175,16 @@ const thin = { style: BorderStyle.SINGLE, size: 4, color: '000000' };
 
 async function questionBlocks(q: ListQuestion, n: number) {
   const out: (Paragraph | Table)[] = [];
-  const src = source(q);
   out.push(
     new Paragraph({
       keepNext: true,
       spacing: { before: 160, after: 60 },
-      children: [new TextRun({ text: `QUESTÃO ${String(n).padStart(2, '0')}`, bold: true }), ...(src ? [new TextRun({ text: ` (${src})` })] : [])],
+      children: [
+        new TextRun({ text: `QUESTÃO ${String(n).padStart(2, '0')}`, bold: true }),
+        // banca, ano, habilidade e estrelas da dificuldade, em letra pequena numa linha só
+        new TextRun({ text: `  ${metaParts(q).join(' · ')}`, size: 14, color: '444444' }),
+        ...(stars(q) ? [new TextRun({ text: ` ${'★'.repeat(stars(q))}`, size: 14, font: 'Segoe UI Symbol' })] : []),
+      ],
     }),
   );
   for (const b of q.blocos) {
@@ -236,9 +241,20 @@ async function questionBlocks(q: ListQuestion, n: number) {
 
 export async function listDocx(title: string, qs: ListQuestion[], t: ListTemplate | null, opts: { answers?: boolean } = {}) {
   imgCache.clear();
+  const top: (Paragraph | Table)[] = [];
   const body: (Paragraph | Table)[] = [];
   if (!t?.header_url)
-    body.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: title, bold: true, size: 24 })] }));
+    top.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 120 }, children: [new TextRun({ text: title, bold: true, size: 24 })] }));
+  // logo abaixo do cabeçalho: disciplinas e, ao lado de cada uma, os assuntos
+  for (const [d, a] of subjectsOf(qs))
+    top.push(
+      new Paragraph({
+        spacing: { after: 40 },
+        children: [new TextRun({ text: `${d}: `, bold: true, size: 18 }), new TextRun({ text: a.join(', '), size: 18 })],
+      }),
+    );
+  if (subjectsOf(qs).length)
+    top.push(new Paragraph({ spacing: { after: 120 }, border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '999999', space: 4 } }, children: [] }));
   for (const [i, q] of qs.entries()) body.push(...(await questionBlocks(q, i + 1)));
   if (opts.answers) {
     body.push(new Paragraph({ children: [new PageBreak(), new TextRun({ text: 'Gabarito', bold: true, size: 22 })], spacing: { after: 120 } }));
@@ -252,8 +268,10 @@ export async function listDocx(title: string, qs: ListQuestion[], t: ListTemplat
     );
   }
 
-  // cabeçalho (só na 1ª página) e rodapé (em todas) com as imagens do modelo
-  const headerRun = t?.header_url ? await imageRun({ url: t.header_url, largura: (TEXT_PX / 0.75) * 1 }, TEXT_PX) : null;
+  // cabeçalhos (1ª página e demais, ou o mesmo em todas) e rodapé (em todas) com as imagens do modelo
+  const hs = headersOf(t);
+  const headerRun = hs.first ? await imageRun({ url: hs.first.url, largura: TEXT_PX / 0.75 }, TEXT_PX) : null;
+  const restRun = hs.rest ? await imageRun({ url: hs.rest.url, largura: TEXT_PX / 0.75 }, TEXT_PX) : null;
   const footerRun = t?.footer_url ? await imageRun({ url: t.footer_url, largura: (TEXT_PX / 0.75) * 1 }, TEXT_PX) : null;
   const footer = footerRun ? new Footer({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [footerRun] })] }) : undefined;
 
@@ -262,19 +280,34 @@ export async function listDocx(title: string, qs: ListQuestion[], t: ListTemplat
     creator: 'Curso Vértice',
     styles: { default: { document: { run: { font: 'Arial', size: SIZE }, paragraph: { spacing: { line: 252, lineRule: LineRuleType.AUTO } } } } },
     sections: [
+      // topo em largura total (com o cabeçalho da 1ª página)
       {
         properties: {
-          titlePage: Boolean(headerRun),
+          titlePage: Boolean(headerRun || restRun),
+          page: { margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN, header: 360, footer: 360 } },
+        },
+        headers:
+          headerRun || restRun
+            ? {
+                first: new Header({ children: headerRun ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [headerRun] })] : [] }),
+                default: new Header({ children: restRun ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [restRun] })] : [] }),
+              }
+            : undefined,
+        footers: footer ? { first: footer, default: footer } : undefined,
+        children: top.length ? top : [new Paragraph({ children: [] })],
+      },
+      // questões em 2 colunas, na mesma página
+      {
+        properties: {
+          type: SectionType.CONTINUOUS,
           page: { margin: { top: MARGIN, right: MARGIN, bottom: MARGIN, left: MARGIN, header: 360, footer: 360 } },
           column: { count: 2, space: GAP, separate: true },
         },
-        headers: headerRun
-          ? {
-              first: new Header({ children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [headerRun] })] }),
-              default: new Header({ children: [] }),
-            }
-          : undefined,
-        footers: footer ? { first: footer, default: footer } : undefined,
+        headers:
+          headerRun || restRun
+            ? { default: new Header({ children: restRun ? [new Paragraph({ alignment: AlignmentType.CENTER, children: [restRun] })] : [] }) }
+            : undefined,
+        footers: footer ? { default: footer } : undefined,
         children: body,
       },
     ],

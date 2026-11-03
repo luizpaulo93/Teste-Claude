@@ -79,6 +79,8 @@ export function rich(src: string | null | undefined, inline = false): string {
       .replace(/\\underline\{([^{}]*)\}/g, '<u>$1</u>');
     if (s === before) break;
   }
+  // "1." ou "2)" no começo da linha é texto (ex.: alternativa "1."), não início de lista numerada
+  s = s.replace(/^(\s*\d+)([.)])(?=\s|$)/gm, '$1\\$2');
   let html = (inline ? md.parseInline(esc(s)) : md.parse(esc(s))) as string;
   html = html.replace(/&lt;(\/?)([biu])&gt;/g, '<$1$2>');
   html = html.replace(/(\d+)/g, (_, i) => math[Number(i)]).replace(new RegExp(DOLLAR, 'g'), '$');

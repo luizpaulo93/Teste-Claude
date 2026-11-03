@@ -63,6 +63,10 @@ export async function saveTemplate(t: {
   footer_url: string;
   footer_w?: number | null;
   footer_h?: number | null;
+  header_rest_url?: string;
+  header_rest_w?: number | null;
+  header_rest_h?: number | null;
+  header_all?: boolean;
 }) {
   await admin();
   const name = String(t.name ?? '')
@@ -74,13 +78,36 @@ export async function saveTemplate(t: {
   if (!header && !footer) return { error: 'Coloque a imagem do cabeçalho ou do rodapé.' };
   const id = t.id && okId(t.id) ? t.id : newId();
   await sql.exec(
-    `insert into list_templates (id, name, header_url, header_w, header_h, footer_url, footer_w, footer_h) values ($1, $2, $3, $4, $5, $6, $7, $8)
+    `insert into list_templates (id, name, header_url, header_w, header_h, footer_url, footer_w, footer_h, header_rest_url, header_rest_w, header_rest_h, header_all)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      on conflict (id) do update set name = excluded.name, header_url = excluded.header_url, header_w = excluded.header_w, header_h = excluded.header_h,
-       footer_url = excluded.footer_url, footer_w = excluded.footer_w, footer_h = excluded.footer_h, updated_at = now()`,
-    [id, name, header, posInt(t.header_w), posInt(t.header_h), footer, posInt(t.footer_w), posInt(t.footer_h)],
+       footer_url = excluded.footer_url, footer_w = excluded.footer_w, footer_h = excluded.footer_h, header_rest_url = excluded.header_rest_url,
+       header_rest_w = excluded.header_rest_w, header_rest_h = excluded.header_rest_h, header_all = excluded.header_all, updated_at = now()`,
+    [
+      id,
+      name,
+      header,
+      posInt(t.header_w),
+      posInt(t.header_h),
+      footer,
+      posInt(t.footer_w),
+      posInt(t.footer_h),
+      t.header_all ? '' : okUrl(t.header_rest_url),
+      t.header_all ? null : posInt(t.header_rest_w),
+      t.header_all ? null : posInt(t.header_rest_h),
+      Boolean(t.header_all && header),
+    ],
   );
   refresh();
   return { id };
+}
+
+/** Marca o modelo das apostilas do curso (só um): é o que vai nos PDFs que o aluno baixa. */
+export async function setDefaultTemplate(id: string) {
+  await admin();
+  await sql.exec(`update list_templates set is_default = (id = $1)`, [id]);
+  refresh();
+  return {};
 }
 
 export async function deleteTemplate(id: string) {
