@@ -1,0 +1,75 @@
+/** Formato do pacote provas.json (o mesmo para o importador e para o servidor). */
+export interface QImg {
+  arquivo: string; // ex.: img/brasil_q094_regua.webp
+  url?: string | null; // preenchida na importação (R2)
+  largura?: number | null;
+  altura?: number | null;
+  alt?: string | null;
+}
+export type QBloco =
+  | { tipo: 'texto'; estilo?: 'corpo' | 'titulo' | 'fonte'; conteudo: string }
+  | ({ tipo: 'imagem' } & QImg)
+  | { tipo: 'equacao'; latex: string }
+  | { tipo: 'tabela'; cabecalho: string[]; linhas: string[][]; legenda?: string | null };
+export interface QAlternativa {
+  letra: string;
+  texto: string;
+  imagem?: QImg | null;
+}
+export interface QuestaoIn {
+  id: string;
+  numero: number;
+  banca?: string;
+  ano?: number;
+  areaSigla?: string;
+  areaConhecimento?: string;
+  disciplina?: string;
+  assuntoGeral?: string;
+  assuntoEspecifico?: string;
+  competencia?: string;
+  habilidade?: string;
+  gabarito?: string;
+  status?: string;
+  parametros?: { a?: number | null; b?: number | null; c?: number | null };
+  blocos?: QBloco[];
+  alternativas?: QAlternativa[];
+  imagemAlternativas?: QImg | QImg[] | null;
+  resolucao?: string | null;
+  microdados?: Record<string, unknown> | null;
+}
+export interface ProvaIn {
+  provaId: string;
+  banca?: string;
+  exame?: string;
+  ano?: number;
+  dia?: string;
+  caderno?: string;
+  aplicacao?: string;
+  totalQuestoes?: number;
+  questoes: QuestaoIn[];
+}
+
+/** Todas as imagens citadas numa questão (enunciado, alternativas e imagem das alternativas). */
+export function imagesOf(q: QuestaoIn): QImg[] {
+  const out: QImg[] = [];
+  for (const b of q.blocos ?? []) if (b?.tipo === 'imagem' && b.arquivo) out.push(b);
+  for (const a of q.alternativas ?? []) if (a?.imagem?.arquivo) out.push(a.imagem);
+  const ia = q.imagemAlternativas;
+  for (const i of Array.isArray(ia) ? ia : ia ? [ia] : []) if (i?.arquivo) out.push(i);
+  return out;
+}
+
+/** "img/brasil_q094_regua.webp" → "brasil_q094_regua.webp" (é assim que o arquivo é achado na pasta) */
+export const fileName = (arquivo: string) => arquivo.split(/[\\/]/).pop() ?? arquivo;
+
+export const DIFFICULTY = [
+  { key: 'facil', label: 'Fácil', max: 0.8 },
+  { key: 'media', label: 'Média', max: 1.6 },
+  { key: 'dificil', label: 'Difícil', max: Infinity },
+] as const;
+export type Difficulty = (typeof DIFFICULTY)[number]['key'];
+/** Dificuldade pelo parâmetro b da TRI (quanto maior, mais difícil). */
+export function difficultyOf(b: number | null | undefined): Difficulty | null {
+  if (b === null || b === undefined || !Number.isFinite(b)) return null;
+  return DIFFICULTY.find((d) => b < d.max)!.key;
+}

@@ -594,3 +594,63 @@ update courses set tag_ids = array['tag-' || md5(lower(trim(category)))], catego
 -- ============================================================================
 alter table courses add column if not exists live_class_id text;
 create unique index if not exists courses_live_class_idx on courses (live_class_id) where live_class_id is not null;
+
+-- ============================================================================
+-- Versão 16: banco de questões (provas importadas do JSON: ENEM etc.), com as respostas dos alunos.
+-- O gabarito e a resolução só vão para a tela depois que o aluno responde.
+-- ============================================================================
+create table if not exists exam_papers (
+  id text primary key,                 -- provaId (ex.: enem-2025-d2-regular-brasil-azul)
+  banca text not null default '',
+  exame text not null default '',
+  ano int,
+  dia text not null default '',
+  caderno text not null default '',
+  aplicacao text not null default '',
+  total int not null default 0,
+  images int not null default 0,       -- imagens citadas
+  missing_images int not null default 0, -- ainda sem arquivo
+  imported_by text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists questions (
+  id text primary key,                 -- <provaId>-q091
+  paper_id text not null references exam_papers (id) on delete cascade,
+  numero int not null,
+  banca text not null default '',
+  ano int,
+  area_sigla text not null default '',
+  area text not null default '',
+  disciplina text not null default '',
+  assunto_geral text not null default '',
+  assunto_especifico text not null default '',
+  competencia text not null default '',
+  habilidade text not null default '',
+  gabarito text not null default '',
+  status text not null default 'valida', -- valida | anulada | abandonado_na_calibracao
+  param_a double precision,
+  param_b double precision,
+  param_c double precision,
+  blocos jsonb not null default '[]'::jsonb,
+  alternativas jsonb not null default '[]'::jsonb,
+  imagem_alternativas jsonb,
+  resolucao text not null default '',
+  microdados jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+create index if not exists questions_paper_idx on questions (paper_id, numero);
+create index if not exists questions_filter_idx on questions (disciplina, assunto_geral);
+
+create table if not exists question_answers (
+  user_id text not null,
+  question_id text not null references questions (id) on delete cascade,
+  letter text not null,
+  correct boolean not null,
+  first_correct boolean not null,      -- acertou de primeira?
+  attempts int not null default 1,
+  answered_at timestamptz not null default now(),
+  primary key (user_id, question_id)
+);
+create index if not exists qanswers_user_idx on question_answers (user_id, answered_at desc);

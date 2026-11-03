@@ -300,3 +300,18 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 .lp-rays { animation: rays 3.2s ease-in-out infinite; }
 @keyframes lp-spin { to { transform: rotate(360deg); } }
 .lp-rays-spin { animation: lp-spin 40s linear infinite; }
+
+/* Questões (Markdown + LaTeX vindos do banco de questões) */
+.q-rich { line-height: 1.65; overflow-wrap: anywhere; }
+.q-rich p { margin: 0 0 0.6em; }
+.q-rich p:last-child { margin-bottom: 0; }
+.q-rich strong { font-weight: 700; color: var(--color-ink); }
+.q-rich ul, .q-rich ol { margin: 0.4em 0 0.6em 1.3em; }
+.q-rich ul { list-style: disc; }
+.q-rich ol { list-style: decimal; }
+.q-rich table { border-collapse: collapse; margin: 0 auto; font-size: 0.92em; }
+.q-rich th, .q-rich td { border: 1px solid var(--line-strong, rgb(148 163 184 / 0.3)); padding: 0.35em 0.7em; text-align: center; }
+.q-rich th { background: var(--color-surface-2); font-weight: 700; }
+.q-rich caption { caption-side: bottom; font-size: 0.85em; color: var(--color-muted); padding-top: 0.4em; }
+.q-rich .katex { font-size: 1.05em; }
+.q-rich .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; padding: 0.1em 0; }

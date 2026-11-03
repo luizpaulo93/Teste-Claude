@@ -1,6 +1,24 @@
 'use client';
 
-import { BarChart3, CalendarDays, ClipboardCheck, Compass, Heart, Home, Menu, MessageCircleQuestion, Moon, Radio, Settings2, Shield, Sun, Target, User, X } from 'lucide-react';
+import {
+  BarChart3,
+  CalendarDays,
+  ClipboardCheck,
+  Compass,
+  FileQuestion,
+  Heart,
+  Home,
+  Menu,
+  MessageCircleQuestion,
+  Moon,
+  Radio,
+  Settings2,
+  Shield,
+  Sun,
+  Target,
+  User,
+  X,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -67,6 +85,7 @@ export function AppShell({
     { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow },
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
+    { href: '/questoes', label: 'Questões', icon: FileQuestion, show: isMember },
     { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
     // Mentor vai direto para a gestão da mentoria (com aviso de dúvidas sem resposta)
@@ -80,10 +99,10 @@ export function AppShell({
   // Sempre 4 atalhos + "Mais": primeiro os preferidos, depois completa com os outros
   // Dúvidas no menu de baixo; Calendário fica no "Mais" (entra só se faltar atalho)
   const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/duvidas', '/simulados', '/calendario'] : ['/', '/cursos', '/simulados', '/duvidas', '/calendario'];
-  const mobileMain = [
-    ...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean),
-    ...items.filter((i) => !preferred.includes(i.href)),
-  ].slice(0, 4) as NavItem[];
+  const mobileMain = [...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean), ...items.filter((i) => !preferred.includes(i.href))].slice(
+    0,
+    4,
+  ) as NavItem[];
   // Minhas aulas e Perfil ficam no menu da foto (topo)
   const mobileMore = items.filter((i) => !mobileMain.includes(i) && i.href !== '/minhas-aulas');
 
@@ -116,7 +135,11 @@ export function AppShell({
             </div>
           </Link>
           <div className="mt-2 flex gap-1">
-            <button type="button" onClick={toggle} className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2">
+            <button
+              type="button"
+              onClick={toggle}
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2"
+            >
               {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
               {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
             </button>
@@ -190,26 +213,29 @@ export function AppShell({
           <div className="absolute inset-x-0 bottom-0 animate-slide-up rounded-t-3xl border-t border-line-strong bg-surface p-4 safe-bottom">
             <div className="mb-3 flex items-center justify-between px-1">
               <span className="text-sm font-bold text-ink">Menu</span>
-              <button type="button" aria-label="Fechar" onClick={() => setMoreOpen(false)} className="grid size-9 place-items-center rounded-xl hover:bg-surface-2">
+              <button
+                type="button"
+                aria-label="Fechar"
+                onClick={() => setMoreOpen(false)}
+                className="grid size-9 place-items-center rounded-xl hover:bg-surface-2"
+              >
                 <X className="size-5" />
               </button>
             </div>
             <div className="grid grid-cols-3 gap-2 pb-2">
-              {[...mobileMore, ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : [])].map(
-                (item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      'flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-xs font-semibold',
-                      isActive(item.href) ? 'bg-brand-soft text-brand' : 'bg-surface-2 text-ink-2',
-                    )}
-                  >
-                    <item.icon className="size-5" />
-                    {item.label}
-                  </Link>
-                ),
-              )}
+              {[...mobileMore, ...(isAdmin ? [{ href: '/admin', label: 'Admin', icon: Shield }] : [])].map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-xs font-semibold',
+                    isActive(item.href) ? 'bg-brand-soft text-brand' : 'bg-surface-2 text-ink-2',
+                  )}
+                >
+                  <item.icon className="size-5" />
+                  {item.label}
+                </Link>
+              ))}
               <InstallApp compact />
             </div>
           </div>
@@ -254,4 +280,3 @@ function BottomLink({ item, active }: { item: NavItem; active: boolean }) {
     </Link>
   );
 }
-

@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart3, BookOpen, FolderOpen, Radio, Trophy, CalendarDays, ClipboardCheck, Settings, Target, Users, UsersRound } from 'lucide-react';
+import { BarChart3, BookOpen, FileQuestion, FolderOpen, Radio, Trophy, CalendarDays, ClipboardCheck, Settings, Target, Users, UsersRound } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,7 @@ const TABS = [
   { href: '/admin/turmas', label: 'Turmas', icon: UsersRound },
   { href: '/admin/ao-vivo', label: 'Ao vivo', icon: Radio },
   { href: '/admin/simulados', label: 'Simulados', icon: ClipboardCheck },
+  { href: '/admin/questoes', label: 'Questões', icon: FileQuestion },
   { href: '/desempenho', label: 'Desempenho', icon: Trophy },
   { href: '/admin/calendario', label: 'Calendário', icon: CalendarDays },
   { href: '/admin/mentoria', label: 'Mentoria', icon: Target },
@@ -39,7 +40,10 @@ export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
           >
             <t.icon className="size-4" /> {t.label}
             {t.href === '/admin/mentoria' && mentoriaAlert > 0 && (
-              <span className="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white" title="Dúvidas da mentoria sem resposta">
+              <span
+                className="grid h-4.5 min-w-4.5 place-items-center rounded-full bg-danger px-1 text-[10px] font-bold text-white"
+                title="Dúvidas da mentoria sem resposta"
+              >
                 {mentoriaAlert}
               </span>
             )}
