@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronLeft, ChevronRight, FileQuestion, XCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileQuestion } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -70,7 +70,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
           </p>
           {items.length ? (
             <ul className="space-y-2">
-              {items.map((it) => {
+              {items.map((it, idx) => {
                 const dif = difficultyOf(it.param_b);
                 return (
                   <li key={it.id}>
@@ -82,7 +82,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
                             it.correct === true ? 'bg-success/12 text-success' : it.correct === false ? 'bg-danger/12 text-danger' : 'bg-surface-3 text-ink-2',
                           )}
                         >
-                          {it.correct === true ? <CheckCircle2 className="size-5" /> : it.correct === false ? <XCircle className="size-5" /> : it.numero}
+                          {(page - 1) * PER + idx + 1}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[13px] font-bold text-ink">
@@ -92,7 +92,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
                           <p className="mt-1 line-clamp-2 text-xs text-muted">{plain(it.snippet)}</p>
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             <Badge className="max-w-full whitespace-normal break-words">
-                              Q{it.numero} · {[it.exame, it.ano].filter(Boolean).join(' ')} · {it.aplicacao.replace(/^Aplicação\s+/i, '')}
+                              {[it.exame, it.ano].filter(Boolean).join(' ')} · {it.aplicacao.replace(/^Aplicação\s+/i, '')}
                             </Badge>
                             {it.habilidade && <Badge className="max-w-full whitespace-normal break-words">{it.habilidade}</Badge>}
                             {dif && (

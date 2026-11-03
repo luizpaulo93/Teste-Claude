@@ -316,7 +316,7 @@ export async function listQuestions(f: QFilters, userId: string, page = 1, perPa
   const base = `from questions q join exam_papers p on p.id = q.paper_id left join question_answers a on a.question_id = q.id and a.user_id = $1 ${w.sql}`;
   const [items, total] = await Promise.all([
     sql.query<QListItem>(
-      `select q.id, q.paper_id, q.numero, q.ano, q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, q.status, q.param_b,
+      `select q.id, q.paper_id, q.numero, coalesce(q.ano, p.ano) as ano, q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, q.status, q.param_b,
               left(coalesce((select string_agg(b->>'conteudo', ' ') from jsonb_array_elements(q.blocos) b where b->>'tipo' = 'texto'), ''), 220) as snippet,
               a.correct, p.aplicacao, p.exame
          ${base} ${ORDER} limit ${perPage} offset ${(Math.max(1, page) - 1) * perPage}`,

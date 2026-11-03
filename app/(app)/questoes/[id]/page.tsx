@@ -54,16 +54,12 @@ export default async function QuestaoPage({
         <Link href={`/questoes${qs}`} className="flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
           <ArrowLeft className="size-4" /> Questões
         </Link>
-        {nav.total > 0 && nav.pos > 0 && (
-          <span className="text-xs text-muted">
-            {nav.pos} de {nav.total}
-          </span>
-        )}
       </div>
 
       <Card className="mb-4 space-y-2 p-4">
         <p className="text-xs font-semibold tracking-wider text-brand uppercase">
-          Questão {q.numero} · {paperLabel(q.paper)}
+          {nav.pos > 0 ? `Questão ${nav.pos} de ${nav.total} · ` : ''}
+          {paperLabel(q.paper)}
         </p>
         <p className="text-base font-bold text-ink">
           {q.disciplina} · {q.assunto_geral}
