@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Answer, type AltView, type Reveal } from '@/components/questoes/answer';
+import { MathFit } from '@/components/questoes/math-fit';
 import { QImage } from '@/components/questoes/q-image';
 import { QuestionBody } from '@/components/questoes/question-body';
 import { Badge, buttonClass, Card } from '@/components/ui';
@@ -48,7 +49,7 @@ export default async function QuestaoPage({
       : null;
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-3xl min-w-0">
       <div className="mb-4 flex items-center justify-between gap-2">
         <Link href={`/questoes${qs}`} className="flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
           <ArrowLeft className="size-4" /> Questões
@@ -69,17 +70,25 @@ export default async function QuestaoPage({
         </p>
         {q.assunto_especifico && <p className="text-sm text-ink-2">{q.assunto_especifico}</p>}
         <div className="flex flex-wrap gap-1.5 pt-1">
-          {q.area && <Badge>{q.area}</Badge>}
-          {q.competencia && <Badge>Competência {q.competencia.replace(/^C/i, '')}</Badge>}
-          {q.habilidade && <Badge>Habilidade {q.habilidade.replace(/^H/i, '')}</Badge>}
+          {q.area && <Badge className="max-w-full whitespace-normal break-words">{q.area}</Badge>}
+          {q.competencia && <Badge className="max-w-full whitespace-normal break-words">Competência {q.competencia.replace(/^C/i, '')}</Badge>}
+          {q.habilidade && <Badge className="max-w-full whitespace-normal break-words">Habilidade {q.habilidade.replace(/^H/i, '')}</Badge>}
           {dif && (
-            <Badge tone={dif === 'dificil' ? 'danger' : dif === 'media' ? 'warning' : 'success'}>
+            <Badge className="max-w-full whitespace-normal break-words" tone={dif === 'dificil' ? 'danger' : dif === 'media' ? 'warning' : 'success'}>
               {DIFFICULTY.find((d) => d.key === dif)!.label}
               {teacher && q.param_b !== null ? ` · b ${q.param_b.toFixed(2)}` : ''}
             </Badge>
           )}
-          {q.status === 'anulada' && <Badge tone="danger">Questão anulada pelo INEP</Badge>}
-          {q.status === 'abandonado_na_calibracao' && <Badge tone="warning">Item sem calibração (TRI)</Badge>}
+          {q.status === 'anulada' && (
+            <Badge className="max-w-full whitespace-normal break-words" tone="danger">
+              Questão anulada pelo INEP
+            </Badge>
+          )}
+          {q.status === 'abandonado_na_calibracao' && (
+            <Badge className="max-w-full whitespace-normal break-words" tone="warning">
+              Item sem calibração (TRI)
+            </Badge>
+          )}
         </div>
       </Card>
 
@@ -88,6 +97,7 @@ export default async function QuestaoPage({
         {altImgs.map((img, i) => (
           <QImage key={i} img={img} />
         ))}
+        <MathFit />
         <Answer key={q.id} id={q.id} alts={alts} status={q.status} initial={initial} teacher={teacher} />
       </div>
 

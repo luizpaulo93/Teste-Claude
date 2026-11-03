@@ -315,3 +315,4 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 .q-rich caption { caption-side: bottom; font-size: 0.85em; color: var(--color-muted); padding-top: 0.4em; }
 .q-rich .katex { font-size: 1.05em; }
 .q-rich .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; padding: 0.1em 0; }
+.q-rich .katex .katex-base.q-wide, .q-rich .katex .base.q-wide { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }

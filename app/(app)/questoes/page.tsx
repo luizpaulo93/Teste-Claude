@@ -49,7 +49,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
               Importar provas
             </Link>
           ) : mine && mine.n > 0 ? (
-            <Badge tone="brand">
+            <Badge className="max-w-full whitespace-normal break-words" tone="brand">
               {mine.n} respondidas · {Math.round((mine.ok / mine.n) * 100)}% de acerto
             </Badge>
           ) : undefined
@@ -91,16 +91,23 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
                           {it.assunto_especifico && <p className="truncate text-xs text-ink-2">{it.assunto_especifico}</p>}
                           <p className="mt-1 line-clamp-2 text-xs text-muted">{plain(it.snippet)}</p>
                           <div className="mt-1.5 flex flex-wrap gap-1">
-                            <Badge>
+                            <Badge className="max-w-full whitespace-normal break-words">
                               Q{it.numero} · {[it.exame, it.ano].filter(Boolean).join(' ')} · {it.aplicacao.replace(/^Aplicação\s+/i, '')}
                             </Badge>
-                            {it.habilidade && <Badge>{it.habilidade}</Badge>}
+                            {it.habilidade && <Badge className="max-w-full whitespace-normal break-words">{it.habilidade}</Badge>}
                             {dif && (
-                              <Badge tone={dif === 'dificil' ? 'danger' : dif === 'media' ? 'warning' : 'success'}>
+                              <Badge
+                                className="max-w-full whitespace-normal break-words"
+                                tone={dif === 'dificil' ? 'danger' : dif === 'media' ? 'warning' : 'success'}
+                              >
                                 {DIFFICULTY.find((d) => d.key === dif)!.label}
                               </Badge>
                             )}
-                            {it.status === 'anulada' && <Badge tone="danger">Anulada</Badge>}
+                            {it.status === 'anulada' && (
+                              <Badge className="max-w-full whitespace-normal break-words" tone="danger">
+                                Anulada
+                              </Badge>
+                            )}
                           </div>
                         </div>
                       </Card>

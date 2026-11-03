@@ -10,7 +10,54 @@ const md = new Marked({ gfm: true, breaks: true, async: false });
 
 const DOLLAR = '';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-const tex = (src: string, display: boolean) => katex.renderToString(src, { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
+const tex = (src: string, display: boolean) =>
+  katex.renderToString(breakable(src), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
+
+/**
+ * \mathrm{A + B \rightarrow C} vira \mathrm{A} + \mathrm{B} \rightarrow \mathrm{C}: o KaTeX não quebra linha
+ * dentro de um grupo, então equações químicas longas passariam da tela do celular. Separadas, quebram
+ * nos sinais de + e nas setas, com a mesma aparência.
+ */
+const OPS = /^( \+ |\\(?:long)?rightarrow|\\rightleftharpoons|\\leftrightarrow|\\longleftrightarrow|\\xrightarrow(?:\[[^\]]*\])?\{[^{}]*\}| = )/;
+function breakable(src: string): string {
+  let out = '';
+  let i = 0;
+  while (i < src.length) {
+    const at = src.indexOf('\\mathrm{', i);
+    if (at < 0) break;
+    out += src.slice(i, at);
+    // fim do grupo (chaves balanceadas)
+    let depth = 0;
+    let j = at + 7;
+    for (; j < src.length; j++) {
+      if (src[j] === '{') depth++;
+      else if (src[j] === '}' && --depth === 0) break;
+    }
+    if (j >= src.length) return out + src.slice(at);
+    const body = src.slice(at + 8, j);
+    const parts: string[] = [];
+    let cur = '';
+    let d = 0;
+    for (let k = 0; k < body.length; ) {
+      const ch = body[k];
+      if (ch === '{') d++;
+      if (ch === '}') d--;
+      const m = d === 0 ? body.slice(k).match(OPS) : null;
+      if (m) {
+        parts.push(cur, m[1]);
+        cur = '';
+        k += m[1].length;
+        continue;
+      }
+      cur += ch;
+      k++;
+    }
+    parts.push(cur);
+    out += parts.length > 1 ? parts.map((p, n) => (n % 2 ? p : p.trim() ? `\\mathrm{${p.trim()}}` : '')).join(' ') : src.slice(at, j + 1);
+    i = j + 1;
+  }
+  return out + src.slice(i);
+}
 
 export function rich(src: string | null | undefined, inline = false): string {
   let s = String(src ?? '');
