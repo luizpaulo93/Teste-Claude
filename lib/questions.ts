@@ -1,6 +1,6 @@
 import 'server-only';
 import { sql } from '@/lib/db';
-import { splitBands } from '@/lib/split-alts';
+import { splitBands, splitTall } from '@/lib/split-alts';
 import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
 import { DIFFICULTY, fileName, imagesOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
@@ -157,6 +157,7 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
   // questões que saíram da prova numa reimportação
   await sql.exec(`delete from questions where paper_id = $1 and not (id = any($2::text[]))`, [id, rows.map((r) => r.id)]);
   await splitAlternatives(id).catch(() => 0);
+  await splitTallImages(id).catch(() => 0);
   await dropUnused(before);
   return { id, questions: rows.length, images: imgs.length, missing };
 }
@@ -207,6 +208,7 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     ]);
   }
   await splitAlternatives(paperId).catch(() => 0);
+  await splitTallImages(paperId).catch(() => 0);
   await refreshPaperCounts(paperId);
   await dropUnused(replaced);
   return n;
@@ -261,6 +263,64 @@ export async function splitAlternatives(paperId: string) {
   return done;
 }
 
+/**
+ * Imagens do enunciado muito altas: cortadas em partes (nas faixas em branco) para não deixar espaço vazio nas
+ * colunas do PDF. A original fica guardada (marcada como dividida) e as partes vêm logo depois dela.
+ */
+export async function splitTallImages(paperId: string) {
+  const COL_MM = 88; // largura da coluna no PDF
+  const MAX_MM = 90; // acima disso, quebra
+  const PIECE_MM = 60; // altura de cada parte
+  const rows = await sql.query<{ id: string; blocos: QBloco[] }>(`select id, blocos from questions where paper_id = $1`, [paperId]);
+  let done = 0;
+  for (const q of rows) {
+    if (q.blocos.some((b) => b.tipo === 'imagem' && (b.dividida || b.parte))) continue;
+    let changed = false;
+    const next: QBloco[] = [];
+    for (const b of q.blocos) {
+      next.push(b);
+      if (b.tipo !== 'imagem' || !b.url) continue;
+      const r = await fetch(b.url).catch(() => null);
+      if (!r?.ok) continue;
+      const buf = Buffer.from(await r.arrayBuffer());
+      const meta = await (
+        await import('sharp')
+      )
+        .default(buf)
+        .metadata()
+        .catch(() => null);
+      if (!meta?.width || !meta.height) continue;
+      // largura com que aparece na coluna (mm) e a altura que ficaria
+      const shownW = Math.min(COL_MM, (b.largura || meta.width) * 0.75 * 0.2646);
+      const shownH = (shownW * meta.height) / meta.width;
+      if (shownH <= MAX_MM) continue;
+      const parts = await splitTall(buf, Math.round((PIECE_MM * meta.width) / shownW)).catch(() => null);
+      if (!parts || parts.length < 2) continue;
+      const base = fileName(b.arquivo).replace(/\.\w+$/, '');
+      next[next.length - 1] = { ...b, dividida: true };
+      for (const [k, part] of parts.entries()) {
+        const key = `questoes/${paperId}/partes/${base}__parte-${k + 1}.webp`;
+        await putObject('media', key, new Uint8Array(part.data), 'image/webp');
+        const largura = b.largura || meta.width;
+        next.push({
+          tipo: 'imagem',
+          arquivo: `partes/${base}__parte-${k + 1}.webp`,
+          url: `${publicUrlFor(key)}?v=${Date.now().toString(36)}`,
+          largura,
+          altura: Math.round((largura * part.h) / part.w),
+          alt: b.alt ? `${b.alt} (parte ${k + 1})` : null,
+          parte: true,
+        });
+      }
+      changed = true;
+    }
+    if (!changed) continue;
+    await sql.exec(`update questions set blocos = $2, updated_at = now() where id = $1`, [q.id, JSON.stringify(next)]);
+    done++;
+  }
+  return done;
+}
+
 /** Apaga do armazenamento as imagens antigas que nenhuma questão usa mais (sem lixo nem conflito). */
 async function dropUnused(urls: string[]) {
   const base = publicUrlFor('');
@@ -279,7 +339,7 @@ async function dropUnused(urls: string[]) {
 export async function refreshPaperCounts(paperId: string) {
   const { have, want } = await knownImages([paperId]);
   // os pedaços recortados das alternativas não contam (são da mesma imagem original)
-  const ok = Object.keys(have[paperId] ?? {}).filter((n) => !n.includes('__alt-')).length;
+  const ok = Object.keys(have[paperId] ?? {}).filter((n) => !n.includes('__alt-') && !n.includes('__parte-')).length;
   const miss = (want[paperId] ?? []).length;
   await sql.exec(`update exam_papers set images = $2, missing_images = $3, updated_at = now() where id = $1`, [paperId, ok + miss, miss]);
 }

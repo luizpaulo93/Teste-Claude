@@ -14,7 +14,7 @@ export default async function ListasPage() {
   await requireAdmin();
   const [lists, templates, sims, { options }] = await Promise.all([
     sql.query<QList & { valid: number }>(
-      `select l.*, (select count(*)::int from questions q where q.id = any(l.question_ids)) as valid from question_lists l order by l.updated_at desc`,
+      `select l.*, (select count(*)::int from questions q where q.id = any(l.question_ids)) as valid from question_lists l where l.owner_id is null order by l.updated_at desc`,
     ),
     allTemplates(),
     sql.query<{ id: string; title: string; list_id: string; is_published: boolean }>(

@@ -40,6 +40,8 @@ export interface QList {
   mode: 'lista' | 'teste';
   audience: string[];
   lesson_ids: string[];
+  /** lista montada pelo próprio aluno (só ele vê) */
+  owner_id?: string | null;
   updated_at: string;
 }
 
@@ -62,18 +64,28 @@ export async function questionsOf(list: Pick<QList, 'question_ids'>) {
 /** Aluno vê a lista se ela foi mandada para ele (turma, mentoria, nome) ou está numa aula. Admin vê todas. */
 export async function canSeeList(viewer: Viewer, list: QList) {
   if (viewer.isAdmin) return true;
+  if (list.owner_id) return list.owner_id === viewer.userId;
   for (const t of list.audience) if (await audienceMatch(viewer, t)) return true;
   if (list.lesson_ids.length && viewer.isMember) return true;
   return false;
 }
 
 export async function listsForViewer(viewer: Viewer) {
-  const all = await sql.query<QList>(`select * from question_lists where cardinality(audience) > 0 order by updated_at desc limit 300`);
+  const all = await sql.query<QList>(`select * from question_lists where owner_id is null and cardinality(audience) > 0 order by updated_at desc limit 300`);
   const ok = await Promise.all(
     all.map(async (l) => (viewer.isAdmin ? true : (await Promise.all(l.audience.map((t) => audienceMatch(viewer, t)))).some(Boolean))),
   );
   return all.filter((_, i) => ok[i]);
 }
+
+/** Listas que o aluno montou (aleatória ou escolhendo), com quantas ele já respondeu. */
+export const myLists = (userId: string) =>
+  sql.query<QList & { answered: number; right: number }>(
+    `select l.*, (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1) as answered,
+            (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1 and r.correct) as "right"
+       from question_lists l where l.owner_id = $1 order by l.created_at desc limit 200`,
+    [userId],
+  );
 
 export const listsOfLesson = (lessonId: string) =>
   sql.query<Pick<QList, 'id' | 'title' | 'question_ids' | 'mode'>>(
@@ -208,4 +220,37 @@ export async function deleteQuestions(ids: string[]) {
     [papers.map((p) => p.paper_id)],
   );
   return r.length;
+}
+
+// ---------------------------------------------------------------- lista aleatória do aluno
+export interface RandomFilters {
+  area?: string[];
+  disciplina?: string[];
+  assunto?: string[];
+  habilidade?: string[];
+  dificuldade?: ('facil' | 'media' | 'dificil')[];
+}
+
+/** Sorteia questões que batem com os filtros (vários valores por campo), já misturadas. Anuladas ficam de fora. */
+export async function randomIds(f: RandomFilters, count: number) {
+  const conds = [`q.status <> 'anulada'`];
+  const args: unknown[] = [];
+  const any = (col: string, v?: string[]) => {
+    if (!v?.length) return;
+    args.push(v);
+    conds.push(`${col} = any($${args.length}::text[])`);
+  };
+  any('q.area', f.area);
+  any('q.disciplina', f.disciplina);
+  any('q.assunto_geral', f.assunto);
+  any('q.habilidade', f.habilidade);
+  if (f.dificuldade?.length) {
+    const ors = f.dificuldade.map((d) => (d === 'facil' ? 'q.param_b < 0.8' : d === 'media' ? '(q.param_b >= 0.8 and q.param_b < 1.6)' : 'q.param_b >= 1.6'));
+    conds.push(`(${ors.join(' or ')})`);
+  }
+  const rows = await sql.query<{ id: string }>(
+    `select q.id from questions q where ${conds.join(' and ')} order by random() limit ${Math.max(1, Math.min(100, Math.round(count) || 20))}`,
+    args,
+  );
+  return rows.map((r) => r.id);
 }

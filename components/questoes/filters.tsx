@@ -1,14 +1,10 @@
 'use client';
 
-import { Check, ChevronDown, Download, Filter, Search, X } from 'lucide-react';
+import { Check, ChevronDown, Filter, Search, X } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
-import { usePdfOwner } from '@/components/pdf-owner';
-import { toast } from '@/components/toast';
 import { Button, Field, Input, Select } from '@/components/ui';
-import { Modal, Spinner } from '@/components/ui-client';
-import { fetchFile, saveBlob } from '@/lib/download';
-import { stampedPdfUrl } from '@/lib/pdf-stamp';
+import { Modal } from '@/components/ui-client';
 import { DIFFICULTY } from '@/lib/question-types';
 import { cn } from '@/lib/utils';
 
@@ -35,9 +31,6 @@ export interface FilterRowView {
   paper_id: string;
 }
 
-/** Máximo de questões num PDF do filtro (acima disso, filtre mais). */
-export const PDF_LIMIT = 200;
-
 const LABELS: Record<keyof FilterState, string> = {
   disciplina: 'Disciplina',
   assunto: 'Assunto',
@@ -62,7 +55,7 @@ export function toQuery(f: FilterState) {
 }
 
 /** Campo de várias escolhas: abre a lista com caixas de marcar (com busca nas listas longas). */
-function MultiField({
+export function MultiField({
   label,
   options,
   value,
@@ -134,29 +127,6 @@ function MultiField({
         </div>
       )}
     </div>
-  );
-}
-
-/** Baixa todas as questões do filtro num PDF, com gabarito e resolução no fim. */
-function FilterPdf({ value, total }: { value: FilterState; total: number }) {
-  const owner = usePdfOwner();
-  const [busy, setBusy] = useState(false);
-  async function go() {
-    if (total > PDF_LIMIT) return toast.error(`São ${total} questões. Filtre até ${PDF_LIMIT} para baixar o PDF.`);
-    setBusy(true);
-    toast('Gerando o PDF…');
-    try {
-      const blob = await fetchFile(`/api/questoes/pdf?${toQuery(value)}`, 'pdf');
-      saveBlob(await stampedPdfUrl(URL.createObjectURL(blob), owner), 'Questões.pdf');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Não foi possível gerar o PDF agora.');
-    }
-    setBusy(false);
-  }
-  return (
-    <Button variant="secondary" size="sm" onClick={go} disabled={busy || !total}>
-      {busy ? <Spinner /> : <Download className="size-4" />} Baixar PDF
-    </Button>
   );
 }
 
@@ -237,7 +207,6 @@ export function QuestionFilters({
         >
           <Filter className="size-4" /> Filtros{chips.length ? ` (${chips.length})` : ''}
         </Button>
-        {total > 2 && <FilterPdf value={value} total={total} />}
         <span className="text-xs text-muted">
           {total} {total === 1 ? 'questão' : 'questões'}
         </span>

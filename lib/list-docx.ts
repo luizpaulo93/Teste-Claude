@@ -195,7 +195,7 @@ async function questionBlocks(q: ListQuestion, n: number) {
     } else if (b.tipo === 'equacao') {
       const m = omml(b.latex, true);
       out.push(new Paragraph({ alignment: AlignmentType.CENTER, spacing: { before: 60, after: 60 }, children: m ? [m] : [new TextRun(b.latex)] }));
-    } else if (b.tipo === 'imagem') {
+    } else if (b.tipo === 'imagem' && !b.dividida) {
       const p = await imagePara(b);
       if (p) out.push(p);
     } else if (b.tipo === 'tabela') {

@@ -16,7 +16,7 @@ export function QuestionBody({ blocos }: { blocos: QBloco[] }) {
           return <Html key={i} html={rich(b.conteudo)} />;
         }
         if (b.tipo === 'equacao') return <Html key={i} html={richTex(b.latex)} className="overflow-x-auto text-center" />;
-        if (b.tipo === 'imagem') return <QImage key={i} img={b} />;
+        if (b.tipo === 'imagem') return b.dividida ? null : <QImage key={i} img={b} className={b.parte ? 'my-0 rounded-none p-0' : undefined} />;
         if (b.tipo === 'tabela')
           return (
             <div key={i} className="overflow-x-auto">

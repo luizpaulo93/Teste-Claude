@@ -3,6 +3,7 @@ import { altImagesToShow, blankAlternatives, difficultyOf, type QImg } from '@/l
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import type { Question } from '@/lib/questions';
 import { pdfFontsCss } from '@/lib/pdf-fonts';
+import { bigHeader, SMALL_HEADER_MM, VERTICE_CSS } from '@/lib/vertice-brand';
 import { rich, richTex } from '@/lib/rich';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -58,12 +59,12 @@ export function source(q: ListQuestion) {
   return [q.exame || q.banca, q.ano ?? q.paper_ano].filter(Boolean).join(' ');
 }
 
-export function questionHtml(q: ListQuestion, n: number) {
+export function questionHtml(q: ListQuestion, n: number, hideMeta = false) {
   const parts: string[] = [];
   for (const b of q.blocos) {
     if (b.tipo === 'texto') parts.push(`<div class="t ${b.estilo ?? 'corpo'}">${rich(b.conteudo)}</div>`);
     else if (b.tipo === 'equacao') parts.push(`<div class="eq">${richTex(b.latex)}</div>`);
-    else if (b.tipo === 'imagem') parts.push(`<div class="fig">${img(b)}</div>`);
+    else if (b.tipo === 'imagem' && !b.dividida) parts.push(`<div class="fig${b.parte ? ' part' : ''}">${img(b)}</div>`);
     else if (b.tipo === 'tabela') {
       const head = b.cabecalho.length ? `<thead><tr>${b.cabecalho.map((c) => `<th>${rich(c, true)}</th>`).join('')}</tr></thead>` : '';
       const body = b.linhas.map((r) => `<tr>${r.map((c) => `<td>${rich(c, true)}</td>`).join('')}</tr>`).join('');
@@ -79,43 +80,86 @@ export function questionHtml(q: ListQuestion, n: number) {
     )
     .join('');
   // letras desenhadas na imagem (sem recorte): não repete "A) B) C)…" vazias embaixo
-  const list = ia.length && blankAlternatives(q) ? '' : `<ol class="alts">${alts}</ol>`;
+  // tamanho visível do texto: fórmulas contam pelos caracteres que aparecem (sem os comandos do LaTeX)
+  const plainLen = (t: string) =>
+    t
+      .replace(/\$([^$]*)\$/g, (_, m: string) => m.replace(/\\[a-zA-Z]+/g, '').replace(/[{}_^\\,;!]/g, ''))
+      .replace(/[*_]/g, '')
+      .trim().length;
+  // alternativas curtas lado a lado: 5, 3 ou 2 por linha conforme o tamanho
+  const longest = Math.max(0, ...q.alternativas.map((a) => (a.imagem ? 99 : plainLen(a.texto ?? ''))));
+  const cols = !q.alternativas.length ? 0 : longest <= 7 ? 5 : longest <= 16 ? 3 : longest <= 28 ? 2 : 0;
+  const list = ia.length && blankAlternatives(q) ? '' : `<ol class="alts${cols ? ` row c${cols}` : ''}">${alts}</ol>`;
   const st = stars(q);
-  const meta = `${metaParts(q).map(esc).join(' · ')}${st ? `<span class="stars" title="dificuldade">${STAR.repeat(st)}</span>` : ''}`;
-  return `<section class="q"><h3>QUESTÃO ${String(n).padStart(2, '0')}${meta ? ` <span class="meta">${meta}</span>` : ''}</h3>${parts.join('')}${list}</section>`;
+  // PDF do aluno: só as questões (sem ano nem dificuldade)
+  const meta = hideMeta ? '' : `${metaParts(q).map(esc).join(' · ')}${st ? `<span class="stars" title="dificuldade">${STAR.repeat(st)}</span>` : ''}`;
+  return `<section class="q"><h3><span class="lab">QUESTÃO ${String(n).padStart(2, '0')}</span>${meta ? ` <span class="meta">${meta}</span>` : ''}</h3>${parts.join('')}${list}</section>`;
 }
 
 /** HTML da lista para virar PDF: coluna dupla, margem estreita, Arial 10, fórmulas e imagens no lugar. */
-export function listHtml(title: string, qs: ListQuestion[], t: ListTemplate | null, opts: { answers?: boolean; resolutions?: boolean } = {}) {
+export interface StudentMark {
+  name: string;
+  cpf: string;
+  email: string;
+}
+
+const cpfMask = (c: string) => {
+  const d = c.replace(/\D/g, '');
+  return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : c;
+};
+
+export function listHtml(
+  title: string,
+  qs: ListQuestion[],
+  t: ListTemplate | null,
+  opts: {
+    answers?: boolean;
+    resolutions?: boolean;
+    /** só o gabarito e as resoluções (sem as questões) */
+    onlyResolutions?: boolean;
+    /** PDF do aluno: sem banca/ano/dificuldade nas questões */
+    hideMeta?: boolean;
+    /** nome completo, CPF e e-mail do aluno + aviso de direitos autorais na 1ª página */
+    student?: StudentMark | null;
+    /** padrão Vértice: faixa grande na 1ª página (disciplinas, nome, nº de questões), faixa menor nas seguintes */
+    vertice?: boolean;
+  } = {},
+) {
   const footer = footerHeightMm(t);
   // cabeçalhos: 1ª página e demais (carimbados depois no PDF); "todas" = o mesmo nas duas
-  const { first, rest } = headersOf(t);
-  const stampFirst = Boolean(t?.header_all && first);
-  const topFirst = stampFirst ? headerSpaceMm(first) : PAGE.marginMm;
-  const topRest = headerSpaceMm(rest);
+  const { first, rest } = headersOf(opts.vertice ? null : t);
+  const stampFirst = Boolean(!opts.vertice && t?.header_all && first);
+  const topFirst = opts.vertice ? 10 : stampFirst ? headerSpaceMm(first) : PAGE.marginMm;
+  const topRest = opts.vertice ? HEADER_TOP_MM + SMALL_HEADER_MM + 3 : headerSpaceMm(rest);
+  const bottom = opts.vertice ? 16 : PAGE.marginMm + footer;
   // logo abaixo do cabeçalho: disciplinas e, ao lado de cada uma, os assuntos
   const subj = subjectsOf(qs);
   const subjects = subj.length
     ? `<section class="subjects">${subj.map(([d, a]) => `<p><b>${esc(d)}:</b> ${a.map(esc).join(', ')}</p>`).join('')}</section>`
     : '';
-  const key = opts.answers
-    ? `<section class="key"><h2>Gabarito</h2><div class="grid">${qs
-        .map((q, i) => `<span><b>${i + 1}.</b> ${q.status === 'anulada' ? 'Anulada' : esc(q.gabarito || '–')}</span>`)
-        .join('')}</div></section>${
-        opts.resolutions
-          ? `<section class="res"><h2>Resolução</h2>${qs
-              .map(
-                (q, i) =>
-                  `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3>${q.resolucao ? `<div class="t">${rich(q.resolucao)}</div>` : '<div class="t">Sem resolução.</div>'}</div>`,
-              )
-              .join('')}</section>`
-          : ''
-      }`
+  const owner = opts.student
+    ? `<section class="owner"><p><b>Aluno(a):</b> ${esc(opts.student.name)}${opts.student.cpf ? ` · <b>CPF:</b> ${esc(cpfMask(opts.student.cpf))}` : ''} · <b>E-mail:</b> ${esc(opts.student.email)}</p>
+<p class="copy">© Curso Vértice. Material de uso pessoal e intransferível do(a) aluno(a) identificado(a) acima. É proibida a reprodução, cópia, distribuição ou compartilhamento, total ou parcial, por qualquer meio, sem autorização (Lei nº 9.610/1998 – Lei de Direitos Autorais).</p></section>`
     : '';
+  const key =
+    opts.answers || opts.onlyResolutions
+      ? `<section class="key"><h2>Gabarito</h2><div class="grid">${qs
+          .map((q, i) => `<span><b>${i + 1}.</b> ${q.status === 'anulada' ? 'Anulada' : esc(q.gabarito || '–')}</span>`)
+          .join('')}</div></section>${
+          opts.resolutions || opts.onlyResolutions
+            ? `<section class="res"><h2>Resolução</h2>${qs
+                .map(
+                  (q, i) =>
+                    `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3>${q.resolucao ? `<div class="t">${rich(q.resolucao)}</div>` : '<div class="t">Sem resolução.</div>'}</div>`,
+                )
+                .join('')}</section>`
+            : ''
+        }`
+      : '';
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(title)}</title>
 <style>${pdfFontsCss()}</style>
 <style>
-@page { size: A4; margin: ${topRest.toFixed(1)}mm ${PAGE.marginMm}mm ${(PAGE.marginMm + footer).toFixed(1)}mm ${PAGE.marginMm}mm; }
+@page { size: A4; margin: ${topRest.toFixed(1)}mm ${PAGE.marginMm}mm ${bottom.toFixed(1)}mm ${PAGE.marginMm}mm; }
 @page :first { margin-top: ${topFirst.toFixed(1)}mm; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: #fff; color: #000; }
@@ -126,10 +170,15 @@ h1.title { font-size: 12pt; margin: 0 0 3mm; text-align: center; }
 .q { margin: 0 0 5mm; }
 .q h3 { font-size: 10pt; margin: 0 0 1.5mm; break-after: avoid; }
 .q h3 span { font-weight: normal; }
+.q h3 .lab { font-weight: bold; }
 .q h3 .meta { font-size: 7pt; color: #444; white-space: nowrap; margin-left: 1.5mm; }
 .q h3 .stars { display: inline-flex; gap: 0.3mm; margin-left: 1.2mm; vertical-align: -0.3mm; color: #111; }
 .subjects { margin: 0 0 4mm; padding: 2mm 3mm; border: 0.5pt solid #999; border-radius: 1.5mm; font-size: 9pt; line-height: 1.45; }
 .subjects p { margin: 0; }
+.owner { margin: -2mm 0 4mm; font-size: 8.5pt; }
+.owner p { margin: 0 0 1mm; }
+.owner .copy { font-size: 7pt; color: #444; text-align: justify; }
+.only-res .key { break-before: auto; }
 .t { margin: 0 0 1.5mm; text-align: justify; }
 .t p { margin: 0 0 1.5mm; }
 .t.titulo { font-weight: bold; text-align: left; }
@@ -137,6 +186,8 @@ h1.title { font-size: 12pt; margin: 0 0 3mm; text-align: center; }
 .eq { text-align: center; margin: 1.5mm 0; break-inside: avoid; }
 .fig { text-align: center; margin: 1.5mm 0; break-inside: avoid; }
 .fig.left { text-align: left; margin: 0.5mm 0 0; }
+/* partes de uma imagem alta: coladas umas nas outras (podem ir para a outra coluna) */
+.fig.part { margin: 0; }
 /* imagem da alternativa: visível, sem ocupar a coluna inteira */
 .fig.alt img { width: auto !important; max-width: 60%; max-height: 30mm; }
 .fig img { max-width: 100%; height: auto; }
@@ -158,10 +209,25 @@ ol.alts .at p { margin: 0; }
 .res h2 { column-span: all; font-size: 11pt; margin: 0 0 3mm; }
 .res .r { margin: 0 0 4mm; }
 .res .r h3 { font-size: 10pt; margin: 0 0 1mm; break-after: avoid; }
-</style></head><body>
-${first && !stampFirst ? `<img class="header" src="${esc(first.url)}" alt="">` : first ? '' : `<h1 class="title">${esc(title)}</h1>`}
-${subjects}
-<main class="cols">${qs.map((q, i) => questionHtml(q, i + 1)).join('\n')}</main>
+${opts.vertice ? VERTICE_CSS : ''}
+</style></head><body class="${[opts.onlyResolutions ? 'only-res' : '', opts.vertice ? 'vertice' : ''].join(' ')}">
+${
+  opts.vertice
+    ? bigHeader(
+        title,
+        subj.map(([d]) => d),
+        qs.length,
+        subj.flatMap(([, a]) => a),
+      )
+    : first && !stampFirst
+      ? `<img class="header" src="${esc(first.url)}" alt="">`
+      : first
+        ? ''
+        : `<h1 class="title">${esc(title)}</h1>`
+}
+${opts.vertice ? '' : subjects}
+${owner}
+${opts.onlyResolutions ? '' : `<main class="cols">${qs.map((q, i) => questionHtml(q, i + 1, opts.hideMeta)).join('\n')}</main>`}
 ${key}
 </body></html>`;
 }

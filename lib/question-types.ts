@@ -5,8 +5,10 @@ export interface QImg {
   largura?: number | null;
   altura?: number | null;
   alt?: string | null;
-  /** imagem com todas as alternativas que já foi recortada (cada pedaço foi para a sua letra) */
+  /** imagem que já foi recortada em pedaços (alternativas em cada letra, ou imagem alta em partes): não aparece */
   dividida?: boolean;
+  /** pedaço de uma imagem alta (vem logo depois da original) */
+  parte?: boolean;
 }
 export type QBloco =
   | { tipo: 'texto'; estilo?: 'corpo' | 'titulo' | 'fonte'; conteudo: string }

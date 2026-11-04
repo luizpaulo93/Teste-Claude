@@ -7,7 +7,8 @@ import { Badge, buttonClass, Card, EmptyState, PageHeader, SectionHeader } from 
 import { sql } from '@/lib/db';
 import { DIFFICULTY, difficultyOf } from '@/lib/question-types';
 import { filterOptions, filterQuery, listQuestions, paperLabel, readFilters } from '@/lib/questions';
-import { listsForViewer } from '@/lib/question-lists';
+import { listsForViewer, myLists as myOwnLists } from '@/lib/question-lists';
+import { ListTypeCards, MyListCard } from '@/components/questoes/my-lists';
 import { requireViewer } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
@@ -29,7 +30,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const f = readFilters(sp);
   const page = Math.max(1, Number(sp.page) || 1);
-  const [{ items, total }, opts, mine, myLists, done] = await Promise.all([
+  const [{ items, total }, opts, mine, myLists, done, own] = await Promise.all([
     listQuestions(f, viewer.userId, page, PER),
     filterOptions(),
     sql.one<{ n: number; ok: number }>(`select count(*)::int as n, count(*) filter (where correct)::int as ok from question_answers where user_id = $1`, [
@@ -37,6 +38,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
     ]),
     viewer.isAdmin ? Promise.resolve([]) : listsForViewer(viewer),
     sql.query<{ list_id: string; n: number }>(`select list_id, count(*)::int as n from list_responses where user_id = $1 group by 1`, [viewer.userId]),
+    myOwnLists(viewer.userId),
   ]);
   const pages = Math.max(1, Math.ceil(total / PER));
   const qs = (extra: Record<string, string> = {}) => filterQuery(f, extra);
@@ -54,6 +56,19 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
           ) : undefined
         }
       />
+
+      {/* montar lista: aleatória ou escolhendo; embaixo, as listas já montadas */}
+      <section className="mb-8 space-y-3">
+        <ListTypeCards />
+        {own.length > 0 && (
+          <div className="space-y-2 pt-2">
+            <SectionHeader title="Minhas listas" />
+            {own.map((l) => (
+              <MyListCard key={l.id} list={{ id: l.id, title: l.title, total: l.question_ids.length, answered: l.answered, right: l.right }} />
+            ))}
+          </div>
+        )}
+      </section>
 
       {myLists.length > 0 && (
         <section className="mb-8">

@@ -2,9 +2,33 @@ import 'server-only';
 import { existsSync } from 'node:fs';
 import type { Browser } from 'puppeteer-core';
 import { footerHeightMm, HEADER_TOP_MM, imgHeightMm, PAGE } from '@/lib/list-html';
+import { pdfFontsCss } from '@/lib/pdf-fonts';
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
+import { footerText, SMALL_HEADER_MM, smallHeaderHtml } from '@/lib/vertice-brand';
 
 const MM = 72 / 25.4;
+
+/** Padrão Vértice: faixa menor no alto das páginas a partir da 2ª; rodapé com os dados do curso e o número da página. */
+async function stampVertice(pdf: Uint8Array, bar: Uint8Array) {
+  const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+  const doc = await PDFDocument.load(pdf);
+  const img = await doc.embedPng(bar);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const w = (PAGE.widthMm - 2 * PAGE.marginMm) * MM;
+  const x = PAGE.marginMm * MM;
+  const gray = rgb(0.45, 0.48, 0.55);
+  for (const [i, page] of doc.getPages().entries()) {
+    const { height } = page.getSize();
+    if (i > 0) page.drawImage(img, { x, y: height - HEADER_TOP_MM * MM - SMALL_HEADER_MM * MM, width: w, height: SMALL_HEADER_MM * MM });
+    const y = 9 * MM;
+    page.drawLine({ start: { x, y: y + 9 }, end: { x: x + w, y: y + 9 }, thickness: 0.4, color: rgb(0.8, 0.82, 0.86) });
+    page.drawText(footerText, { x, y, size: 7, font, color: gray });
+    const num = String(i + 1);
+    page.drawText(num, { x: x + w - bold.widthOfTextAtSize(num, 8), y, size: 8, font: bold, color: rgb(0.1, 0.12, 0.2) });
+  }
+  return new Uint8Array(await doc.save());
+}
 
 /** Põe a imagem do cabeçalho no alto das páginas (a 1ª só se o cabeçalho for o mesmo em todas). */
 async function stampHeaders(pdf: Uint8Array, t: ListTemplate | null) {
@@ -66,7 +90,8 @@ async function asDataUrl(url: string) {
 }
 
 /** Transforma o HTML da lista em PDF (A4). O rodapé (imagem) sai em todas as páginas. */
-export async function htmlToPdf(html: string, t: ListTemplate | null): Promise<Uint8Array> {
+export async function htmlToPdf(html: string, t: ListTemplate | null, vertice?: { title: string }): Promise<Uint8Array> {
+  if (vertice) t = null; // padrão Vértice: cabeçalhos e rodapé próprios
   const footerMm = footerHeightMm(t);
   const footer = footerMm ? await asDataUrl(t!.footer_url) : '';
   const browser = await launch();
@@ -85,6 +110,15 @@ export async function htmlToPdf(html: string, t: ListTemplate | null): Promise<U
         ? `<div style="width:100%;padding:0 ${PAGE.marginMm}mm ${(PAGE.marginMm / 3).toFixed(1)}mm;margin:0;-webkit-print-color-adjust:exact"><img src="${footer}" style="display:block;width:100%;height:auto"></div>`
         : '<span></span>',
     });
+    if (vertice) {
+      // faixa menor das páginas seguintes: desenhada em HTML e fotografada (fica nítida, com as fontes embutidas)
+      const bar = await browser.newPage();
+      await bar.setViewport({ width: 698, height: 53, deviceScaleFactor: 3 });
+      await bar.setContent(smallHeaderHtml(vertice.title, pdfFontsCss()), { waitUntil: 'load' });
+      await bar.evaluate(() => document.fonts.ready);
+      const png = await (await bar.$('.bar'))!.screenshot({ type: 'png' });
+      return await stampVertice(new Uint8Array(pdf), new Uint8Array(png));
+    }
     return await stampHeaders(new Uint8Array(pdf), t);
   } finally {
     await browser.close().catch(() => {});

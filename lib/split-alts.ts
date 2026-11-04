@@ -90,3 +90,56 @@ export async function splitBands(buf: Buffer, n: number): Promise<{ data: Buffer
   }
   return out;
 }
+
+/**
+ * Imagem muito alta (ocuparia boa parte da coluna e deixaria espaço em branco): corta em pedaços de até
+ * `pieceH` pixels, sempre numa faixa em branco (nunca no meio do desenho). Sem faixa em branco: fica inteira.
+ */
+export async function splitTall(buf: Buffer, pieceH: number): Promise<{ data: Buffer; w: number; h: number }[] | null> {
+  const { data, info } = await sharp(buf).flatten({ background: '#ffffff' }).greyscale().raw().toBuffer({ resolveWithObject: true });
+  const W = info.width;
+  const H = info.height;
+  if (H <= pieceH * 1.3) return null;
+  const noise = Math.max(1, Math.round(W * 0.002));
+  const blank = Array.from({ length: H }, (_, y) => {
+    let c = 0;
+    for (let x = 0; x < W; x++) if (data[y * W + x] < 225) c++;
+    return c <= noise;
+  });
+  // meio da faixa em branco (de pelo menos 3 linhas) mais perto do alvo, entre `from` e `to`
+  const gapNear = (from: number, to: number, target: number) => {
+    let best = -1;
+    for (let y = Math.max(1, from); y < Math.min(H - 1, to); y++) {
+      if (!blank[y]) continue;
+      let e = y;
+      while (e < H && blank[e]) e++;
+      if (e - y >= 3) {
+        const mid = Math.round((y + e) / 2);
+        if (best < 0 || Math.abs(mid - target) < Math.abs(best - target)) best = mid;
+      }
+      y = e;
+    }
+    return best;
+  };
+  const cuts: number[] = [];
+  let top = 0;
+  while (H - top > pieceH * 1.3) {
+    const target = top + pieceH;
+    const cut = gapNear(top + Math.round(pieceH * 0.45), Math.min(H, target + Math.round(pieceH * 0.3)), target);
+    if (cut < 0) break;
+    cuts.push(cut);
+    top = cut;
+  }
+  if (!cuts.length) return null;
+  const bounds = [0, ...cuts, H];
+  const out: { data: Buffer; w: number; h: number }[] = [];
+  for (let i = 0; i < bounds.length - 1; i++) {
+    const piece = await sharp(buf)
+      .flatten({ background: '#ffffff' })
+      .extract({ left: 0, top: bounds[i], width: W, height: bounds[i + 1] - bounds[i] })
+      .webp({ quality: 92 })
+      .toBuffer({ resolveWithObject: true });
+    out.push({ data: piece.data, w: piece.info.width, h: piece.info.height });
+  }
+  return out;
+}

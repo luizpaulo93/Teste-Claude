@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { sql } from '@/lib/db';
 import type { ProvaIn } from '@/lib/question-types';
-import { attachImages, knownImages, savePaper, splitAlternatives } from '@/lib/questions';
+import { attachImages, knownImages, savePaper, splitAlternatives, splitTallImages } from '@/lib/questions';
 import { getViewer } from '@/lib/session';
 
 async function admin() {
@@ -58,7 +58,7 @@ export async function organizeAlternatives() {
   await admin();
   const papers = await sql.query<{ id: string }>(`select id from exam_papers`);
   let n = 0;
-  for (const p of papers) n += await splitAlternatives(p.id).catch(() => 0);
+  for (const p of papers) n += (await splitAlternatives(p.id).catch(() => 0)) + (await splitTallImages(p.id).catch(() => 0));
   revalidatePath('/admin/questoes');
   revalidatePath('/questoes', 'layout');
   return { done: n };

@@ -3,7 +3,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Answer, type AltView, type Reveal } from '@/components/questoes/answer';
-import { FinishButton, ListPdfButton, RestartButton } from '@/components/questoes/list-client';
+import { FinishButton, RestartButton } from '@/components/questoes/list-client';
+import { ListReport } from '@/components/questoes/list-report';
+import { ListDownloads } from '@/components/questoes/my-lists';
 import { MathFit } from '@/components/questoes/math-fit';
 import { QImage } from '@/components/questoes/q-image';
 import { QuestionBody } from '@/components/questoes/question-body';
@@ -48,7 +50,7 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
         title={list.title}
         actions={
           <>
-            <ListPdfButton id={list.id} title={list.title} />
+            <ListDownloads id={list.id} title={list.title} />
             {!test && by.size > 0 && <RestartButton id={list.id} />}
           </>
         }
@@ -120,6 +122,19 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
         <div className="mt-8">
           <FinishButton id={list.id} answered={by.size} total={qs.length} />
         </div>
+      )}
+      {/* relatório: na lista, conforme vai respondendo; no teste, depois de finalizar */}
+      {by.size > 0 && (!test || finished) && (
+        <ListReport
+          qs={counted.map((q) => ({
+            n: qs.indexOf(q) + 1,
+            disciplina: q.disciplina,
+            assunto: q.assunto_geral,
+            especifico: q.assunto_especifico,
+            answered: by.has(q.id),
+            correct: Boolean(by.get(q.id)?.correct),
+          }))}
+        />
       )}
     </div>
   );

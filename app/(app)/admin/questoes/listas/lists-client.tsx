@@ -12,16 +12,7 @@ import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 import { AudiencePicker, type AudienceOptions } from '../../ao-vivo/lives-manager';
-import {
-  createSimuladoFromList,
-  deleteList,
-  deleteTemplate,
-  lessonOptions,
-  saveListAudience,
-  saveListLessons,
-  saveTemplate,
-  setDefaultTemplate,
-} from './actions';
+import { createSimuladoFromList, deleteList, deleteTemplate, lessonOptions, saveListAudience, saveListLessons, saveTemplate } from './actions';
 
 export interface ListSummary {
   id: string;
@@ -470,21 +461,6 @@ export function TemplatesManager({ templates }: { templates: ListTemplate[] }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold break-words text-ink">{t.name}</p>
-            {t.is_default ? (
-              <Badge tone="success" className="mt-1">
-                Padrão das apostilas (alunos)
-              </Badge>
-            ) : (
-              <ActionButton
-                action={() => setDefaultTemplate(t.id)}
-                success="Modelo das apostilas definido"
-                variant="ghost"
-                size="sm"
-                className="mt-1 -ml-2 text-xs text-brand"
-              >
-                Usar nas apostilas dos alunos
-              </ActionButton>
-            )}
           </div>
           <button type="button" onClick={() => setEdit(t)} aria-label="Editar modelo" className={buttonClass('ghost', 'icon', 'size-8')}>
             <Pencil className="size-3.5" />

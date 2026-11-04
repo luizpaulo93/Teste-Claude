@@ -2,7 +2,7 @@
 
 import 'katex/dist/katex.min.css';
 import { Check, ChevronDown, Eye, EyeOff, Filter, ListPlus, Plus, Search, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { bankOptions, idsForFilter, previewQuestion, searchBank } from '@/app/(app)/admin/questoes/bank-actions';
 import { toast } from '@/components/toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
@@ -12,6 +12,16 @@ import type { AdminFilters, AdminItem } from '@/lib/question-lists';
 import { cn } from '@/lib/utils';
 
 type Opt = Awaited<ReturnType<typeof bankOptions>>[number];
+
+/** De onde vêm as questões: o admin usa as ações dele (prévia com gabarito); o aluno, as dele (sem gabarito). */
+export interface PickerApi {
+  search: typeof searchBank;
+  ids: typeof idsForFilter;
+  options: typeof bankOptions;
+  preview: (id: string) => Promise<{ html: string; gabarito?: string } | null>;
+}
+const ApiCtx = createContext<PickerApi>({ search: searchBank, ids: idsForFilter, options: bankOptions, preview: previewQuestion });
+export const PickerApiProvider = ApiCtx.Provider;
 
 export const plainText = (s: string) =>
   s
@@ -48,14 +58,15 @@ export function QuestionCard({
   pickLabel?: string;
   actions?: React.ReactNode;
 }) {
-  const [prev, setPrev] = useState<{ html: string; gabarito: string } | null>(null);
+  const api = useContext(ApiCtx);
+  const [prev, setPrev] = useState<{ html: string; gabarito?: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const dif = difficultyOf(item.param_b);
   async function toggle() {
     if (!open && !prev) {
       setBusy(true);
-      setPrev(await previewQuestion(item.id).catch(() => null));
+      setPrev(await api.preview(item.id).catch(() => null));
       setBusy(false);
     }
     setOpen((o) => !o);
@@ -102,7 +113,7 @@ export function QuestionCard({
       {open && prev && (
         <div className="mt-3 space-y-2 border-t border-line pt-3">
           <div className="qprev" dangerouslySetInnerHTML={{ __html: prev.html }} />
-          <p className="text-xs font-bold text-success">Gabarito: {prev.gabarito}</p>
+          {prev.gabarito && <p className="text-xs font-bold text-success">Gabarito: {prev.gabarito}</p>}
         </div>
       )}
     </div>
@@ -124,6 +135,7 @@ export function QuestionPicker({
   onMany: (ids: string[]) => void;
   manyLabel?: string;
 }) {
+  const api = useContext(ApiCtx);
   const [opts, setOpts] = useState<Opt[]>([]);
   const [f, setF] = useState<AdminFilters>({});
   const [draft, setDraft] = useState<AdminFilters>({});
@@ -135,14 +147,16 @@ export function QuestionPicker({
   const [many, setMany] = useState(false);
 
   useEffect(() => {
-    bankOptions()
+    api
+      .options()
       .then(setOpts)
       .catch(() => {});
   }, []);
   useEffect(() => {
     let off = false;
     setBusy(true);
-    searchBank(f, page)
+    api
+      .search(f, page)
       .then((r) => {
         if (off) return;
         setItems((l) => (page === 1 ? r.items : [...l, ...r.items]));
@@ -190,7 +204,7 @@ export function QuestionPicker({
   async function selectAll() {
     setMany(true);
     try {
-      onMany(await idsForFilter(f));
+      onMany(await api.ids(f));
     } finally {
       setMany(false);
     }

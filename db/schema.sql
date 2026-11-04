@@ -719,3 +719,9 @@ alter table list_templates add column if not exists header_rest_url text not nul
 alter table list_templates add column if not exists header_rest_w int;
 alter table list_templates add column if not exists header_rest_h int;
 alter table list_templates add column if not exists header_all boolean not null default false;
+
+-- ============================================================================
+-- Versão 20: listas montadas pelo próprio aluno (aleatória ou escolhendo as questões). Só ele vê.
+-- ============================================================================
+alter table question_lists add column if not exists owner_id text;
+create index if not exists qlists_owner_idx on question_lists (owner_id, updated_at desc);

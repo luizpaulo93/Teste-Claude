@@ -14,7 +14,6 @@ const nextConfig: NextConfig = {
   // os arquivos do Chrome (bin/*.br) são lidos em tempo de execução: entram no pacote das rotas que geram PDF
   outputFileTracingIncludes: {
     '/api/listas/[id]/arquivo': FILES_FOR_PDF,
-    '/api/questoes/pdf': FILES_FOR_PDF,
     '/api/listas/diagnostico': FILES_FOR_PDF,
     '/admin/questoes/listas': FILES_FOR_PDF,
     '/admin/questoes/listas/[id]': FILES_FOR_PDF,
