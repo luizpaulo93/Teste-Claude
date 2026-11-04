@@ -144,6 +144,11 @@ export interface Simulado {
   results_released: boolean;
   /** false = simulado sem TRI (só acertos e dados por questão) */
   use_tri: boolean;
+  /** PDF com a resolução (o aluno só vê depois de entregar e de o professor liberar) */
+  resolution_path?: string;
+  resolution_released?: boolean;
+  /** simulado montado a partir de uma lista do banco de questões */
+  list_id?: string | null;
   stats: SimuladoStats | Record<string, never>;
   created_at: string;
 }

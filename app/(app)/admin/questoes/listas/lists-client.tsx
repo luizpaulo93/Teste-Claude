@@ -1,6 +1,6 @@
 'use client';
 
-import { ClipboardCheck, Download, FileText, ImagePlus, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
+import { BookOpenCheck, ClipboardCheck, Download, EyeOff, FileText, ImagePlus, Pencil, Plus, Send, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -12,7 +12,7 @@ import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
 import { AudiencePicker, type AudienceOptions } from '../../ao-vivo/lives-manager';
-import { createSimuladoFromList, deleteList, deleteTemplate, lessonOptions, saveListAudience, saveListLessons, saveTemplate } from './actions';
+import { createSimuladoFromList, deleteList, deleteTemplate, lessonOptions, saveListAudience, saveListLessons, saveTemplate, setListResolution } from './actions';
 
 export interface ListSummary {
   id: string;
@@ -21,6 +21,7 @@ export interface ListSummary {
   mode: 'lista' | 'teste';
   audience: string[];
   lesson_ids: string[];
+  resolution_released?: boolean;
 }
 
 /** Baixar em PDF ou Word (com ou sem gabarito no fim). */
@@ -95,6 +96,7 @@ export function ListCard({
           <div className="mt-1 flex flex-wrap gap-1">
             <Badge>{list.count} questões</Badge>
             <Badge tone={list.mode === 'teste' ? 'warning' : 'neutral'}>{list.mode === 'teste' ? 'Teste' : 'Lista'}</Badge>
+            {list.mode === 'teste' && list.resolution_released && <Badge tone="success">Resolução liberada</Badge>}
             {template && <Badge className="max-w-full whitespace-normal">{template}</Badge>}
             {list.audience.length > 0 && <Badge tone="brand">Enviada a {list.audience.length}</Badge>}
             {list.lesson_ids.length > 0 && <Badge tone="brand">{list.lesson_ids.length} aula(s)</Badge>}
@@ -114,6 +116,18 @@ export function ListCard({
         <Button size="sm" onClick={() => setApply(true)}>
           <Send className="size-4" /> Aplicar
         </Button>
+        {list.mode === 'teste' && (
+          <ActionButton
+            action={() => setListResolution(list.id, !list.resolution_released)}
+            confirm={list.resolution_released ? undefined : 'Liberar a resolução? Quem já finalizou o teste passa a ver a resolução de cada questão e pode baixar o PDF com as resoluções.'}
+            success={list.resolution_released ? 'Resolução escondida' : 'Resolução liberada'}
+            variant={list.resolution_released ? 'ghost' : 'secondary'}
+            size="sm"
+          >
+            {list.resolution_released ? <EyeOff className="size-4" /> : <BookOpenCheck className="size-4" />}{' '}
+            {list.resolution_released ? 'Esconder resolução' : 'Liberar resolução'}
+          </ActionButton>
+        )}
         <span className="ml-auto">
           <ActionButton
             action={() => deleteList(list.id)}

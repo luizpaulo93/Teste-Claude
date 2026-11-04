@@ -205,3 +205,12 @@ async function syncSimulados(listId: string) {
   revalidatePath('/admin/simulados');
   return { updated, locked: sims.length - updated };
 }
+
+/** Liberar (ou esconder) a resolução do teste para quem já finalizou. */
+export async function setListResolution(id: string, released: boolean) {
+  await admin();
+  await sql.exec(`update question_lists set resolution_released = $2, updated_at = now() where id = $1`, [id, Boolean(released)]);
+  revalidatePath('/admin/questoes/listas');
+  revalidatePath(`/listas/${id}`);
+  return {};
+}

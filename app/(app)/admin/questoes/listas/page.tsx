@@ -42,7 +42,7 @@ export default async function ListasPage() {
             {lists.map((l) => (
               <ListCard
                 key={l.id}
-                list={{ id: l.id, title: l.title, count: l.valid, mode: l.mode, audience: l.audience, lesson_ids: l.lesson_ids }}
+                list={{ id: l.id, title: l.title, count: l.valid, mode: l.mode, audience: l.audience, lesson_ids: l.lesson_ids, resolution_released: l.resolution_released }}
                 template={templates.find((t) => t.id === l.template_id)?.name ?? ''}
                 simulados={sims.filter((s) => s.list_id === l.id)}
                 options={options}

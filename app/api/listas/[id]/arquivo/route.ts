@@ -25,6 +25,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // teste mandado pelo professor: resoluções só depois de finalizar
     const done = await sql.one(`select 1 from list_finishes where list_id = $1 and user_id = $2`, [list.id, viewer.userId]);
     if (!done) return NextResponse.json({ error: 'As resoluções ficam disponíveis quando você finalizar o teste.' }, { status: 403 });
+    if (!list.resolution_released) return NextResponse.json({ error: 'O professor ainda não liberou a resolução deste teste.' }, { status: 403 });
   }
   const student = viewer.isAdmin
     ? null

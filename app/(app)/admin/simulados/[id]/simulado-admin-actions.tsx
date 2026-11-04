@@ -1,12 +1,12 @@
 'use client';
 
-import { Calculator, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from 'lucide-react';
+import { BookOpenCheck, Calculator, Eye, EyeOff, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Button } from '@/components/ui';
 import { ActionButton, Modal } from '@/components/ui-client';
 import type { Simulado } from '@/lib/types';
-import { deleteSimulado, hideResults, releaseResults, resetSubmission, setSimuladoPublished } from '../../simulado-actions';
+import { deleteSimulado, hideResults, releaseResults, resetSubmission, setSimuladoPublished, setSimuladoResolution } from '../../simulado-actions';
 import { SimuladoForm } from '../simulado-form';
 
 export function SimuladoAdminActions({ simulado, answerKey }: { simulado: Simulado; answerKey: string }) {
@@ -40,6 +40,23 @@ export function SimuladoAdminActions({ simulado, answerKey }: { simulado: Simula
       {simulado.results_released && (
         <ActionButton action={() => hideResults(simulado.id)} success="Resultados ocultados" size="md" title="Ocultar resultados">
           <EyeOff className="size-4" /> Ocultar notas
+        </ActionButton>
+      )}
+      {(simulado.resolution_path || simulado.list_id || simulado.resolution_released) && (
+        <ActionButton
+          action={() => setSimuladoResolution(simulado.id, !simulado.resolution_released)}
+          confirm={
+            simulado.resolution_released
+              ? undefined
+              : simulado.resolution_path
+                ? 'Liberar a resolução? Quem já entregou a prova passa a ver o PDF da resolução.'
+                : 'Liberar a resolução? A plataforma gera o PDF com as resoluções das questões da lista, e quem já entregou passa a ver.'
+          }
+          success={simulado.resolution_released ? 'Resolução escondida' : 'Resolução liberada'}
+          size="md"
+        >
+          {simulado.resolution_released ? <EyeOff className="size-4" /> : <BookOpenCheck className="size-4" />}{' '}
+          {simulado.resolution_released ? 'Esconder resolução' : 'Liberar resolução'}
         </ActionButton>
       )}
       <ActionButton

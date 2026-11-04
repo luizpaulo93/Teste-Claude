@@ -38,17 +38,18 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
       str(fd, 'pdf_path', 500),
       bool(fd, 'is_published'),
       bool(fd, 'use_tri'),
+      str(fd, 'resolution_path', 500),
     ];
 
     await tx(async (t) => {
       if (id) {
         await t.exec(
-          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, use_tri = $8, updated_at = now() where id = $1`,
+          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, use_tri = $8, resolution_path = $9, updated_at = now() where id = $1`,
           values,
         );
       } else {
         await t.exec(
-          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published, use_tri) values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published, use_tri, resolution_path) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
           values,
         );
       }
@@ -156,6 +157,39 @@ export async function resetSubmission(simuladoId: string, userId: string): Promi
     });
     await recalibrateIfReleased(simuladoId);
     refresh(simuladoId);
+    return { ok: true };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Liberar (ou esconder) a resolução do simulado (com ou sem TRI). O aluno só vê depois de entregar.
+ * Simulado montado de uma lista sem PDF de resolução: a plataforma gera o PDF com as resoluções da lista.
+ */
+export async function setSimuladoResolution(id: string, released: boolean): Promise<ActionResult> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const sim = await sql.one<{ resolution_path: string; list_id: string | null; title: string }>(
+      `select resolution_path, list_id, title from simulados where id = $1`,
+      [id],
+    );
+    if (!sim) return { error: 'Simulado não encontrado.' };
+    if (released && !sim.resolution_path) {
+      if (!sim.list_id) return { error: 'Envie o PDF da resolução em Editar antes de liberar.' };
+      const { getList } = await import('@/lib/question-lists');
+      const { exportList } = await import('@/lib/list-export');
+      const { putObject } = await import('@/lib/storage/server');
+      const list = await getList(sim.list_id);
+      if (!list) return { error: 'A lista deste simulado foi excluída. Envie o PDF da resolução em Editar.' };
+      const pdf = await exportList(list, 'pdf', { answers: true, resolutions: true, onlyResolutions: true, hideMeta: true, student: null });
+      const key = `simulados/resolucao-${id}-${Date.now().toString(36)}.pdf`;
+      await putObject('materials', key, pdf as Uint8Array, 'application/pdf');
+      await sql.exec(`update simulados set resolution_path = $2 where id = $1`, [id, key]);
+    }
+    await sql.exec(`update simulados set resolution_released = $2, updated_at = now() where id = $1`, [id, Boolean(released)]);
+    refresh(id);
     return { ok: true };
   } catch (e) {
     return fail(e);

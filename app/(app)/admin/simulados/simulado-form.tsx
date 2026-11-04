@@ -13,6 +13,7 @@ import { saveAnswerKey, saveSimulado } from '../simulado-actions';
 
 export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?: Simulado; answerKey?: string; onSaved?: () => void }) {
   const [pdf, setPdf] = useState(simulado?.pdf_path ?? '');
+  const [res, setRes] = useState(simulado?.resolution_path ?? '');
   const [count, setCount] = useState(simulado?.question_count ?? 45);
   const [key, setKey] = useState(() => fitKey(answerKey, simulado?.question_count ?? 45));
   // Gabarito acompanha o nº de questões (novas bolhas nascem em A)
@@ -22,6 +23,7 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
     <ActionForm action={saveSimulado} success="Simulado salvo" onSuccess={onSaved} className="space-y-4">
       {simulado && <input type="hidden" name="id" value={simulado.id} />}
       <input type="hidden" name="pdf_path" value={pdf} />
+      <input type="hidden" name="resolution_path" value={res} />
       <Field label="Título">
         <Input name="title" defaultValue={simulado?.title} required maxLength={160} placeholder="Ex.: 1º Simulado ENEM — Matemática" />
       </Field>
@@ -53,6 +55,20 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
           </div>
         ) : (
           <PdfDrop folder="simulados" onUploaded={(r) => setPdf(r.path)} label="Enviar PDF da prova" />
+        )}
+      </div>
+      <div className="space-y-1.5">
+        <span className="text-xs font-semibold text-ink-2">Resolução (PDF, opcional)</span>
+        <p className="text-[11px] text-muted">O aluno só vê depois de entregar a prova e de você tocar em “Liberar resolução”.</p>
+        {res ? (
+          <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-sm">
+            <FileText className="size-4 text-success" /> <span className="flex-1 truncate text-ink">{res.split('/').pop()}</span>
+            <button type="button" onClick={() => setRes('')} className="text-muted hover:text-danger" aria-label="Remover resolução">
+              <X className="size-4" />
+            </button>
+          </div>
+        ) : (
+          <PdfDrop folder="simulados" onUploaded={(r) => setRes(r.path)} label="Enviar PDF da resolução" />
         )}
       </div>
       <input type="hidden" name="answer_key" value={key} />

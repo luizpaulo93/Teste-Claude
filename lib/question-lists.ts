@@ -42,8 +42,14 @@ export interface QList {
   lesson_ids: string[];
   /** lista montada pelo próprio aluno (só ele vê) */
   owner_id?: string | null;
+  /** teste do professor: a resolução só aparece depois que ele liberar */
+  resolution_released?: boolean;
   updated_at: string;
 }
+
+/** Resolução livre? Lista do próprio aluno ou lista comum: sim. Teste do professor: só depois de liberar. */
+export const resolutionOpen = (l: Pick<QList, 'owner_id' | 'mode' | 'resolution_released'>) =>
+  Boolean(l.owner_id) || l.mode === 'lista' || Boolean(l.resolution_released);
 
 export const getList = (id: string) => sql.one<QList>(`select * from question_lists where id = $1`, [id]);
 export const getTemplate = (id: string | null) => (id ? sql.one<ListTemplate>(`select * from list_templates where id = $1`, [id]) : Promise.resolve(null));
@@ -80,8 +86,9 @@ export async function listsForViewer(viewer: Viewer) {
 
 /** Listas que o aluno montou (aleatória ou escolhendo), com quantas ele já respondeu. */
 export const myLists = (userId: string) =>
-  sql.query<QList & { answered: number; right: number }>(
-    `select l.*, (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1) as answered,
+  sql.query<QList & { answered: number; right: number; finished: boolean }>(
+    `select l.*, exists (select 1 from list_finishes f where f.list_id = l.id and f.user_id = $1) as finished,
+            (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1) as answered,
             (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1 and r.correct) as "right"
        from question_lists l where l.owner_id = $1 order by l.created_at desc limit 200`,
     [userId],

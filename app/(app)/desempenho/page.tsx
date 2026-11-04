@@ -37,8 +37,17 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   const admin = viewer.isAdmin;
 
   const [sims, rows, catalog] = await Promise.all([
-    sql.query<{ id: string; title: string; area: EnemArea; question_count: number; stats: SimuladoStats; use_tri: boolean }>(
-      `select id, title, area, question_count, stats, use_tri from simulados where results_released and is_published order by created_at`,
+    sql.query<{
+      id: string;
+      title: string;
+      area: EnemArea;
+      question_count: number;
+      stats: SimuladoStats;
+      use_tri: boolean;
+      list_id: string | null;
+      created_at: string;
+    }>(
+      `select id, title, area, question_count, stats, use_tri, list_id, created_at from simulados where results_released and is_published order by created_at`,
     ),
     sql.query<Row>(
       `select r.simulado_id, r.user_id, r.tri_score, r.correct, r.coherence, r.accuracy,
@@ -51,12 +60,70 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
     getCatalogData(),
   ]);
 
+  // Sem TRI: testes (listas finalizadas) e simulados sem TRI, do mais recente para o mais antigo
+  const tests = admin
+    ? await sql.query<{ id: string; title: string; at: string; n: number; pct: number }>(
+        `select l.id, l.title, max(f.finished_at) as at, count(*)::int as n,
+                coalesce(avg((select count(*) from list_responses r where r.list_id = l.id and r.user_id = f.user_id and r.correct)::float
+                  / nullif((select count(*) from questions q where q.id = any(l.question_ids) and q.status <> 'anulada'), 0)), 0) * 100 as pct
+           from list_finishes f join question_lists l on l.id = f.list_id
+          where l.owner_id is null and l.mode = 'teste'
+          group by l.id order by at desc limit 60`,
+      )
+    : await sql.query<{ id: string; title: string; at: string; ok: number; total: number; mine: boolean }>(
+        `select l.id, l.title, f.finished_at as at, l.owner_id is not null as mine,
+                (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1 and r.correct) as ok,
+                (select count(*)::int from questions q where q.id = any(l.question_ids) and q.status <> 'anulada') as total
+           from list_finishes f join question_lists l on l.id = f.list_id
+          where f.user_id = $1 and l.mode = 'teste'
+          order by f.finished_at desc limit 60`,
+        [viewer.userId],
+      );
+  const semTri: SemTriItem[] = [
+    ...tests.map((x) =>
+      'n' in x
+        ? { key: `l${x.id}`, title: x.title, kind: 'Teste', at: x.at, pct: Math.round(x.pct), detail: `${x.n} finalizaram`, href: `/admin/questoes/listas/${x.id}` }
+        : {
+            key: `l${x.id}`,
+            title: x.title,
+            kind: x.mine ? 'Minha lista' : 'Teste',
+            at: x.at,
+            pct: x.total ? Math.round((x.ok / x.total) * 100) : 0,
+            detail: `${x.ok}/${x.total} acertos`,
+            href: `/listas/${x.id}`,
+          },
+    ),
+    ...sims
+      .filter((x) => x.use_tri === false)
+      .flatMap((x) => {
+        if (admin) {
+          const g = rows.filter((r) => r.simulado_id === x.id);
+          if (!g.length) return [];
+          return [{ key: `s${x.id}`, title: x.title, kind: 'Simulado', at: x.created_at, pct: Math.round(avg(g.map((r) => r.accuracy))), detail: `${g.length} entregas`, href: `/desempenho?s=${x.id}` }];
+        }
+        const r = rows.find((y) => y.simulado_id === x.id && y.user_id === viewer.userId);
+        if (!r) return [];
+        return [
+          {
+            key: `s${x.id}`,
+            title: x.title,
+            kind: 'Simulado',
+            at: x.created_at,
+            pct: Math.round(r.accuracy),
+            detail: `${r.correct}/${x.question_count} acertos`,
+            // simulado montado com questões da plataforma: abre as questões com gabarito e a resposta do aluno
+            href: x.list_id ? `/listas/${x.list_id}?sim=${x.id}` : `/simulados/${x.id}`,
+          },
+        ];
+      }),
+  ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+
   if (!sims.length) {
     return (
-      <>
-        <Header />
-        <EmptyState icon={<BarChart3 className="size-6" />} title="Ainda sem resultados" />
-      </>
+      <div className="mx-auto max-w-6xl space-y-6">
+        <Header subtitle={semTri.length ? (admin ? 'Testes da turma' : 'Seus testes') : undefined} />
+        {semTri.length ? <SemTri items={semTri} admin={admin} /> : <EmptyState icon={<BarChart3 className="size-6" />} title="Ainda sem resultados" />}
+      </div>
     );
   }
 
@@ -208,6 +275,8 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
           <ComboChart points={chart} barName={admin ? 'Média TRI' : 'Sua nota TRI'} lineName="Evolução" />
         </Card>
       )}
+
+      {semTri.length > 0 && <SemTri items={semTri} admin={admin} />}
 
       <div className={cn('grid gap-5', admin && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
         {/* Ranking de alunos */}
@@ -371,5 +440,50 @@ function RankRow({
         <div className="flex items-center gap-3 px-4 py-2.5">{inner}</div>
       )}
     </li>
+  );
+}
+
+interface SemTriItem {
+  key: string;
+  title: string;
+  kind: string;
+  at: string;
+  pct: number;
+  detail: string;
+  href: string;
+}
+
+/** Sem TRI: testes e simulados por acertos. Cada barra é um link (abre as questões com gabarito e a resposta). */
+function SemTri({ items, admin }: { items: SemTriItem[]; admin: boolean }) {
+  return (
+    <Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-2 border-b border-line p-4">
+        <p className="text-sm font-bold text-ink">Sem TRI · testes e simulados</p>
+        <span className="text-xs text-muted">{admin ? 'média de acertos' : 'toque para rever as questões'}</span>
+      </div>
+      <ul className="divide-y divide-line">
+        {items.map((it) => (
+          <li key={it.key}>
+            <Link href={it.href} className="block px-4 py-3 transition hover:bg-surface-2" aria-label={`${it.title}: ${it.pct}% de acerto`}>
+              <span className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{it.title}</span>
+                <span className="shrink-0 text-sm font-extrabold text-ink tabular-nums">{it.pct}%</span>
+              </span>
+              <span className="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-surface-3">
+                <span
+                  className={cn('block h-full rounded-full', it.pct >= 70 ? 'bg-success' : it.pct >= 40 ? 'bg-warning' : 'bg-danger')}
+                  style={{ width: `${Math.max(3, it.pct)}%` }}
+                />
+              </span>
+              <span className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-muted">
+                <span className="font-semibold text-brand">{it.kind}</span>
+                <span>{it.detail}</span>
+                <span>{new Date(it.at).toLocaleDateString('pt-BR', { timeZone: 'America/Belem' })}</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

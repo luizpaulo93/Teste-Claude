@@ -65,7 +65,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
           <div className="space-y-2 pt-2">
             <SectionHeader title="Minhas listas" />
             {own.map((l) => (
-              <MyListCard key={l.id} list={{ id: l.id, title: l.title, total: l.question_ids.length, answered: l.answered, right: l.right }} />
+              <MyListCard key={l.id} list={{ id: l.id, title: l.title, total: l.question_ids.length, answered: l.answered, right: l.right, finished: l.finished }} />
             ))}
           </div>
         )}

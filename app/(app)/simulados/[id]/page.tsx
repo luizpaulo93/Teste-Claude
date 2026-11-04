@@ -8,6 +8,7 @@ import { createDownloadUrl } from '@/lib/storage/server';
 import { sql } from '@/lib/db';
 import type { Simulado, SimuladoResult, SimuladoStats, SimuladoSubmission } from '@/lib/types';
 import { ExamRunner } from './exam-runner';
+import { ResolutionCard } from './resolution-card';
 import { ResultView } from './result-view';
 import { StartCard } from './start-card';
 
@@ -30,6 +31,13 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
     pdfUrl = await createDownloadUrl(simulado.pdf_path, 60 * 60 * 6);
   }
 
+  // resolução: só depois de entregar e de o professor liberar
+  const delivered = Boolean(submission && submission.status !== 'in_progress');
+  const resUrl =
+    simulado.resolution_path && simulado.resolution_released && (delivered || viewer.isAdmin)
+      ? await createDownloadUrl(simulado.resolution_path, 60 * 60 * 6)
+      : '';
+
   const owner = viewer.pdfOwner;
   let body: React.ReactNode;
   if (result && simulado.results_released) {
@@ -45,6 +53,7 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
       <Link href="/simulados" className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
         <ChevronLeft className="size-4" /> Simulados
       </Link>
+      {resUrl && <ResolutionCard url={resUrl} owner={owner} listHref={simulado.list_id && delivered && simulado.results_released ? `/listas/${simulado.list_id}?sim=${simulado.id}` : ''} />}
       {body}
     </>
   );

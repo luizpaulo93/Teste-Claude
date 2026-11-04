@@ -64,7 +64,7 @@ export async function saveMyList(input: { id?: string; title: string; ids: strin
   }
   const id = input.id || newId();
   await sql.exec(
-    `insert into question_lists (id, title, question_ids, mode, owner_id, created_by) values ($1, $2, $3, 'lista', $4, $4)
+    `insert into question_lists (id, title, question_ids, mode, owner_id, created_by) values ($1, $2, $3, 'teste', $4, $4)
      on conflict (id) do update set title = excluded.title, question_ids = excluded.question_ids, updated_at = now()`,
     [id, title, ids, v.userId],
   );
@@ -105,7 +105,7 @@ export async function createRandomList(input: {
   const ids = await randomIds(randomFilters(input), Number(input.count) || 20);
   if (!ids.length) return { error: 'Nenhuma questão com esses filtros.' };
   const id = newId();
-  await sql.exec(`insert into question_lists (id, title, question_ids, mode, owner_id, created_by) values ($1, $2, $3, 'lista', $4, $4)`, [
+  await sql.exec(`insert into question_lists (id, title, question_ids, mode, owner_id, created_by) values ($1, $2, $3, 'teste', $4, $4)`, [
     id,
     title,
     ids,

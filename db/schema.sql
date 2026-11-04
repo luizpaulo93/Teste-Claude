@@ -725,3 +725,13 @@ alter table list_templates add column if not exists header_all boolean not null 
 -- ============================================================================
 alter table question_lists add column if not exists owner_id text;
 create index if not exists qlists_owner_idx on question_lists (owner_id, updated_at desc);
+
+-- ============================================================================
+-- Versão 21: resolução liberada pelo professor (testes e simulados, com ou sem TRI):
+-- o aluno só vê depois de finalizar e depois que o professor liberar.
+-- As listas do próprio aluno passam a ser corrigidas no fim (botão Finalizar).
+-- ============================================================================
+alter table question_lists add column if not exists resolution_released boolean not null default false;
+alter table simulados add column if not exists resolution_path text not null default '';
+alter table simulados add column if not exists resolution_released boolean not null default false;
+update question_lists set mode = 'teste' where owner_id is not null and mode = 'lista';

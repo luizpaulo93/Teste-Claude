@@ -3,7 +3,8 @@
 import { CheckCircle2, Download, Flag, RotateCcw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-import { finishList, restartList } from '@/app/(app)/questoes/list-actions';
+import { restartList } from '@/app/(app)/questoes/list-actions';
+import { askFinish } from './list-nav';
 import { usePdfOwner } from '@/components/pdf-owner';
 import { toast } from '@/components/toast';
 import { Button } from '@/components/ui';
@@ -35,22 +36,11 @@ export function ListPdfButton({ id, title }: { id: string; title: string }) {
   );
 }
 
-export function FinishButton({ id, answered, total }: { id: string; answered: number; total: number }) {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
+/** Botão do fim da página: abre o quadro das questões no aviso de finalizar (mostra as que ficaram em branco). */
+export function FinishButton() {
   return (
-    <Button
-      onClick={async () => {
-        if (answered < total && !confirm(`Você respondeu ${answered} de ${total}. Finalizar mesmo assim?`)) return;
-        setBusy(true);
-        await finishList(id).catch(() => null);
-        setBusy(false);
-        router.refresh();
-      }}
-      disabled={busy}
-      className="w-full"
-    >
-      {busy ? <Spinner /> : <Flag className="size-4" />} Finalizar e ver o resultado
+    <Button onClick={askFinish} className="w-full">
+      <Flag className="size-4" /> Finalizar e ver o resultado
     </Button>
   );
 }

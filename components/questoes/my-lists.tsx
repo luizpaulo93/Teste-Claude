@@ -189,7 +189,8 @@ async function downloadList(id: string, title: string, parte: 'questoes' | 'reso
   saveBlob(await stampedPdfUrl(URL.createObjectURL(blob), owner), safeName(`${title}${suffix}`, 'pdf'));
 }
 
-export function ListDownloads({ id, title, compact }: { id: string; title: string; compact?: boolean }) {
+/** `resolutions`: false esconde as opções com resolução (teste ainda não finalizado ou não liberado). */
+export function ListDownloads({ id, title, compact, resolutions = true }: { id: string; title: string; compact?: boolean; resolutions?: boolean }) {
   const owner = usePdfOwner();
   const [busy, setBusy] = useState('');
   const [open, setOpen] = useState(false);
@@ -215,7 +216,7 @@ export function ListDownloads({ id, title, compact }: { id: string; title: strin
     { key: 'questoes', label: 'PDF da lista', icon: FileText },
     { key: 'resolucoes', label: 'Resoluções', icon: BookOpenCheck },
     { key: 'tudo', label: 'PDF com resoluções', icon: Download },
-  ] as const;
+  ].filter((it) => resolutions || it.key === 'questoes') as { key: 'questoes' | 'resolucoes' | 'tudo'; label: string; icon: typeof Download }[];
   return (
     <div ref={ref} className="relative">
       <Button variant="secondary" size="sm" onClick={() => setOpen((o) => !o)} disabled={Boolean(busy)} aria-expanded={open}>
@@ -245,8 +246,9 @@ export function ListDownloads({ id, title, compact }: { id: string; title: strin
 }
 
 /** Cartão de uma lista do aluno: abre para responder; baixa a lista, as resoluções ou os dois. */
-export function MyListCard({ list }: { list: { id: string; title: string; total: number; answered: number; right: number } }) {
-  const pct = list.answered ? Math.round((list.right / list.answered) * 100) : null;
+export function MyListCard({ list }: { list: { id: string; title: string; total: number; answered: number; right: number; finished?: boolean } }) {
+  // o acerto só aparece depois de finalizar (antes, o aluno ainda está fazendo)
+  const pct = list.finished ? Math.round((list.right / Math.max(1, list.total)) * 100) : null;
   return (
     <Card className="flex flex-wrap items-center gap-3 p-3.5">
       <Link href={`/listas/${list.id}`} className="flex min-w-0 flex-1 items-center gap-3">
@@ -256,7 +258,7 @@ export function MyListCard({ list }: { list: { id: string; title: string; total:
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-bold break-words text-ink">{list.title}</span>
           <span className="block text-xs text-muted">
-            {list.answered} de {list.total} respondidas
+            {list.finished ? 'Finalizada' : `${list.answered} de ${list.total} respondidas`}
             {pct !== null && (
               <span className={cn('font-semibold', pct >= 70 ? 'text-success' : pct >= 50 ? 'text-warning' : 'text-danger')}> · {pct}% de acerto</span>
             )}
