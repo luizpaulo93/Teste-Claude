@@ -43,7 +43,7 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
   return (
     <div className="mx-auto max-w-3xl min-w-0">
       <Link href="/questoes" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
-        <ArrowLeft className="size-4" /> Questões
+        <ArrowLeft className="size-4" /> {viewer.isAdmin ? 'Questões' : 'Exercícios'}
       </Link>
       <PageHeader
         eyebrow={list.mode === 'teste' ? 'Teste' : 'Lista de questões'}

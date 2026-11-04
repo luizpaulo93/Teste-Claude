@@ -45,7 +45,7 @@ export function StudentBuilder() {
     <PickerApiProvider value={API}>
       <div className="pb-28">
         <Link href="/questoes" className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
-          <ArrowLeft className="size-4" /> Questões
+          <ArrowLeft className="size-4" /> Exercícios
         </Link>
         <Input
           value={title}

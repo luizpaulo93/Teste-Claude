@@ -85,7 +85,7 @@ export function AppShell({
     { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow },
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
-    { href: '/questoes', label: 'Questões', icon: FileQuestion, show: isMember },
+    { href: '/questoes', label: isAdmin ? 'Questões' : 'Exercícios', icon: FileQuestion, show: isMember },
     { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
     // Mentor vai direto para a gestão da mentoria (com aviso de dúvidas sem resposta)

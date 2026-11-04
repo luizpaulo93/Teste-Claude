@@ -52,7 +52,7 @@ export default async function QuestaoPage({
     <div className="mx-auto max-w-3xl min-w-0">
       <div className="mb-4 flex items-center justify-between gap-2">
         <Link href={`/questoes${qs}`} className="flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
-          <ArrowLeft className="size-4" /> Questões
+          <ArrowLeft className="size-4" /> {viewer.isAdmin ? 'Questões' : 'Exercícios'}
         </Link>
       </div>
 

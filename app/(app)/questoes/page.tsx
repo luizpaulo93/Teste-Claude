@@ -12,7 +12,7 @@ import { ListTypeCards, MyListCard } from '@/components/questoes/my-lists';
 import { requireViewer } from '@/lib/session';
 import { cn } from '@/lib/utils';
 
-export const metadata: Metadata = { title: 'Questões' };
+export const metadata: Metadata = { title: 'Exercícios' };
 
 const PER = 30;
 // texto do enunciado sem Markdown/LaTeX, só para a prévia da lista
@@ -46,8 +46,8 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
   return (
     <>
       <PageHeader
-        eyebrow="Banco de questões"
-        title="Questões"
+        eyebrow={viewer.isAdmin ? 'Banco de questões' : 'Banco de exercícios'}
+        title={viewer.isAdmin ? 'Questões' : 'Exercícios'}
         actions={
           !viewer.isAdmin && mine && mine.n > 0 ? (
             <Badge className="max-w-full whitespace-normal break-words" tone="brand">
