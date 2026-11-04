@@ -193,7 +193,8 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
     .filter((x) => triSims.has(x.id))
     .map((x) => {
       const group = rows.filter((r) => r.simulado_id === x.id && (!turma || r.class_id === turma));
-      if (admin) return { label: x.title, bar: group.length ? avg(group.map((r) => r.tri_score)) : null };
+      // admin: tocar na barra abre o simulado (mantendo a turma escolhida)
+      if (admin) return { label: x.title, bar: group.length ? avg(group.map((r) => r.tri_score)) : null, href: `/desempenho?s=${x.id}${turma ? `&t=${turma}` : ''}` };
       return { label: x.title, bar: mine.get(x.id)?.tri_score ?? null };
     });
 
@@ -248,8 +249,23 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
     <div className="mx-auto max-w-6xl space-y-6">
       <Header subtitle={admin ? 'Turmas e alunos por simulado' : turma ? `Sua turma: ${className(turma)}` : 'Seus simulados'} />
 
-      {/* Filtros */}
-      <div className="space-y-2">
+      {/* Recorte atual: o simulado abre tocando no gráfico, a turma tocando no ranking de turmas */}
+      {admin && (sim || turma) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted">Mostrando:</span>
+          {sim && (
+            <Chip href={q({ s: 'all' })} active small>
+              {sim.title} ✕
+            </Chip>
+          )}
+          {turma && (
+            <Chip href={q({ t: null })} active small>
+              {className(turma)} ✕
+            </Chip>
+          )}
+        </div>
+      )}
+      {!admin && (
         <div className="rail -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
           <Chip href={q({ s: 'all' })} active={!sim}>
             Todos os simulados
@@ -260,19 +276,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
             </Chip>
           ))}
         </div>
-        {admin && (
-          <div className="rail -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <Chip href={q({ t: null })} active={!turma} small>
-              Todas as turmas
-            </Chip>
-            {catalog.classes.map((c) => (
-              <Chip key={c.id} href={q({ t: c.id })} active={turma === c.id} small>
-                {c.name}
-              </Chip>
-            ))}
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Números */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
