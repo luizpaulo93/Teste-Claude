@@ -64,11 +64,13 @@ export function Answer({
     setBusy(false);
     if ('error' in r && r.error) return toast.error(r.error);
     if ('saved' in r) {
+      window.dispatchEvent(new CustomEvent('qanswer', { detail: { id, correct: null } }));
       setSaved(letter);
       return toast(`Resposta ${letter} guardada`);
     }
     const ok = r as { gabarito?: string; correct?: boolean | null; resolucao?: string };
     setShown({ letter, gabarito: ok.gabarito ?? '', correct: ok.correct ?? null, resolucao: ok.resolucao ?? '' });
+    if (ok.correct !== null && ok.correct !== undefined) window.dispatchEvent(new CustomEvent('qanswer', { detail: { id, correct: ok.correct } }));
   }
 
   return (

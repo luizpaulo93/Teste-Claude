@@ -4,7 +4,7 @@ import { BookOpenCheck, ChevronRight, Download, FileText, ListChecks, Shuffle, T
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { createRandomList, deleteMyList, randomOptions } from '@/app/(app)/questoes/aluno-actions';
+import { countRandom, createRandomList, deleteMyList, randomOptions } from '@/app/(app)/questoes/aluno-actions';
 import { usePdfOwner } from '@/components/pdf-owner';
 import { toast } from '@/components/toast';
 import { Button, Card, Field, Input, Select } from '@/components/ui';
@@ -69,6 +69,25 @@ function RandomModal({ onClose }: { onClose: () => void }) {
   });
   const [count, setCount] = useState('20');
   const [busy, setBusy] = useState(false);
+  const [avail, setAvail] = useState<number | null>(null);
+  // quantas questões existem com os filtros: as opções param no máximo possível (até 45)
+  useEffect(() => {
+    let alive = true;
+    countRandom(f)
+      .then((n) => alive && setAvail(n))
+      .catch(() => alive && setAvail(null));
+    return () => {
+      alive = false;
+    };
+  }, [f]);
+  const counts = useMemo(() => {
+    const max = Math.min(45, avail ?? 45);
+    const base = [5, 10, 15, 20, 30, 45].filter((n) => n < max);
+    return max > 0 ? [...base, max] : [];
+  }, [avail]);
+  useEffect(() => {
+    if (counts.length && !counts.includes(Number(count))) setCount(String(counts.includes(20) ? 20 : counts[counts.length - 1]));
+  }, [counts, count]);
   useEffect(() => {
     randomOptions()
       .then(setRows)
@@ -119,7 +138,7 @@ function RandomModal({ onClose }: { onClose: () => void }) {
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
-          <Button onClick={generate} disabled={busy || !rows}>
+          <Button onClick={generate} disabled={busy || !rows || avail === 0}>
             {busy ? <Spinner /> : <Shuffle className="size-4" />} Gerar lista
           </Button>
         </>
@@ -148,14 +167,16 @@ function RandomModal({ onClose }: { onClose: () => void }) {
           </>
         )}
         <Field label="Quantidade de questões">
-          <Select value={count} onChange={(e) => setCount(e.target.value)} aria-label="Quantidade de questões">
-            {[5, 10, 15, 20, 30, 45, 60, 90].map((n) => (
+          <Select value={count} onChange={(e) => setCount(e.target.value)} aria-label="Quantidade de questões" disabled={!counts.length}>
+            {counts.map((n) => (
               <option key={n} value={n}>
                 {n}
+                {n === counts[counts.length - 1] && avail !== null && avail <= 45 ? ' (todas)' : ''}
               </option>
             ))}
           </Select>
         </Field>
+        {avail === 0 && <p className="text-xs text-danger">Nenhuma questão com esses filtros.</p>}
       </div>
     </Modal>
   );
@@ -201,7 +222,12 @@ export function ListDownloads({ id, title, compact }: { id: string; title: strin
         {busy ? <Spinner /> : <Download className="size-4" />} {compact ? '' : 'Baixar'}
       </Button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-52 rounded-xl border border-line-strong bg-surface p-1 shadow-2xl">
+        <div
+          className={cn(
+            'absolute z-30 mt-1 w-52 rounded-xl border border-line-strong bg-surface p-1 shadow-2xl',
+            (ref.current?.getBoundingClientRect().left ?? 999) < 220 ? 'left-0' : 'right-0',
+          )}
+        >
           {items.map((it) => (
             <button
               key={it.key}

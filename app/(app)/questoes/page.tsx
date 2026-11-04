@@ -31,8 +31,9 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
   const f = readFilters(sp);
   const page = Math.max(1, Number(sp.page) || 1);
   const [{ items, total }, opts, mine, myLists, done, own] = await Promise.all([
-    listQuestions(f, viewer.userId, page, PER),
-    filterOptions(),
+    // o aluno não vê o banco solto (só monta listas); a exceção é o link do cronograma, que abre as do assunto
+    viewer.isAdmin || f.topico ? listQuestions(f, viewer.userId, page, PER) : Promise.resolve({ items: [], total: 0 }),
+    viewer.isAdmin || f.topico ? filterOptions() : Promise.resolve({ papers: [], rows: [] } as unknown as Awaited<ReturnType<typeof filterOptions>>),
     sql.one<{ n: number; ok: number }>(`select count(*)::int as n, count(*) filter (where correct)::int as ok from question_answers where user_id = $1`, [
       viewer.userId,
     ]),
@@ -97,7 +98,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
         </section>
       )}
 
-      {opts.papers.length === 0 ? (
+      {!viewer.isAdmin && !f.topico ? null : opts.papers.length === 0 ? (
         <EmptyState
           icon={<FileQuestion className="size-5" />}
           title="Nenhuma questão ainda"

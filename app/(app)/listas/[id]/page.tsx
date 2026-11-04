@@ -5,6 +5,7 @@ import { notFound } from 'next/navigation';
 import { Answer, type AltView, type Reveal } from '@/components/questoes/answer';
 import { FinishButton, RestartButton } from '@/components/questoes/list-client';
 import { ListReport } from '@/components/questoes/list-report';
+import { ListNav } from '@/components/questoes/list-nav';
 import { ListDownloads } from '@/components/questoes/my-lists';
 import { MathFit } from '@/components/questoes/math-fit';
 import { QImage } from '@/components/questoes/q-image';
@@ -33,7 +34,8 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
     sql.one(`select 1 from list_finishes where list_id = $1 and user_id = $2`, [list.id, viewer.userId]),
   ]);
   const by = new Map(resp.map((r) => [r.question_id, r]));
-  const teacher = viewer.isAdmin;
+  // nas listas todo mundo responde primeiro (inclusive o professor): gabarito e resolução só depois de marcar
+  const teacher = false;
   const test = list.mode === 'teste' && !teacher;
   const finished = Boolean(fin);
   const reveal = (q: (typeof qs)[number]) => !test || finished || teacher;
@@ -48,13 +50,20 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
       <PageHeader
         eyebrow={list.mode === 'teste' ? 'Teste' : 'Lista de questões'}
         title={list.title}
-        actions={
-          <>
-            <ListDownloads id={list.id} title={list.title} />
-            {!test && by.size > 0 && <RestartButton id={list.id} />}
-          </>
-        }
+        actions={!test && by.size > 0 ? <RestartButton id={list.id} /> : undefined}
       />
+      {/* baixar e navegação (voltar, todas as questões, avançar): presa no alto ao rolar */}
+      <div className="sticky top-14 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/95 px-4 py-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
+        <ListDownloads id={list.id} title={list.title} />
+        <span className="flex-1" />
+        <ListNav
+          items={qs.map((q, i) => {
+            const r = by.get(q.id);
+            const showRes = !test || finished;
+            return { n: i + 1, id: q.id, state: !r ? 'nao' : !showRes ? 'respondida' : r.correct ? 'certa' : 'errada' };
+          })}
+        />
+      </div>
       <div className="mb-5 flex flex-wrap gap-1.5">
         <Badge>{qs.length} questões</Badge>
         <Badge tone="brand">
@@ -92,7 +101,7 @@ export default async function ListaAluno({ params }: { params: Promise<{ id: str
               }
             : null;
           return (
-            <section key={q.id} id={`q${i + 1}`} className="scroll-mt-20 space-y-4">
+            <section key={q.id} id={`q${i + 1}`} className="scroll-mt-32 space-y-4 lg:scroll-mt-20">
               <p className="text-xs font-bold tracking-wider text-brand uppercase">
                 Questão {i + 1}
                 {source(q) && <span className="font-semibold text-muted normal-case"> · {source(q)}</span>}

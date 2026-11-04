@@ -151,18 +151,20 @@ function adminWhere(f: AdminFilters) {
 
 const ADMIN_ORDER = 'order by coalesce(q.ano, p.ano) desc nulls last, p.id, q.numero';
 
-export async function adminSearch(f: AdminFilters, page = 1, per = 30) {
+/** `seed`: ordem misturada (estável para a mesma semente, então a paginação não repete questões). */
+export async function adminSearch(f: AdminFilters, page = 1, per = 30, seed?: string) {
   const w = adminWhere(f);
+  const order = seed ? `order by md5(q.id || $${w.args.push(seed)})` : ADMIN_ORDER;
   const base = `from questions q join exam_papers p on p.id = q.paper_id ${w.where}`;
   const [items, total] = await Promise.all([
     sql.query<AdminItem>(
       `select q.id, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral,
               q.assunto_especifico, q.status, q.param_b, p.aplicacao, p.exame,
               left(coalesce((select string_agg(b->>'conteudo', ' ') from jsonb_array_elements(q.blocos) b where b->>'tipo' = 'texto'), ''), 260) as snippet
-         ${base} ${ADMIN_ORDER} limit ${per} offset ${(Math.max(1, page) - 1) * per}`,
+         ${base} ${order} limit ${per} offset ${(Math.max(1, page) - 1) * per}`,
       w.args,
     ),
-    sql.one<{ n: number }>(`select count(*)::int as n ${base}`, w.args),
+    sql.one<{ n: number }>(`select count(*)::int as n ${base}`, seed ? w.args.slice(0, -1) : w.args),
   ]);
   return { items, total: total?.n ?? 0 };
 }
@@ -182,10 +184,11 @@ export async function itemsOf(ids: string[]) {
 }
 
 /** Todos os ids do filtro (para "selecionar todas" e para excluir em lote). */
-export async function adminSearchIds(f: AdminFilters) {
+export async function adminSearchIds(f: AdminFilters, seed?: string) {
   const w = adminWhere(f);
+  const order = seed ? `order by md5(q.id || $${w.args.push(seed)})` : ADMIN_ORDER;
   return (
-    await sql.query<{ id: string }>(`select q.id from questions q join exam_papers p on p.id = q.paper_id ${w.where} ${ADMIN_ORDER} limit 5000`, w.args)
+    await sql.query<{ id: string }>(`select q.id from questions q join exam_papers p on p.id = q.paper_id ${w.where} ${order} limit 5000`, w.args)
   ).map((r) => r.id);
 }
 
@@ -231,8 +234,10 @@ export interface RandomFilters {
   dificuldade?: ('facil' | 'media' | 'dificil')[];
 }
 
-/** Sorteia questões que batem com os filtros (vários valores por campo), já misturadas. Anuladas ficam de fora. */
-export async function randomIds(f: RandomFilters, count: number) {
+/** Máximo de questões numa lista aleatória. */
+export const RANDOM_MAX = 45;
+
+function randomWhere(f: RandomFilters) {
   const conds = [`q.status <> 'anulada'`];
   const args: unknown[] = [];
   const any = (col: string, v?: string[]) => {
@@ -248,9 +253,21 @@ export async function randomIds(f: RandomFilters, count: number) {
     const ors = f.dificuldade.map((d) => (d === 'facil' ? 'q.param_b < 0.8' : d === 'media' ? '(q.param_b >= 0.8 and q.param_b < 1.6)' : 'q.param_b >= 1.6'));
     conds.push(`(${ors.join(' or ')})`);
   }
+  return { where: conds.join(' and '), args };
+}
+
+/** Sorteia questões que batem com os filtros (vários valores por campo), já misturadas. Anuladas ficam de fora. */
+export async function randomIds(f: RandomFilters, count: number) {
+  const w = randomWhere(f);
   const rows = await sql.query<{ id: string }>(
-    `select q.id from questions q where ${conds.join(' and ')} order by random() limit ${Math.max(1, Math.min(100, Math.round(count) || 20))}`,
-    args,
+    `select q.id from questions q where ${w.where} order by random() limit ${Math.max(1, Math.min(RANDOM_MAX, Math.round(count) || 20))}`,
+    w.args,
   );
   return rows.map((r) => r.id);
+}
+
+/** Quantas questões existem com esses filtros (para limitar a quantidade no sorteio). */
+export async function randomCount(f: RandomFilters) {
+  const w = randomWhere(f);
+  return (await sql.one<{ n: number }>(`select count(*)::int as n from questions q where ${w.where}`, w.args))?.n ?? 0;
 }

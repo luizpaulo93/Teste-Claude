@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { newId, sql } from '@/lib/db';
 import { questionHtml } from '@/lib/list-html';
-import { adminFilterOptions, adminSearch, adminSearchIds, getList, itemsOf, randomIds, type AdminFilters } from '@/lib/question-lists';
+import { adminFilterOptions, adminSearch, adminSearchIds, getList, itemsOf, randomCount, randomIds, type AdminFilters } from '@/lib/question-lists';
 import { getViewer } from '@/lib/session';
 
 async function student() {
@@ -22,13 +22,15 @@ const clean = (f: AdminFilters): AdminFilters => {
 const strs = (v: unknown, max = 60) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.length < 300).slice(0, max) : []);
 
 // mesmas buscas do professor, mas a prévia vem sem gabarito
+// para o aluno as questões vêm misturadas (nem por ano nem por banca); a mistura muda a cada dia
+const seedOf = (userId: string) => `${userId}:${new Date().toISOString().slice(0, 10)}`;
 export async function searchStudent(f: AdminFilters, page = 1) {
-  await student();
-  return adminSearch(clean(f), Math.max(1, Math.min(500, Math.round(page) || 1)), 30);
+  const v = await student();
+  return adminSearch(clean(f), Math.max(1, Math.min(500, Math.round(page) || 1)), 30, seedOf(v.userId));
 }
 export async function idsStudent(f: AdminFilters) {
-  await student();
-  return adminSearchIds(clean(f));
+  const v = await student();
+  return adminSearchIds(clean(f), seedOf(v.userId));
 }
 export async function optionsStudent() {
   await student();
@@ -70,6 +72,21 @@ export async function saveMyList(input: { id?: string; title: string; ids: strin
   return { id };
 }
 
+type RandomInput = { area?: string[]; disciplina?: string[]; assunto?: string[]; habilidade?: string[]; dificuldade?: string[] };
+const randomFilters = (input: RandomInput) => ({
+  area: strs(input.area),
+  disciplina: strs(input.disciplina),
+  assunto: strs(input.assunto),
+  habilidade: strs(input.habilidade),
+  dificuldade: strs(input.dificuldade).filter((d): d is 'facil' | 'media' | 'dificil' => ['facil', 'media', 'dificil'].includes(d)),
+});
+
+/** Quantas questões o sorteio tem com esses filtros. */
+export async function countRandom(input: RandomInput) {
+  await student();
+  return randomCount(randomFilters(input));
+}
+
 /** Lista aleatória: sorteia e mistura as questões com os filtros escolhidos pelo aluno. */
 export async function createRandomList(input: {
   title: string;
@@ -85,11 +102,7 @@ export async function createRandomList(input: {
     .trim()
     .slice(0, 120);
   if (!title) return { error: 'Dê um nome para a lista.' };
-  const dif = strs(input.dificuldade).filter((d): d is 'facil' | 'media' | 'dificil' => ['facil', 'media', 'dificil'].includes(d));
-  const ids = await randomIds(
-    { area: strs(input.area), disciplina: strs(input.disciplina), assunto: strs(input.assunto), habilidade: strs(input.habilidade), dificuldade: dif },
-    Number(input.count) || 20,
-  );
+  const ids = await randomIds(randomFilters(input), Number(input.count) || 20);
   if (!ids.length) return { error: 'Nenhuma questão com esses filtros.' };
   const id = newId();
   await sql.exec(`insert into question_lists (id, title, question_ids, mode, owner_id, created_by) values ($1, $2, $3, 'lista', $4, $4)`, [
