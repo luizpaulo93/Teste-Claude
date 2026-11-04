@@ -1,16 +1,16 @@
-import { Award, BarChart3, Target, Trophy, Users } from 'lucide-react';
-import type { Metadata } from 'next';
-import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { ComboChart } from '@/components/charts/combo-chart';
-import { Card, EmptyState } from '@/components/ui';
-import { getCatalogData, sql } from '@/lib/db';
-import { requireViewer } from '@/lib/session';
-import { ENEM_AREAS, type EnemArea, type SimuladoStats } from '@/lib/types';
-import { cn } from '@/lib/utils';
-import { StudentPerformance, type PerfItem } from './student-view';
+import { Award, BarChart3, Target, Trophy, Users } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { ComboChart } from "@/components/charts/combo-chart";
+import { Card, EmptyState } from "@/components/ui";
+import { getCatalogData, sql } from "@/lib/db";
+import { requireViewer } from "@/lib/session";
+import { ENEM_AREAS, type EnemArea, type SimuladoStats } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { StudentPerformance, type PerfItem } from "./student-view";
 
-export const metadata: Metadata = { title: 'Desempenho' };
+export const metadata: Metadata = { title: "Desempenho" };
 
 interface Row {
   simulado_id: string;
@@ -23,18 +23,23 @@ interface Row {
   class_id: string | null;
 }
 
-const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+const avg = (xs: number[]) =>
+  xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0;
 const r1 = (n: number) => Math.round(n * 10) / 10;
 /** "Ana Beatriz Costa" → "Ana C." para o ranking que os alunos veem */
 const short = (name: string) => {
   const p = name.trim().split(/\s+/);
-  return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0] || 'Aluno';
+  return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0] || "Aluno";
 };
 
-export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ s?: string; t?: string; c?: string; ver?: string }> }) {
+export default async function PerformancePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ s?: string; t?: string; c?: string; ver?: string }>;
+}) {
   const viewer = await requireViewer();
-  if (!viewer.isMember) redirect('/');
-  const { s = 'all', t, c, ver } = await searchParams;
+  if (!viewer.isMember) redirect("/");
+  const { s = "all", t, c, ver } = await searchParams;
   const admin = viewer.isAdmin;
 
   const [sims, rows, catalog] = await Promise.all([
@@ -63,14 +68,27 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
 
   // Sem TRI: testes (listas finalizadas) e simulados sem TRI, do mais recente para o mais antigo
   const tests = admin
-    ? await sql.query<{ id: string; title: string; at: string; n: number; pct: number }>(
+    ? await sql.query<{
+        id: string;
+        title: string;
+        at: string;
+        n: number;
+        pct: number;
+      }>(
         `select l.id, l.title, max(f.finished_at) as at, count(*)::int as n,
                 coalesce(avg(f.ok::float / nullif(f.total, 0)), 0) * 100 as pct
            from list_finishes f join question_lists l on l.id = f.list_id
           where l.owner_id is null and l.mode = 'teste'
           group by l.id order by at desc limit 60`,
       )
-    : await sql.query<{ id: string; title: string; at: string; ok: number; total: number; mine: boolean }>(
+    : await sql.query<{
+        id: string;
+        title: string;
+        at: string;
+        ok: number;
+        total: number;
+        mine: boolean;
+      }>(
         `select l.id, l.title, f.finished_at as at, l.owner_id is not null as mine,
                 coalesce(f.ok, 0) as ok, coalesce(f.total, 0) as total
            from list_finishes f join question_lists l on l.id = f.list_id
@@ -82,14 +100,16 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   if (!admin) {
     const items: PerfItem[] = [
       ...sims.flatMap((x) => {
-        const r = rows.find((y) => y.simulado_id === x.id && y.user_id === viewer.userId);
+        const r = rows.find(
+          (y) => y.simulado_id === x.id && y.user_id === viewer.userId,
+        );
         if (!r) return [];
         const tri = x.use_tri !== false;
         return [
           {
             key: `s${x.id}`,
             title: x.title,
-            kind: tri ? 'Simulado com TRI' : 'Simulado',
+            kind: tri ? "Simulado com TRI" : "Simulado",
             tri,
             at: x.created_at,
             pct: Math.round(r.accuracy),
@@ -102,11 +122,18 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
         ];
       }),
       ...tests.map((x) => {
-        const it = x as { id: string; title: string; at: string; ok: number; total: number; mine: boolean };
+        const it = x as {
+          id: string;
+          title: string;
+          at: string;
+          ok: number;
+          total: number;
+          mine: boolean;
+        };
         return {
           key: `l${it.id}`,
           title: it.title,
-          kind: it.mine ? 'Minha lista' : 'Teste',
+          kind: it.mine ? "Minha lista" : "Teste",
           tri: false,
           at: it.at,
           pct: it.total ? Math.round((it.ok / it.total) * 100) : 0,
@@ -116,18 +143,34 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
         };
       }),
     ];
-    const turmaName = catalog.classes.find((k) => k.id === viewer.student?.class_id)?.name ?? '';
-    return <StudentPerformance items={items} cat={c === 'tri' || c === 'sem' ? c : null} turma={turmaName} />;
+    const turmaName =
+      catalog.classes.find((k) => k.id === viewer.student?.class_id)?.name ??
+      "";
+    return (
+      <StudentPerformance
+        items={items}
+        cat={c === "tri" || c === "sem" ? c : null}
+        turma={turmaName}
+      />
+    );
   }
 
   const semTri: SemTriItem[] = [
     ...tests.map((x) =>
-      'n' in x
-        ? { key: `l${x.id}`, title: x.title, kind: 'Teste', at: x.at, pct: Math.round(x.pct), detail: `${x.n} finalizaram`, href: `/admin/questoes/listas/${x.id}` }
+      "n" in x
+        ? {
+            key: `l${x.id}`,
+            title: x.title,
+            kind: "Teste",
+            at: x.at,
+            pct: Math.round(x.pct),
+            detail: `${x.n} finalizaram`,
+            href: `/admin/questoes/listas/${x.id}`,
+          }
         : {
             key: `l${x.id}`,
             title: x.title,
-            kind: x.mine ? 'Minha lista' : 'Teste',
+            kind: x.mine ? "Minha lista" : "Teste",
             at: x.at,
             pct: x.total ? Math.round((x.ok / x.total) * 100) : 0,
             detail: `${x.ok}/${x.total} acertos`,
@@ -140,20 +183,34 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
         if (admin) {
           const g = rows.filter((r) => r.simulado_id === x.id);
           if (!g.length) return [];
-          return [{ key: `s${x.id}`, title: x.title, kind: 'Simulado', at: x.created_at, pct: Math.round(avg(g.map((r) => r.accuracy))), detail: `${g.length} entregas`, href: `/desempenho?s=${x.id}` }];
+          return [
+            {
+              key: `s${x.id}`,
+              title: x.title,
+              kind: "Simulado",
+              at: x.created_at,
+              pct: Math.round(avg(g.map((r) => r.accuracy))),
+              detail: `${g.length} entregas`,
+              href: `/desempenho?s=${x.id}`,
+            },
+          ];
         }
-        const r = rows.find((y) => y.simulado_id === x.id && y.user_id === viewer.userId);
+        const r = rows.find(
+          (y) => y.simulado_id === x.id && y.user_id === viewer.userId,
+        );
         if (!r) return [];
         return [
           {
             key: `s${x.id}`,
             title: x.title,
-            kind: 'Simulado',
+            kind: "Simulado",
             at: x.created_at,
             pct: Math.round(r.accuracy),
             detail: `${r.correct}/${x.question_count} acertos`,
             // simulado montado com questões da plataforma: abre as questões com gabarito e a resposta do aluno
-            href: x.list_id ? `/listas/${x.list_id}?sim=${x.id}` : `/simulados/${x.id}`,
+            href: x.list_id
+              ? `/listas/${x.list_id}?sim=${x.id}`
+              : `/simulados/${x.id}`,
           },
         ];
       }),
@@ -162,51 +219,92 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   if (!sims.length) {
     return (
       <div className="mx-auto max-w-6xl space-y-6">
-        <Header subtitle={semTri.length ? (admin ? 'Testes da turma' : 'Seus testes') : undefined} />
-        {semTri.length ? <SemTri items={semTri} admin={admin} /> : <EmptyState icon={<BarChart3 className="size-6" />} title="Ainda sem resultados" />}
+        <Header
+          subtitle={
+            semTri.length
+              ? admin
+                ? "Testes da turma"
+                : "Seus testes"
+              : undefined
+          }
+        />
+        {semTri.length ? (
+          <SemTri items={semTri} admin={admin} />
+        ) : (
+          <EmptyState
+            icon={<BarChart3 className="size-6" />}
+            title="Ainda sem resultados"
+          />
+        )}
       </div>
     );
   }
 
   // Aluno vê a própria turma; admin escolhe a turma (ou todas)
   const myClass = viewer.student?.class_id ?? null;
-  const turma = admin ? (t && catalog.classes.some((c) => c.id === t) ? t : null) : myClass;
+  const turma = admin
+    ? t && catalog.classes.some((c) => c.id === t)
+      ? t
+      : null
+    : myClass;
   const sim = sims.find((x) => x.id === s) ?? null;
-  const className = (id: string | null) => catalog.classes.find((c) => c.id === id)?.name ?? 'Sem turma';
+  const className = (id: string | null) =>
+    catalog.classes.find((c) => c.id === id)?.name ?? "Sem turma";
   // Sem TRI: o simulado conta só acertos. "Todos" usa os simulados com TRI (mesma escala).
-  const triSims = new Set(sims.filter((x) => x.use_tri !== false).map((x) => x.id));
+  const triSims = new Set(
+    sims.filter((x) => x.use_tri !== false).map((x) => x.id),
+  );
   const byHits = Boolean(sim && sim.use_tri === false);
-  const inScope = (r: Row) => (!turma || r.class_id === turma) && (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id));
+  const inScope = (r: Row) =>
+    (!turma || r.class_id === turma) &&
+    (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id));
   const scoped = rows.filter(inScope);
 
   // Números gerais do recorte
   const kpi = {
     entregas: scoped.length,
-    tri: byHits ? r1(avg(scoped.map((r) => r.correct))) : r1(avg(scoped.map((r) => r.tri_score))),
+    tri: byHits
+      ? r1(avg(scoped.map((r) => r.correct)))
+      : r1(avg(scoped.map((r) => r.tri_score))),
     coh: Math.round(avg(scoped.map((r) => r.coherence))),
     acc: Math.round(avg(scoped.map((r) => r.accuracy))),
   };
 
   // Evolução por simulado: média da turma (ou geral) e, para o aluno, a própria nota
-  const mine = new Map(rows.filter((r) => r.user_id === viewer.userId).map((r) => [r.simulado_id, r]));
+  const mine = new Map(
+    rows
+      .filter((r) => r.user_id === viewer.userId)
+      .map((r) => [r.simulado_id, r]),
+  );
   const chart = sims
     .filter((x) => triSims.has(x.id))
     .map((x) => {
-      const group = rows.filter((r) => r.simulado_id === x.id && (!turma || r.class_id === turma));
+      const group = rows.filter(
+        (r) => r.simulado_id === x.id && (!turma || r.class_id === turma),
+      );
       // admin: tocar na barra abre o simulado (mantendo a turma escolhida)
-      if (admin) return { label: x.title, bar: group.length ? avg(group.map((r) => r.tri_score)) : null, href: `/desempenho?s=${x.id}${turma ? `&t=${turma}` : ''}` };
+      if (admin)
+        return {
+          label: x.title,
+          bar: group.length ? avg(group.map((r) => r.tri_score)) : null,
+          href: `/desempenho?s=${x.id}${turma ? `&t=${turma}` : ""}`,
+        };
       return { label: x.title, bar: mine.get(x.id)?.tri_score ?? null };
     });
 
   // Ranking de alunos: melhor média de TRI no recorte
   const byUser = new Map<string, Row[]>();
-  scoped.forEach((r) => byUser.set(r.user_id, [...(byUser.get(r.user_id) ?? []), r]));
+  scoped.forEach((r) =>
+    byUser.set(r.user_id, [...(byUser.get(r.user_id) ?? []), r]),
+  );
   const ranking = [...byUser.entries()]
     .map(([user_id, list]) => ({
       user_id,
       name: list[0].name,
       class_id: list[0].class_id,
-      tri: byHits ? r1(avg(list.map((r) => r.correct))) : r1(avg(list.map((r) => r.tri_score))),
+      tri: byHits
+        ? r1(avg(list.map((r) => r.correct)))
+        : r1(avg(list.map((r) => r.tri_score))),
       correct: r1(avg(list.map((r) => r.correct))),
       coh: Math.round(avg(list.map((r) => r.coherence))),
       n: list.length,
@@ -217,50 +315,66 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   // Ranking de turmas (só admin)
   const byClass = new Map<string, Row[]>();
   rows
-    .filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id)))
+    .filter((r) =>
+      sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id),
+    )
     .forEach((r) => {
-      const k = r.class_id ?? '';
+      const k = r.class_id ?? "";
       byClass.set(k, [...(byClass.get(k) ?? []), r]);
     });
+  // só turmas que existem de fato (aluno sem turma não vira uma turma "Sem turma")
   const classes = [...byClass.entries()]
+    .filter(([id]) => id && catalog.classes.some((k) => k.id === id))
     .map(([id, list]) => ({
       id,
       name: className(id || null),
-      tri: byHits ? r1(avg(list.map((r) => r.correct))) : r1(avg(list.map((r) => r.tri_score))),
+      tri: byHits
+        ? r1(avg(list.map((r) => r.correct)))
+        : r1(avg(list.map((r) => r.tri_score))),
       coh: Math.round(avg(list.map((r) => r.coherence))),
       alunos: new Set(list.map((r) => r.user_id)).size,
     }))
     .sort((a, b) => b.tri - a.tri);
 
   // Questões mais difíceis do simulado escolhido
-  const hardest = sim?.stats?.items ? [...sim.stats.items].sort((a, b) => a.hitPct - b.hitPct).slice(0, 5) : [];
+  const hardest = sim?.stats?.items
+    ? [...sim.stats.items].sort((a, b) => a.hitPct - b.hitPct).slice(0, 5)
+    : [];
 
   const q = (patch: { s?: string; t?: string | null; ver?: string | null }) => {
     const p = new URLSearchParams();
     const ns = patch.s ?? s;
     const nt = patch.t === undefined ? turma : patch.t;
     const nv = patch.ver === undefined ? ver : patch.ver;
-    if (ns && ns !== 'all') p.set('s', ns);
-    if (admin && nt) p.set('t', nt);
-    if (admin && nv) p.set('ver', nv);
+    if (ns && ns !== "all") p.set("s", ns);
+    if (admin && nt) p.set("t", nt);
+    if (admin && nv) p.set("ver", nv);
     const str = p.toString();
-    return `/desempenho${str ? `?${str}` : ''}`;
+    return `/desempenho${str ? `?${str}` : ""}`;
   };
 
   // admin: os 5 melhores em cada ranking; tocar no título mostra todos
-  const allStudents = admin && ver === 'alunos';
-  const allClasses = admin && ver === 'turmas';
+  const allStudents = admin && ver === "alunos";
+  const allClasses = admin && ver === "turmas";
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
-      <Header subtitle={admin ? 'Turmas e alunos por simulado' : turma ? `Sua turma: ${className(turma)}` : 'Seus simulados'} />
+      <Header
+        subtitle={
+          admin
+            ? "Turmas e alunos por simulado"
+            : turma
+              ? `Sua turma: ${className(turma)}`
+              : "Seus simulados"
+        }
+      />
 
       {/* Recorte atual: o simulado abre tocando no gráfico, a turma tocando no ranking de turmas */}
       {admin && (sim || turma) && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-muted">Mostrando:</span>
           {sim && (
-            <Chip href={q({ s: 'all' })} active small>
+            <Chip href={q({ s: "all" })} active small>
               {sim.title} ✕
             </Chip>
           )}
@@ -273,7 +387,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       )}
       {!admin && (
         <div className="rail -mx-4 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-          <Chip href={q({ s: 'all' })} active={!sim}>
+          <Chip href={q({ s: "all" })} active={!sim}>
             Todos os simulados
           </Chip>
           {sims.map((x) => (
@@ -288,33 +402,61 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {admin || !mine.size ? (
           <>
-            <Kpi icon={<Users className="size-4" />} label="Entregas" value={kpi.entregas} />
-            <Kpi icon={<Trophy className="size-4" />} label={byHits ? 'Média de acertos' : 'Média TRI'} value={kpi.tri || '—'} />
-            <Kpi icon={<Target className="size-4" />} label={byHits ? 'Questões' : 'Coerência média'} value={byHits ? sim!.question_count : `${kpi.coh}%`} />
-            <Kpi icon={<Award className="size-4" />} label="Acertos" value={`${kpi.acc}%`} />
+            <Kpi
+              icon={<Users className="size-4" />}
+              label="Entregas"
+              value={kpi.entregas}
+            />
+            <Kpi
+              icon={<Trophy className="size-4" />}
+              label={byHits ? "Média de acertos" : "Média TRI"}
+              value={kpi.tri || "—"}
+            />
+            <Kpi
+              icon={<Target className="size-4" />}
+              label={byHits ? "Questões" : "Coerência média"}
+              value={byHits ? sim!.question_count : `${kpi.coh}%`}
+            />
+            <Kpi
+              icon={<Award className="size-4" />}
+              label="Acertos"
+              value={`${kpi.acc}%`}
+            />
           </>
         ) : (
           <>
             <Kpi
               icon={<Trophy className="size-4" />}
-              label={byHits ? 'Seus acertos' : 'Sua média TRI'}
+              label={byHits ? "Seus acertos" : "Sua média TRI"}
               value={
                 r1(
                   avg(
                     [...mine.values()]
-                      .filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id)))
+                      .filter((r) =>
+                        sim
+                          ? r.simulado_id === sim.id
+                          : triSims.has(r.simulado_id),
+                      )
                       .map((r) => (byHits ? r.correct : r.tri_score)),
                   ),
-                ) || '—'
+                ) || "—"
               }
             />
-            <Kpi icon={<Users className="size-4" />} label="Média da turma" value={kpi.tri || '—'} />
+            <Kpi
+              icon={<Users className="size-4" />}
+              label="Média da turma"
+              value={kpi.tri || "—"}
+            />
             <Kpi
               icon={<Target className="size-4" />}
-              label={byHits ? 'Aproveitamento' : 'Sua coerência'}
+              label={byHits ? "Aproveitamento" : "Sua coerência"}
               value={`${Math.round(avg([...mine.values()].filter((r) => (sim ? r.simulado_id === sim.id : triSims.has(r.simulado_id))).map((r) => (byHits ? r.accuracy : r.coherence))))}%`}
             />
-            <Kpi icon={<Award className="size-4" />} label="Sua posição" value={myPos >= 0 ? `${myPos + 1}º de ${ranking.length}` : '—'} />
+            <Kpi
+              icon={<Award className="size-4" />}
+              label="Sua posição"
+              value={myPos >= 0 ? `${myPos + 1}º de ${ranking.length}` : "—"}
+            />
           </>
         )}
       </div>
@@ -322,43 +464,95 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       {/* Evolução */}
       {!byHits && !(admin && sim) && chart.length > 0 && (
         <Card className="p-4 sm:p-5">
-          <p className="mb-3 text-sm font-bold text-ink">Evolução por simulado</p>
-          <ComboChart points={chart} barName={admin ? 'Média TRI' : 'Sua nota TRI'} lineName="Evolução" />
+          <p className="mb-3 text-sm font-bold text-ink">
+            Evolução por simulado
+          </p>
+          <ComboChart
+            points={chart}
+            barName={admin ? "Média TRI" : "Sua nota TRI"}
+            lineName="Evolução"
+          />
         </Card>
       )}
 
       {semTri.length > 0 && <SemTri items={semTri} admin={admin} />}
 
-      <div className={cn('grid gap-5', admin && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
+      <div
+        className={cn(
+          "grid gap-5",
+          admin && "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]",
+        )}
+      >
         {/* Ranking de alunos */}
         <Card className="min-w-0 overflow-hidden">
           {admin ? (
             <Link
-              href={q({ ver: allStudents ? null : 'alunos' })}
+              href={q({ ver: allStudents ? null : "alunos" })}
               className="flex items-center justify-between gap-2 border-b border-line p-4 transition hover:bg-surface-2"
             >
-              <span className="text-sm font-bold text-ink">Melhores alunos</span>
+              <span className="text-sm font-bold text-ink">
+                Melhores alunos
+              </span>
               <span className="text-xs font-semibold text-brand">
-                {allStudents ? 'Mostrar só os 5 melhores' : ranking.length > 5 ? `Ver todos (${ranking.length})` : sim ? sim.title : 'média TRI de todos'}
+                {allStudents
+                  ? "Mostrar só os 5 melhores"
+                  : ranking.length > 5
+                    ? `Ver todos (${ranking.length})`
+                    : sim
+                      ? sim.title
+                      : "média TRI de todos"}
               </span>
             </Link>
           ) : (
             <div className="flex items-center justify-between border-b border-line p-4">
               <p className="text-sm font-bold text-ink">Ranking da turma</p>
-              <span className="text-xs text-muted">{sim ? (byHits ? `${sim.title} · por acertos` : sim.title) : 'média TRI de todos'}</span>
+              <span className="text-xs text-muted">
+                {sim
+                  ? byHits
+                    ? `${sim.title} · por acertos`
+                    : sim.title
+                  : "média TRI de todos"}
+              </span>
             </div>
           )}
           <ol className="divide-y divide-line">
-            {(admin ? (allStudents ? ranking : ranking.slice(0, 5)) : ranking.slice(0, 10)).map((r, i) => (
+            {(admin
+              ? allStudents
+                ? ranking
+                : ranking.slice(0, 5)
+              : ranking.slice(0, 10)
+            ).map((r, i) => (
               <RankRow
                 key={r.user_id}
-                href={admin ? `/desempenho/aluno/${r.user_id}` : r.user_id === viewer.userId ? '/desempenho/aluno/eu' : undefined}
+                href={
+                  admin
+                    ? `/desempenho/aluno/${r.user_id}`
+                    : r.user_id === viewer.userId
+                      ? "/desempenho/aluno/eu"
+                      : undefined
+                }
                 pos={i + 1}
                 me={r.user_id === viewer.userId}
-                name={admin ? r.name : r.user_id === viewer.userId ? 'Você' : short(r.name)}
-                sub={admin ? className(r.class_id) : undefined}
+                name={
+                  admin
+                    ? r.name
+                    : r.user_id === viewer.userId
+                      ? "Você"
+                      : short(r.name)
+                }
+                sub={
+                  admin &&
+                  r.class_id &&
+                  catalog.classes.some((k) => k.id === r.class_id)
+                    ? className(r.class_id)
+                    : undefined
+                }
                 tri={r.tri}
-                extra={byHits ? `${r.correct} acertos` : `${r.correct} acertos · coer. ${r.coh}%`}
+                extra={
+                  byHits
+                    ? `${r.correct} acertos`
+                    : `${r.correct} acertos · coer. ${r.coh}%`
+                }
               />
             ))}
             {!admin && myPos >= 10 && (
@@ -371,50 +565,81 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
                 extra={`${ranking[myPos].correct} acertos · coer. ${ranking[myPos].coh}%`}
               />
             )}
-            {!ranking.length && <li className="p-4 text-sm text-muted">Nenhuma entrega neste recorte.</li>}
+            {!ranking.length && (
+              <li className="p-4 text-sm text-muted">
+                Nenhuma entrega neste recorte.
+              </li>
+            )}
           </ol>
         </Card>
 
         {admin && (
           <div className="min-w-0 space-y-5">
-            <Card className="overflow-hidden">
-              <Link
-                href={q({ ver: allClasses ? null : 'turmas' })}
-                className="flex items-center justify-between gap-2 border-b border-line p-4 transition hover:bg-surface-2"
-              >
-                <span className="text-sm font-bold text-ink">Ranking de turmas</span>
-                <span className="text-xs font-semibold text-brand">
-                  {allClasses ? 'Mostrar só as 5 melhores' : classes.length > 5 ? `Ver todas (${classes.length})` : sim ? sim.title : ''}
-                </span>
-              </Link>
-              <ol className="divide-y divide-line">
-                {(allClasses ? classes : classes.slice(0, 5)).map((c, i) => (
-                  <li key={c.id || 'none'}>
-                    <Link href={q({ t: c.id || null, ver: null })} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-                      <Medal pos={i + 1} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
-                        <span className="text-[11px] text-muted">
-                          {c.alunos} aluno{c.alunos === 1 ? '' : 's'} · coer. {c.coh}%
+            {classes.length > 0 && (
+              <Card className="overflow-hidden">
+                <Link
+                  href={q({ ver: allClasses ? null : "turmas" })}
+                  className="flex items-center justify-between gap-2 border-b border-line p-4 transition hover:bg-surface-2"
+                >
+                  <span className="text-sm font-bold text-ink">
+                    Ranking de turmas
+                  </span>
+                  <span className="text-xs font-semibold text-brand">
+                    {allClasses
+                      ? "Mostrar só as 5 melhores"
+                      : classes.length > 5
+                        ? `Ver todas (${classes.length})`
+                        : sim
+                          ? sim.title
+                          : ""}
+                  </span>
+                </Link>
+                <ol className="divide-y divide-line">
+                  {(allClasses ? classes : classes.slice(0, 5)).map((c, i) => (
+                    <li key={c.id || "none"}>
+                      <Link
+                        href={q({ t: c.id || null, ver: null })}
+                        className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2"
+                      >
+                        <Medal pos={i + 1} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-ink">
+                            {c.name}
+                          </span>
+                          <span className="text-[11px] text-muted">
+                            {c.alunos} aluno{c.alunos === 1 ? "" : "s"} · coer.{" "}
+                            {c.coh}%
+                          </span>
                         </span>
-                      </span>
-                      <span className="text-sm font-extrabold text-ink tabular-nums">{c.tri}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            </Card>
+                        <span className="text-sm font-extrabold text-ink tabular-nums">
+                          {c.tri}
+                        </span>
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
             {sim && hardest.length > 0 && (
               <Card className="p-4">
-                <p className="mb-3 text-sm font-bold text-ink">Questões com menos acertos</p>
+                <p className="mb-3 text-sm font-bold text-ink">
+                  Questões com menos acertos
+                </p>
                 <ul className="space-y-2">
                   {hardest.map((it) => (
                     <li key={it.q} className="flex items-center gap-3 text-sm">
-                      <span className="w-10 font-bold text-ink-2 tabular-nums">Q{it.q}</span>
-                      <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
-                        <span className="block h-full rounded-full bg-danger" style={{ width: `${Math.max(3, it.hitPct)}%` }} />
+                      <span className="w-10 font-bold text-ink-2 tabular-nums">
+                        Q{it.q}
                       </span>
-                      <span className="w-10 text-right text-xs text-muted tabular-nums">{it.hitPct}%</span>
+                      <span className="h-2 flex-1 overflow-hidden rounded-full bg-surface-3">
+                        <span
+                          className="block h-full rounded-full bg-danger"
+                          style={{ width: `${Math.max(3, it.hitPct)}%` }}
+                        />
+                      </span>
+                      <span className="w-10 text-right text-xs text-muted tabular-nums">
+                        {it.hitPct}%
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -433,21 +658,35 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
 function Header({ subtitle }: { subtitle?: string }) {
   return (
     <div>
-      <h1 className="text-2xl font-extrabold tracking-tight text-ink">Desempenho</h1>
+      <h1 className="text-2xl font-extrabold tracking-tight text-ink">
+        Desempenho
+      </h1>
       {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
     </div>
   );
 }
 
-function Chip({ href, active, small, children }: { href: string; active: boolean; small?: boolean; children: React.ReactNode }) {
+function Chip({
+  href,
+  active,
+  small,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  small?: boolean;
+  children: React.ReactNode;
+}) {
   return (
     <Link
       href={href}
       scroll={false}
       className={cn(
-        'shrink-0 rounded-full border font-semibold whitespace-nowrap transition',
-        small ? 'px-3 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
-        active ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2 hover:bg-surface-2',
+        "shrink-0 rounded-full border font-semibold whitespace-nowrap transition",
+        small ? "px-3 py-1 text-xs" : "px-3.5 py-1.5 text-sm",
+        active
+          ? "border-brand bg-brand text-white"
+          : "border-line bg-surface text-ink-2 hover:bg-surface-2",
       )}
     >
       {children}
@@ -455,21 +694,46 @@ function Chip({ href, active, small, children }: { href: string; active: boolean
   );
 }
 
-function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
+function Kpi({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
     <Card className="p-4">
       <p className="flex items-center gap-1.5 text-xs font-semibold text-muted">
         <span className="text-brand">{icon}</span> {label}
       </p>
-      <p className="mt-1.5 text-2xl font-extrabold tracking-tight text-ink tabular-nums">{value}</p>
+      <p className="mt-1.5 text-2xl font-extrabold tracking-tight text-ink tabular-nums">
+        {value}
+      </p>
     </Card>
   );
 }
 
 function Medal({ pos }: { pos: number }) {
   const color =
-    pos === 1 ? 'bg-amber-400 text-black' : pos === 2 ? 'bg-slate-300 text-black' : pos === 3 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2';
-  return <span className={cn('grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold tabular-nums', color)}>{pos}</span>;
+    pos === 1
+      ? "bg-amber-400 text-black"
+      : pos === 2
+        ? "bg-slate-300 text-black"
+        : pos === 3
+          ? "bg-orange-400 text-black"
+          : "bg-surface-3 text-ink-2";
+  return (
+    <span
+      className={cn(
+        "grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold tabular-nums",
+        color,
+      )}
+    >
+      {pos}
+    </span>
+  );
 }
 
 function RankRow({
@@ -493,16 +757,25 @@ function RankRow({
     <>
       <Medal pos={pos} />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold text-ink">{name}</span>
-        <span className="block truncate text-[11px] text-muted">{sub ? `${sub} · ${extra}` : extra}</span>
+        <span className="block truncate text-sm font-semibold text-ink">
+          {name}
+        </span>
+        <span className="block truncate text-[11px] text-muted">
+          {sub ? `${sub} · ${extra}` : extra}
+        </span>
       </span>
-      <span className="text-sm font-extrabold text-ink tabular-nums">{tri}</span>
+      <span className="text-sm font-extrabold text-ink tabular-nums">
+        {tri}
+      </span>
     </>
   );
   return (
-    <li className={cn(me && 'bg-brand-soft')}>
+    <li className={cn(me && "bg-brand-soft")}>
       {href ? (
-        <Link href={href} className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2">
+        <Link
+          href={href}
+          className="flex items-center gap-3 px-4 py-2.5 transition hover:bg-surface-2"
+        >
           {inner}
         </Link>
       ) : (
@@ -527,27 +800,50 @@ function SemTri({ items, admin }: { items: SemTriItem[]; admin: boolean }) {
   return (
     <Card className="overflow-hidden">
       <div className="flex items-center justify-between gap-2 border-b border-line p-4">
-        <p className="text-sm font-bold text-ink">Sem TRI · testes e simulados</p>
-        <span className="text-xs text-muted">{admin ? 'média de acertos' : 'toque para rever as questões'}</span>
+        <p className="text-sm font-bold text-ink">
+          Sem TRI · testes e simulados
+        </p>
+        <span className="text-xs text-muted">
+          {admin ? "média de acertos" : "toque para rever as questões"}
+        </span>
       </div>
       <ul className="divide-y divide-line">
         {items.map((it) => (
           <li key={it.key}>
-            <Link href={it.href} className="block px-4 py-3 transition hover:bg-surface-2" aria-label={`${it.title}: ${it.pct}% de acerto`}>
+            <Link
+              href={it.href}
+              className="block px-4 py-3 transition hover:bg-surface-2"
+              aria-label={`${it.title}: ${it.pct}% de acerto`}
+            >
               <span className="flex items-center gap-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{it.title}</span>
-                <span className="shrink-0 text-sm font-extrabold text-ink tabular-nums">{it.pct}%</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">
+                  {it.title}
+                </span>
+                <span className="shrink-0 text-sm font-extrabold text-ink tabular-nums">
+                  {it.pct}%
+                </span>
               </span>
               <span className="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-surface-3">
                 <span
-                  className={cn('block h-full rounded-full', it.pct >= 70 ? 'bg-success' : it.pct >= 40 ? 'bg-warning' : 'bg-danger')}
+                  className={cn(
+                    "block h-full rounded-full",
+                    it.pct >= 70
+                      ? "bg-success"
+                      : it.pct >= 40
+                        ? "bg-warning"
+                        : "bg-danger",
+                  )}
                   style={{ width: `${Math.max(3, it.pct)}%` }}
                 />
               </span>
               <span className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-muted">
                 <span className="font-semibold text-brand">{it.kind}</span>
                 <span>{it.detail}</span>
-                <span>{new Date(it.at).toLocaleDateString('pt-BR', { timeZone: 'America/Belem' })}</span>
+                <span>
+                  {new Date(it.at).toLocaleDateString("pt-BR", {
+                    timeZone: "America/Belem",
+                  })}
+                </span>
               </span>
             </Link>
           </li>
