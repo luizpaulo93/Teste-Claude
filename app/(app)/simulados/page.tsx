@@ -1,3 +1,4 @@
+import { markSeen } from '@/lib/seen';
 import { CheckCircle2, ChevronRight, ClipboardCheck, Clock, Hourglass, Lock, Trophy } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
@@ -24,6 +25,7 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
     sql.query<Pick<SimuladoSubmission, 'simulado_id' | 'status'>>(`select simulado_id, status from simulado_submissions where user_id = $1`, [viewer.userId]),
     sql.query<SimuladoResult>(`select simulado_id, tri_score, correct, accuracy from simulado_results where user_id = $1`, [viewer.userId]),
   ]);
+  if (!viewer.isAdmin) await markSeen(viewer.userId, 'simulados');
   const subBy = new Map(subs.map((s) => [s.simulado_id, s.status]));
   const resBy = new Map(results.map((r) => [r.simulado_id, r]));
 

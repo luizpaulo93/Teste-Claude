@@ -15,7 +15,8 @@ export interface ReportQuestion {
  * Relatório da lista: % de acertos e erros, como foi em cada assunto
  * (bem treinado / atenção / precisa melhorar) e as questões erradas com atalho para cada uma.
  */
-export function ListReport({ qs }: { qs: ReportQuestion[] }) {
+/** `base`: página das questões (no relatório do Desempenho os atalhos levam para a lista). */
+export function ListReport({ qs, base = '' }: { qs: ReportQuestion[]; base?: string }) {
   const done = qs.filter((q) => q.answered);
   const right = done.filter((q) => q.correct).length;
   const wrong = done.length - right;
@@ -92,7 +93,7 @@ export function ListReport({ qs }: { qs: ReportQuestion[] }) {
         <Card className="space-y-1.5 p-4">
           <p className="text-sm font-bold text-ink">Questões que você errou</p>
           {errors.map((q) => (
-            <a key={q.n} href={`#q${q.n}`} className="block text-xs break-words text-ink-2 hover:text-brand">
+            <a key={q.n} href={`${base}#q${q.n}`} className="block text-xs break-words text-ink-2 hover:text-brand">
               <b className="text-danger">Questão {q.n}</b> · {q.disciplina} · {q.especifico || q.assunto}
             </a>
           ))}

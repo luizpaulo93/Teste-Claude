@@ -44,12 +44,12 @@ export async function saveSimulado(fd: FormData): Promise<ActionResult> {
     await tx(async (t) => {
       if (id) {
         await t.exec(
-          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, use_tri = $8, resolution_path = $9, updated_at = now() where id = $1`,
+          `update simulados set title = $2, area = $3, question_count = $4, time_limit_minutes = $5, pdf_path = $6, is_published = $7, use_tri = $8, resolution_path = $9, published_at = case when $7 and not is_published then now() else published_at end, updated_at = now() where id = $1`,
           values,
         );
       } else {
         await t.exec(
-          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published, use_tri, resolution_path) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          `insert into simulados (id, title, area, question_count, time_limit_minutes, pdf_path, is_published, use_tri, resolution_path, published_at) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, case when $7 then now() end)`,
           values,
         );
       }
@@ -109,7 +109,7 @@ export async function setSimuladoPublished(id: string, value: boolean): Promise<
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
-    await sql.exec(`update simulados set is_published = $2 where id = $1`, [id, value]);
+    await sql.exec(`update simulados set is_published = $2, published_at = case when $2 and not is_published then now() else published_at end where id = $1`, [id, value]);
     refresh(id);
     return { ok: true };
   } catch (e) {

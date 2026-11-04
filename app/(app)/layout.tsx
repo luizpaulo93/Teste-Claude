@@ -5,6 +5,7 @@ import { AdminNav } from './admin/admin-nav';
 import { CompleteProfile } from './perfil/complete-profile';
 import { visibleLives } from '@/lib/live';
 import { pendingDoubts } from '@/lib/mentoria-space';
+import { newsFor } from '@/lib/seen';
 import { getSettings, getViewer } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const liveNow = (await visibleLives(viewer, ['live'])).length > 0;
   // Mentor: aviso de dúvidas da mentoria sem resposta
   const mentoriaAlert = viewer.isAdmin ? [...(await pendingDoubts()).values()].reduce((a, b) => a + b, 0) : 0;
+  // Aluno: bolinha vermelha quando há simulado novo ou evento novo no calendário
+  const news = viewer.isMember && !viewer.isAdmin ? await newsFor(viewer.userId) : { simulados: false, calendario: false };
 
   return (
     <AppShell
@@ -25,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       hasMentoria={viewer.hasMentoria}
       liveNow={liveNow}
       mentoriaAlert={mentoriaAlert}
+      news={news}
     >
       {viewer.isAdmin && <AdminNav mentoriaAlert={mentoriaAlert} />}
       <PdfOwnerProvider owner={viewer.pdfOwner}>

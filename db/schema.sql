@@ -748,3 +748,25 @@ update list_finishes f set
   ok = (select count(*)::int from list_responses r where r.list_id = f.list_id and r.user_id = f.user_id and r.correct),
   total = (select count(*)::int from question_lists l join questions q on q.id = any(l.question_ids) where l.id = f.list_id and q.status <> 'anulada')
   where f.ok is null;
+
+-- ============================================================================
+-- Versão 23: respostas da 1ª tentativa (por questão) para o relatório individual do teste no Desempenho.
+-- ============================================================================
+alter table list_finishes add column if not exists answers jsonb;
+update list_finishes f set answers = coalesce(
+  (select jsonb_object_agg(r.question_id, jsonb_build_object('letter', r.letter, 'correct', r.correct))
+     from list_responses r where r.list_id = f.list_id and r.user_id = f.user_id), '{}'::jsonb)
+  where f.answers is null and not f.open;
+
+-- ============================================================================
+-- Versão 24: bolinha vermelha de novidade (simulado novo, evento novo no calendário).
+-- seen_marks guarda quando o aluno abriu cada seção pela última vez.
+-- ============================================================================
+create table if not exists seen_marks (
+  user_id text not null,
+  section text not null,
+  seen_at timestamptz not null default now(),
+  primary key (user_id, section)
+);
+alter table simulados add column if not exists published_at timestamptz;
+update simulados set published_at = created_at where is_published and published_at is null;

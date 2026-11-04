@@ -1,5 +1,6 @@
 import { isDocId } from '@/lib/utils';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ListChecks } from 'lucide-react';
+import { buttonClass } from '@/components/ui';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -14,8 +15,9 @@ import { StartCard } from './start-card';
 
 export const metadata: Metadata = { title: 'Simulado' };
 
-export default async function SimuladoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SimuladoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ de?: string }> }) {
   const { id } = await params;
+  const fromPerf = (await searchParams).de === 'desempenho';
   if (!isDocId(id)) notFound();
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
@@ -50,11 +52,17 @@ export default async function SimuladoPage({ params }: { params: Promise<{ id: s
 
   return (
     <>
-      <Link href="/simulados" className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
-        <ChevronLeft className="size-4" /> Simulados
+      <Link href={fromPerf ? '/desempenho' : '/simulados'} className="mb-4 inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
+        <ChevronLeft className="size-4" /> {fromPerf ? 'Desempenho' : 'Simulados'}
       </Link>
-      {resUrl && <ResolutionCard url={resUrl} owner={owner} listHref={simulado.list_id && delivered && simulado.results_released ? `/listas/${simulado.list_id}?sim=${simulado.id}` : ''} />}
+      {resUrl && <ResolutionCard url={resUrl} owner={owner} />}
       {body}
+      {/* simulado com questões do banco: abaixo do relatório, as questões com gabarito e a resposta do aluno */}
+      {simulado.list_id && delivered && simulado.results_released && (
+        <Link href={`/listas/${simulado.list_id}?sim=${simulado.id}`} className={buttonClass('primary', 'md', 'mt-5 w-full')}>
+          <ListChecks className="size-4" /> Acessar as questões
+        </Link>
+      )}
     </>
   );
 }

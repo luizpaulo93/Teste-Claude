@@ -25,11 +25,12 @@ export const metadata: Metadata = { title: 'Lista de questões' };
  * A resolução do teste do professor só aparece depois que ele liberar.
  * ?sim=<id>: o simulado montado desta lista, com as respostas que o aluno deu no cartão-resposta.
  */
-export default async function ListaAluno({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sim?: string }> }) {
+export default async function ListaAluno({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ sim?: string; de?: string }> }) {
   const viewer = await requireViewer();
   const list = await getList((await params).id);
   if (!list) notFound();
-  const simId = (await searchParams).sim;
+  const { sim: simId, de } = await searchParams;
+  const fromPerf = de === 'desempenho';
   // simulado desta lista que o aluno já entregou (com resultado liberado)
   const sim = simId
     ? await sql.one<{ id: string; title: string; resolution_released: boolean; answers: string }>(
@@ -79,10 +80,10 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
   return (
     <div className="mx-auto max-w-3xl min-w-0">
       <Link
-        href={sim ? '/desempenho' : '/questoes'}
+        href={sim || fromPerf ? '/desempenho' : '/questoes'}
         className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink"
       >
-        <ArrowLeft className="size-4" /> {sim ? 'Desempenho' : viewer.isAdmin ? 'Questões' : 'Exercícios'}
+        <ArrowLeft className="size-4" /> {sim || fromPerf ? 'Desempenho' : viewer.isAdmin ? 'Questões' : 'Exercícios'}
       </Link>
       <PageHeader
         eyebrow={sim ? 'Simulado' : list.mode === 'teste' ? (mineList ? 'Minha lista' : 'Teste') : 'Lista de questões'}

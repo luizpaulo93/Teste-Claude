@@ -49,10 +49,12 @@ export async function finishList(listId: string) {
   if (!list || !(await canSeeList(v, list))) return { error: 'Lista não encontrada.' };
   // a 1ª vez guarda o resultado que vale para as estatísticas; nas outras só fecha a tentativa
   await sql.exec(
-    `insert into list_finishes (list_id, user_id, ok, total)
+    `insert into list_finishes (list_id, user_id, ok, total, answers)
      values ($1, $2,
        (select count(*)::int from list_responses r where r.list_id = $1 and r.user_id = $2 and r.correct),
-       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'))
+       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'),
+       coalesce((select jsonb_object_agg(r.question_id, jsonb_build_object('letter', r.letter, 'correct', r.correct))
+                   from list_responses r where r.list_id = $1 and r.user_id = $2), '{}'::jsonb))
      on conflict (list_id, user_id) do update set open = false`,
     [listId, v.userId, list.question_ids],
   );
@@ -70,10 +72,12 @@ export async function restartList(listId: string) {
   const list = await getList(listId);
   if (!list || !(await canSeeList(v, list))) return { error: 'Lista não encontrada.' };
   await sql.exec(
-    `insert into list_finishes (list_id, user_id, ok, total, open)
+    `insert into list_finishes (list_id, user_id, ok, total, open, answers)
      values ($1, $2,
        (select count(*)::int from list_responses r where r.list_id = $1 and r.user_id = $2 and r.correct),
-       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'), true)
+       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'), true,
+       coalesce((select jsonb_object_agg(r.question_id, jsonb_build_object('letter', r.letter, 'correct', r.correct))
+                   from list_responses r where r.list_id = $1 and r.user_id = $2), '{}'::jsonb))
      on conflict (list_id, user_id) do update set open = true, attempts = list_finishes.attempts + 1`,
     [listId, v.userId, list.question_ids],
   );

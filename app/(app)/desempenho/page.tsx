@@ -8,6 +8,7 @@ import { getCatalogData, sql } from '@/lib/db';
 import { requireViewer } from '@/lib/session';
 import { ENEM_AREAS, type EnemArea, type SimuladoStats } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { StudentPerformance, type PerfItem } from './student-view';
 
 export const metadata: Metadata = { title: 'Desempenho' };
 
@@ -30,10 +31,10 @@ const short = (name: string) => {
   return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0] || 'Aluno';
 };
 
-export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ s?: string; t?: string }> }) {
+export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ s?: string; t?: string; c?: string }> }) {
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
-  const { s = 'all', t } = await searchParams;
+  const { s = 'all', t, c } = await searchParams;
   const admin = viewer.isAdmin;
 
   const [sims, rows, catalog] = await Promise.all([
@@ -77,6 +78,48 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
           order by f.finished_at desc limit 60`,
         [viewer.userId],
       );
+  // aluno: seletor Com TRI / Sem TRI e os cards dos últimos testes e simulados
+  if (!admin) {
+    const items: PerfItem[] = [
+      ...sims.flatMap((x) => {
+        const r = rows.find((y) => y.simulado_id === x.id && y.user_id === viewer.userId);
+        if (!r) return [];
+        const tri = x.use_tri !== false;
+        return [
+          {
+            key: `s${x.id}`,
+            title: x.title,
+            kind: tri ? 'Simulado com TRI' : 'Simulado',
+            tri,
+            at: x.created_at,
+            pct: Math.round(r.accuracy),
+            ok: r.correct,
+            total: x.question_count,
+            triScore: tri ? r.tri_score : undefined,
+            coherence: r.coherence,
+            href: `/simulados/${x.id}?de=desempenho`,
+          },
+        ];
+      }),
+      ...tests.map((x) => {
+        const it = x as { id: string; title: string; at: string; ok: number; total: number; mine: boolean };
+        return {
+          key: `l${it.id}`,
+          title: it.title,
+          kind: it.mine ? 'Minha lista' : 'Teste',
+          tri: false,
+          at: it.at,
+          pct: it.total ? Math.round((it.ok / it.total) * 100) : 0,
+          ok: it.ok,
+          total: it.total,
+          href: `/desempenho/teste/${it.id}`,
+        };
+      }),
+    ];
+    const turmaName = catalog.classes.find((k) => k.id === viewer.student?.class_id)?.name ?? '';
+    return <StudentPerformance items={items} cat={c === 'tri' || c === 'sem' ? c : null} turma={turmaName} />;
+  }
+
   const semTri: SemTriItem[] = [
     ...tests.map((x) =>
       'n' in x

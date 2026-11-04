@@ -33,7 +33,10 @@ interface NavItem {
   label: string;
   icon: typeof Home;
   show?: boolean;
+  /** bolinha vermelha de novidade */
   dot?: boolean;
+  /** selo AO VIVO (aula acontecendo agora) */
+  live?: boolean;
 }
 
 function useTheme() {
@@ -59,6 +62,7 @@ export function AppShell({
   hasMentoria,
   liveNow = false,
   mentoriaAlert = 0,
+  news = { simulados: false, calendario: false },
 }: {
   children: ReactNode;
   brand: string;
@@ -68,29 +72,35 @@ export function AppShell({
   hasMentoria: boolean;
   liveNow?: boolean;
   mentoriaAlert?: number;
+  news?: { simulados: boolean; calendario: boolean };
 }) {
   const pathname = usePathname();
   const { theme, toggle } = useTheme();
   const [moreOpen, setMoreOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // seção aberta nesta visita: a bolinha some na hora (o layout só recarrega no próximo acesso)
+  const [seen, setSeen] = useState<string[]>([]);
   useEffect(() => {
     setMoreOpen(false);
     setMenuOpen(false);
+    for (const s of ['/simulados', '/calendario']) if (pathname.startsWith(s)) setSeen((v) => (v.includes(s) ? v : [...v, s]));
   }, [pathname]);
+  const fresh = (href: string, on: boolean) => on && !seen.includes(href) && !pathname.startsWith(href);
 
   const items: NavItem[] = [
     { href: '/', label: 'Início', icon: Home },
     { href: '/cursos', label: 'Cursos', icon: Compass },
-    { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow },
+    { href: '/ao-vivo', label: 'Ao vivo', icon: Radio, show: isMember, dot: liveNow, live: liveNow },
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
-    { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember },
-    { href: '/questoes', label: isAdmin ? 'Questões' : 'Exercícios', icon: FileQuestion, show: isMember },
+    // Desempenho no lugar de Simulados (e Simulados no lugar de Desempenho)
     { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
+    { href: '/questoes', label: isAdmin ? 'Questões' : 'Exercícios', icon: FileQuestion, show: isMember },
+    { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember, dot: fresh('/simulados', news.simulados) },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
     // Mentor vai direto para a gestão da mentoria (com aviso de dúvidas sem resposta)
     { href: isAdmin ? '/admin/mentoria' : '/mentoria', label: 'Mentoria', icon: Target, show: hasMentoria, dot: mentoriaAlert > 0 },
-    { href: '/calendario', label: 'Calendário', icon: CalendarDays },
+    { href: '/calendario', label: 'Calendário', icon: CalendarDays, dot: fresh('/calendario', news.calendario) },
   ].filter((i) => i.show !== false);
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
@@ -98,13 +108,15 @@ export function AppShell({
 
   // Sempre 4 atalhos + "Mais": primeiro os preferidos, depois completa com os outros
   // Dúvidas no menu de baixo; Calendário fica no "Mais" (entra só se faltar atalho)
-  const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/duvidas', '/simulados', '/calendario'] : ['/', '/cursos', '/simulados', '/duvidas', '/calendario'];
+  const preferred = liveNow ? ['/', '/cursos', '/ao-vivo', '/duvidas', '/desempenho', '/calendario'] : ['/', '/cursos', '/desempenho', '/duvidas', '/calendario'];
   const mobileMain = [...preferred.map((h) => items.find((i) => i.href === h)).filter(Boolean), ...items.filter((i) => !preferred.includes(i.href))].slice(
     0,
     4,
   ) as NavItem[];
   // Minhas aulas e Perfil ficam no menu da foto (topo)
   const mobileMore = items.filter((i) => !mobileMain.includes(i) && i.href !== '/minhas-aulas');
+  // novidade guardada dentro do "Mais": bolinha no botão também
+  const moreDot = mobileMore.some((i) => i.dot);
 
   return (
     <div className="min-h-dvh">
@@ -201,7 +213,10 @@ export function AppShell({
             onClick={() => setMoreOpen(true)}
             className={cn('flex flex-col items-center gap-1 py-2.5 text-[10px] font-semibold', moreOpen ? 'text-brand' : 'text-muted')}
           >
-            <Menu className="size-5" />
+            <span className="relative">
+              <Menu className="size-5" />
+              {moreDot && <span aria-label="Novidade" className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-bg-elev" />}
+            </span>
             Mais
           </button>
         </div>
@@ -228,10 +243,13 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-xs font-semibold',
+                    'relative flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-xs font-semibold',
                     isActive(item.href) ? 'bg-brand-soft text-brand' : 'bg-surface-2 text-ink-2',
                   )}
                 >
+                  {'dot' in item && item.dot && (
+                    <span aria-label="Novidade" className="absolute top-2 right-2 size-2.5 animate-pulse rounded-full bg-red-500" />
+                  )}
                   <item.icon className="size-5" />
                   {item.label}
                 </Link>
@@ -256,8 +274,10 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     >
       <item.icon className={cn('size-[18px] transition-transform group-hover:scale-110', active && 'text-brand')} />
       {item.label}
-      {item.dot ? (
+      {item.live ? (
         <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">AO VIVO</span>
+      ) : item.dot ? (
+        <span aria-label="Novidade" className="ml-auto size-2 animate-pulse rounded-full bg-red-500" />
       ) : (
         active && <span className="ml-auto size-1.5 rounded-full bg-brand" />
       )}
@@ -274,7 +294,7 @@ function BottomLink({ item, active }: { item: NavItem; active: boolean }) {
       {active && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand" />}
       <span className="relative">
         <item.icon className="size-5" />
-        {item.dot && <span className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-bg-elev" />}
+        {item.dot && <span aria-label="Novidade" className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-bg-elev" />}
       </span>
       {item.label}
     </Link>

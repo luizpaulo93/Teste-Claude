@@ -1,3 +1,4 @@
+import { markSeen } from '@/lib/seen';
 import type { Metadata } from 'next';
 import { CalendarView, type Birthday } from '@/components/calendar/calendar-view';
 import { holidays } from '@/lib/calendar';
@@ -16,6 +17,7 @@ function shortName(name: string) {
 
 export default async function CalendarPage({ searchParams }: { searchParams: Promise<{ d?: string; m?: string }> }) {
   const viewer = await requireViewer();
+  if (!viewer.isAdmin) await markSeen(viewer.userId, 'calendario');
   const { d, m } = await searchParams;
   // ?d=AAAA-MM-DD abre num dia; ?m=AAAA-MM (links antigos) abre no mês
   const initial = /^\d{4}-\d{2}-\d{2}$/.test(d ?? '') ? d! : /^\d{4}-\d{2}$/.test(m ?? '') ? `${m}-01` : toISODate(new Date());
