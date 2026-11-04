@@ -91,3 +91,21 @@ export async function putObject(kind: BucketKind, key: string, data: Uint8Array,
   if (!r.ok) throw new Error('Falha ao gravar o arquivo.');
   return key;
 }
+
+/**
+ * Lê um arquivo do bucket público pelo acesso assinado (S3), sem passar pelo link público,
+ * que limita muitos acessos seguidos. Para outros endereços, baixa normalmente. Tenta 3 vezes.
+ */
+export async function fetchMedia(url: string): Promise<{ type: string; data: Buffer } | null> {
+  const own = env.publicUrl && url.startsWith(env.publicUrl + '/') && !storageProblem();
+  const key = own ? url.slice(env.publicUrl.length + 1).split('/').map(decodeURIComponent).join('/') : '';
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = own ? await client().fetch(objectUrl('media', key)) : await fetch(url);
+      if (r.ok) return { type: r.headers.get('content-type') || 'image/png', data: Buffer.from(await r.arrayBuffer()) };
+      if (r.status === 404) return null;
+    } catch {}
+    await new Promise((res) => setTimeout(res, 400 * (i + 1)));
+  }
+  return null;
+}

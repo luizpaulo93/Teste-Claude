@@ -25,6 +25,7 @@ import sharp from 'sharp';
 import { metaParts, stars, subjectsOf, type ListQuestion } from '@/lib/list-html';
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
+import { fetchMedia } from '@/lib/storage/server';
 
 /**
  * Lista em Word (.docx): coluna dupla, margem estreita (1,27 cm), Arial 10.
@@ -140,9 +141,9 @@ function loadImg(url: string) {
       url,
       (async () => {
         try {
-          const r = await fetch(url);
-          if (!r.ok) return null;
-          const { data, info } = await sharp(Buffer.from(await r.arrayBuffer()))
+          const f = await fetchMedia(url);
+          if (!f) return null;
+          const { data, info } = await sharp(f.data)
             .flatten({ background: '#ffffff' })
             .png()
             .toBuffer({ resolveWithObject: true });

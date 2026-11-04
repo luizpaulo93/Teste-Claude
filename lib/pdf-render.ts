@@ -5,6 +5,7 @@ import { footerHeightMm, HEADER_TOP_MM, imgHeightMm, PAGE } from '@/lib/list-htm
 import { pdfFontsCss } from '@/lib/pdf-fonts';
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import { footerText, SMALL_HEADER_MM, smallHeaderHtml } from '@/lib/vertice-brand';
+import { fetchMedia } from '@/lib/storage/server';
 
 const MM = 72 / 25.4;
 
@@ -38,9 +39,9 @@ async function stampHeaders(pdf: Uint8Array, t: ListTemplate | null) {
   const [{ PDFDocument }, sharp] = await Promise.all([import('pdf-lib'), import('sharp').then((m) => m.default)]);
   const doc = await PDFDocument.load(pdf);
   const embed = async (url: string) => {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const png = await sharp(Buffer.from(await r.arrayBuffer()))
+    const f = await fetchMedia(url);
+    if (!f) return null;
+    const png = await sharp(f.data)
       .flatten({ background: '#ffffff' })
       .png()
       .toBuffer();
@@ -83,10 +84,31 @@ async function launch(): Promise<Browser> {
 }
 
 async function asDataUrl(url: string) {
-  const r = await fetch(url);
-  if (!r.ok) return '';
-  const type = r.headers.get('content-type') || 'image/png';
-  return `data:${type};base64,${Buffer.from(await r.arrayBuffer()).toString('base64')}`;
+  const f = await fetchMedia(url);
+  return f ? `data:${f.type};base64,${f.data.toString('base64')}` : '';
+}
+
+/**
+ * Coloca as imagens dentro do HTML (data URL) antes de gerar o PDF.
+ * Deixar o Chrome baixar todas de uma vez do link público faz parte delas falhar.
+ */
+async function inlineImages(html: string) {
+  const urls = [...new Set([...html.matchAll(/<img\b[^>]*?\ssrc="(https?:[^"]+)"/g)].map((m) => m[1].replace(/&amp;/g, '&')))];
+  const map = new Map<string, string>();
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(6, urls.length) }, async () => {
+      while (next < urls.length) {
+        const u = urls[next++];
+        const d = await asDataUrl(u).catch(() => '');
+        if (d) map.set(u, d);
+      }
+    }),
+  );
+  return html.replace(/(<img\b[^>]*?\ssrc=")(https?:[^"]+)"/g, (all, pre: string, src: string) => {
+    const d = map.get(src.replace(/&amp;/g, '&'));
+    return d ? `${pre}${d}"` : all;
+  });
 }
 
 /** Transforma o HTML da lista em PDF (A4). O rodapé (imagem) sai em todas as páginas. */
@@ -97,7 +119,7 @@ export async function htmlToPdf(html: string, t: ListTemplate | null, vertice?: 
   const browser = await launch();
   try {
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: 'load', timeout: 45_000 });
+    await page.setContent(await inlineImages(html), { waitUntil: 'load', timeout: 45_000 });
     await page.waitForNetworkIdle({ idleTime: 300, timeout: 20_000 }).catch(() => {});
     await page.evaluate(() => document.fonts.ready);
     const pdf = await page.pdf({
