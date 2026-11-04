@@ -44,7 +44,12 @@ export function StudentPerformance({ items, cat, turma }: { items: PerfItem[]; c
     </Link>
   );
   const best = inCat.length ? Math.max(...inCat.map((x) => x.pct)) : 0;
-  const chart = cat === 'tri' ? [...inCat].reverse().map((x) => ({ label: x.title, bar: x.triScore ?? null })) : [];
+  // gráfico: do mais antigo ao mais recente (até 20); toque na barra abre o teste ou simulado
+  const recent = [...shown].reverse();
+  const chart =
+    cat === 'tri'
+      ? recent.map((x) => ({ label: x.title, bar: x.triScore ?? null, href: x.href }))
+      : recent.map((x) => ({ label: x.title, bar: x.pct, barLabel: `${x.pct}%`, href: x.href }));
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
@@ -81,20 +86,23 @@ export function StudentPerformance({ items, cat, turma }: { items: PerfItem[]; c
               />
             )}
           </div>
-          {chart.length > 1 && (
+          {cat === 'tri' && chart.length > 1 && (
             <Card className="p-4 sm:p-5">
               <p className="mb-3 text-sm font-bold text-ink">Evolução da sua nota TRI</p>
               <ComboChart points={chart} barName="Sua nota TRI" lineName="Evolução" />
+            </Card>
+          )}
+          {cat === 'sem' && chart.length > 0 && (
+            <Card className="p-4 sm:p-5">
+              <p className="mb-3 text-sm font-bold text-ink">Seu % de acerto em cada teste e simulado</p>
+              <ComboChart points={chart} min={0} max={100} ticks={[0, 25, 50, 75, 100]} barName="% de acerto" lineName="Evolução" />
             </Card>
           )}
         </>
       )}
 
       <section className="space-y-2">
-        <p className="text-sm font-bold text-ink">
-          {cat === 'tri' ? 'Simulados com TRI' : cat === 'sem' ? 'Testes e simulados sem TRI' : 'Últimos testes e simulados'}
-          <span className="ml-2 text-xs font-normal text-muted">{inCat.length > MAX ? `os ${MAX} mais recentes` : 'do mais recente ao mais antigo'}</span>
-        </p>
+        <p className="text-xs text-muted">{inCat.length > MAX ? `Os ${MAX} mais recentes, do mais novo ao mais antigo` : 'Do mais recente ao mais antigo'}</p>
         {shown.length ? (
           <ul className="space-y-2">
             {shown.map((it) => (
