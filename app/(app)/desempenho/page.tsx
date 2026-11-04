@@ -31,10 +31,10 @@ const short = (name: string) => {
   return p.length > 1 ? `${p[0]} ${p[p.length - 1][0]}.` : p[0] || 'Aluno';
 };
 
-export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ s?: string; t?: string; c?: string }> }) {
+export default async function PerformancePage({ searchParams }: { searchParams: Promise<{ s?: string; t?: string; c?: string; ver?: string }> }) {
   const viewer = await requireViewer();
   if (!viewer.isMember) redirect('/');
-  const { s = 'all', t, c } = await searchParams;
+  const { s = 'all', t, c, ver } = await searchParams;
   const admin = viewer.isAdmin;
 
   const [sims, rows, catalog] = await Promise.all([
@@ -235,15 +235,21 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   // Questões mais difíceis do simulado escolhido
   const hardest = sim?.stats?.items ? [...sim.stats.items].sort((a, b) => a.hitPct - b.hitPct).slice(0, 5) : [];
 
-  const q = (patch: { s?: string; t?: string | null }) => {
+  const q = (patch: { s?: string; t?: string | null; ver?: string | null }) => {
     const p = new URLSearchParams();
     const ns = patch.s ?? s;
     const nt = patch.t === undefined ? turma : patch.t;
+    const nv = patch.ver === undefined ? ver : patch.ver;
     if (ns && ns !== 'all') p.set('s', ns);
     if (admin && nt) p.set('t', nt);
+    if (admin && nv) p.set('ver', nv);
     const str = p.toString();
     return `/desempenho${str ? `?${str}` : ''}`;
   };
+
+  // admin: os 5 melhores em cada ranking; tocar no título mostra todos
+  const allStudents = admin && ver === 'alunos';
+  const allClasses = admin && ver === 'turmas';
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -314,7 +320,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       </div>
 
       {/* Evolução */}
-      {!byHits && chart.length > 0 && (
+      {!byHits && !(admin && sim) && chart.length > 0 && (
         <Card className="p-4 sm:p-5">
           <p className="mb-3 text-sm font-bold text-ink">Evolução por simulado</p>
           <ComboChart points={chart} barName={admin ? 'Média TRI' : 'Sua nota TRI'} lineName="Evolução" />
@@ -326,12 +332,24 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
       <div className={cn('grid gap-5', admin && 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
         {/* Ranking de alunos */}
         <Card className="min-w-0 overflow-hidden">
-          <div className="flex items-center justify-between border-b border-line p-4">
-            <p className="text-sm font-bold text-ink">{admin ? 'Melhores alunos' : 'Ranking da turma'}</p>
-            <span className="text-xs text-muted">{sim ? (byHits ? `${sim.title} · por acertos` : sim.title) : 'média TRI de todos'}</span>
-          </div>
+          {admin ? (
+            <Link
+              href={q({ ver: allStudents ? null : 'alunos' })}
+              className="flex items-center justify-between gap-2 border-b border-line p-4 transition hover:bg-surface-2"
+            >
+              <span className="text-sm font-bold text-ink">Melhores alunos</span>
+              <span className="text-xs font-semibold text-brand">
+                {allStudents ? 'Mostrar só os 5 melhores' : ranking.length > 5 ? `Ver todos (${ranking.length})` : sim ? sim.title : 'média TRI de todos'}
+              </span>
+            </Link>
+          ) : (
+            <div className="flex items-center justify-between border-b border-line p-4">
+              <p className="text-sm font-bold text-ink">Ranking da turma</p>
+              <span className="text-xs text-muted">{sim ? (byHits ? `${sim.title} · por acertos` : sim.title) : 'média TRI de todos'}</span>
+            </div>
+          )}
           <ol className="divide-y divide-line">
-            {(admin ? ranking.slice(0, 50) : ranking.slice(0, 10)).map((r, i) => (
+            {(admin ? (allStudents ? ranking : ranking.slice(0, 5)) : ranking.slice(0, 10)).map((r, i) => (
               <RankRow
                 key={r.user_id}
                 href={admin ? `/desempenho/aluno/${r.user_id}` : r.user_id === viewer.userId ? '/desempenho/aluno/eu' : undefined}
@@ -360,13 +378,19 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
         {admin && (
           <div className="min-w-0 space-y-5">
             <Card className="overflow-hidden">
-              <div className="border-b border-line p-4">
-                <p className="text-sm font-bold text-ink">Ranking de turmas</p>
-              </div>
+              <Link
+                href={q({ ver: allClasses ? null : 'turmas' })}
+                className="flex items-center justify-between gap-2 border-b border-line p-4 transition hover:bg-surface-2"
+              >
+                <span className="text-sm font-bold text-ink">Ranking de turmas</span>
+                <span className="text-xs font-semibold text-brand">
+                  {allClasses ? 'Mostrar só as 5 melhores' : classes.length > 5 ? `Ver todas (${classes.length})` : sim ? sim.title : ''}
+                </span>
+              </Link>
               <ol className="divide-y divide-line">
-                {classes.map((c, i) => (
+                {(allClasses ? classes : classes.slice(0, 5)).map((c, i) => (
                   <li key={c.id || 'none'}>
-                    <Link href={q({ t: c.id || null })} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
+                    <Link href={q({ t: c.id || null, ver: null })} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
                       <Medal pos={i + 1} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-ink">{c.name}</span>
