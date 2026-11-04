@@ -19,8 +19,9 @@ export async function answerInList(listId: string, questionId: string, letter: s
     questionId,
   ]);
   if (!q) return { error: 'Questão não encontrada.' };
-  const finished = Boolean(await sql.one(`select 1 from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]));
-  if (list.mode === 'teste' && finished) return { error: 'Teste já finalizado.' };
+  // já existe a 1ª tentativa? (finalizada, ou o aluno está refazendo: "open")
+  const first = await sql.one<{ open: boolean }>(`select open from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
+  if (list.mode === 'teste' && first && !first.open) return { error: 'Teste já finalizado.' };
   const reveal = list.mode === 'lista';
   if (q.status === 'anulada') return reveal ? { status: 'anulada' as const, gabarito: '', correct: null, resolucao: rich(q.resolucao) } : { saved: true };
   const l = String(letter).toUpperCase().slice(0, 1);
@@ -31,8 +32,8 @@ export async function answerInList(listId: string, questionId: string, letter: s
      on conflict (list_id, user_id, question_id) do update set letter = excluded.letter, correct = excluded.correct, answered_at = now()`,
     [listId, v.userId, questionId, l, correct],
   );
-  // também conta no banco de questões do aluno
-  await sql.exec(
+  // também conta no banco de questões do aluno, mas só na 1ª tentativa (refazer não muda as estatísticas)
+  if (!first) await sql.exec(
     `insert into question_answers (user_id, question_id, letter, correct, first_correct) values ($1, $2, $3, $4, $4)
      on conflict (user_id, question_id) do update set letter = excluded.letter, correct = excluded.correct, attempts = question_answers.attempts + 1, answered_at = now()`,
     [v.userId, questionId, l, correct],
@@ -46,17 +47,37 @@ export async function finishList(listId: string) {
   if (!v) return { error: 'Faça login.' };
   const list = await getList(listId);
   if (!list || !(await canSeeList(v, list))) return { error: 'Lista não encontrada.' };
-  await sql.exec(`insert into list_finishes (list_id, user_id) values ($1, $2) on conflict do nothing`, [listId, v.userId]);
+  // a 1ª vez guarda o resultado que vale para as estatísticas; nas outras só fecha a tentativa
+  await sql.exec(
+    `insert into list_finishes (list_id, user_id, ok, total)
+     values ($1, $2,
+       (select count(*)::int from list_responses r where r.list_id = $1 and r.user_id = $2 and r.correct),
+       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'))
+     on conflict (list_id, user_id) do update set open = false`,
+    [listId, v.userId, list.question_ids],
+  );
   revalidatePath(`/listas/${listId}`);
   return {};
 }
 
-/** Recomeçar a lista (apaga as respostas dela; no banco de questões ficam). */
+/**
+ * Refazer a lista: apaga as respostas desta tentativa. O resultado da 1ª tentativa fica guardado
+ * (é o que conta no Desempenho e no banco de questões); as próximas não entram nas estatísticas.
+ */
 export async function restartList(listId: string) {
   const v = await getViewer();
   if (!v) return { error: 'Faça login.' };
+  const list = await getList(listId);
+  if (!list || !(await canSeeList(v, list))) return { error: 'Lista não encontrada.' };
+  await sql.exec(
+    `insert into list_finishes (list_id, user_id, ok, total, open)
+     values ($1, $2,
+       (select count(*)::int from list_responses r where r.list_id = $1 and r.user_id = $2 and r.correct),
+       (select count(*)::int from questions q where q.id = any($3::text[]) and q.status <> 'anulada'), true)
+     on conflict (list_id, user_id) do update set open = true, attempts = list_finishes.attempts + 1`,
+    [listId, v.userId, list.question_ids],
+  );
   await sql.exec(`delete from list_responses where list_id = $1 and user_id = $2`, [listId, v.userId]);
-  await sql.exec(`delete from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
   revalidatePath(`/listas/${listId}`);
   return {};
 }

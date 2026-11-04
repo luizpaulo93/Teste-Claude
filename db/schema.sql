@@ -735,3 +735,16 @@ alter table question_lists add column if not exists resolution_released boolean 
 alter table simulados add column if not exists resolution_path text not null default '';
 alter table simulados add column if not exists resolution_released boolean not null default false;
 update question_lists set mode = 'teste' where owner_id is not null and mode = 'lista';
+
+-- ============================================================================
+-- Versão 22: refazer a lista/teste quantas vezes quiser, mas só a 1ª tentativa conta nas estatísticas.
+-- list_finishes guarda o resultado da 1ª tentativa (ok/total); "open" = está refazendo agora.
+-- ============================================================================
+alter table list_finishes add column if not exists ok int;
+alter table list_finishes add column if not exists total int;
+alter table list_finishes add column if not exists attempts int not null default 1;
+alter table list_finishes add column if not exists open boolean not null default false;
+update list_finishes f set
+  ok = (select count(*)::int from list_responses r where r.list_id = f.list_id and r.user_id = f.user_id and r.correct),
+  total = (select count(*)::int from question_lists l join questions q on q.id = any(l.question_ids) where l.id = f.list_id and q.status <> 'anulada')
+  where f.ok is null;

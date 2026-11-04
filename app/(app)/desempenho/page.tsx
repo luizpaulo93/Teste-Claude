@@ -64,16 +64,14 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
   const tests = admin
     ? await sql.query<{ id: string; title: string; at: string; n: number; pct: number }>(
         `select l.id, l.title, max(f.finished_at) as at, count(*)::int as n,
-                coalesce(avg((select count(*) from list_responses r where r.list_id = l.id and r.user_id = f.user_id and r.correct)::float
-                  / nullif((select count(*) from questions q where q.id = any(l.question_ids) and q.status <> 'anulada'), 0)), 0) * 100 as pct
+                coalesce(avg(f.ok::float / nullif(f.total, 0)), 0) * 100 as pct
            from list_finishes f join question_lists l on l.id = f.list_id
           where l.owner_id is null and l.mode = 'teste'
           group by l.id order by at desc limit 60`,
       )
     : await sql.query<{ id: string; title: string; at: string; ok: number; total: number; mine: boolean }>(
         `select l.id, l.title, f.finished_at as at, l.owner_id is not null as mine,
-                (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1 and r.correct) as ok,
-                (select count(*)::int from questions q where q.id = any(l.question_ids) and q.status <> 'anulada') as total
+                coalesce(f.ok, 0) as ok, coalesce(f.total, 0) as total
            from list_finishes f join question_lists l on l.id = f.list_id
           where f.user_id = $1 and l.mode = 'teste'
           order by f.finished_at desc limit 60`,

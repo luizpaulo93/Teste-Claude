@@ -87,7 +87,7 @@ export async function listsForViewer(viewer: Viewer) {
 /** Listas que o aluno montou (aleatória ou escolhendo), com quantas ele já respondeu. */
 export const myLists = (userId: string) =>
   sql.query<QList & { answered: number; right: number; finished: boolean }>(
-    `select l.*, exists (select 1 from list_finishes f where f.list_id = l.id and f.user_id = $1) as finished,
+    `select l.*, exists (select 1 from list_finishes f where f.list_id = l.id and f.user_id = $1 and not f.open) as finished,
             (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1) as answered,
             (select count(*)::int from list_responses r where r.list_id = l.id and r.user_id = $1 and r.correct) as "right"
        from question_lists l where l.owner_id = $1 order by l.created_at desc limit 200`,

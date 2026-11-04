@@ -8,7 +8,7 @@ import { askFinish } from './list-nav';
 import { usePdfOwner } from '@/components/pdf-owner';
 import { toast } from '@/components/toast';
 import { Button } from '@/components/ui';
-import { Spinner } from '@/components/ui-client';
+import { ActionButton, Spinner } from '@/components/ui-client';
 import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { stampedPdfUrl } from '@/lib/pdf-stamp';
 
@@ -45,24 +45,23 @@ export function FinishButton() {
   );
 }
 
+/** Refazer: pode quantas vezes quiser, mas só a 1ª tentativa conta nas estatísticas. */
 export function RestartButton({ id }: { id: string }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
   return (
-    <Button
+    <ActionButton
+      action={async () => {
+        const r = await restartList(id).catch(() => ({ error: 'Sem conexão. Tente de novo.' }));
+        router.refresh();
+        return r;
+      }}
+      confirm="Você pode refazer quantas vezes quiser, mas só a PRIMEIRA tentativa conta para as suas estatísticas (Desempenho e banco de questões). As respostas desta tentativa serão apagadas."
+      success="Nova tentativa: esta não conta nas estatísticas"
       variant="ghost"
       size="sm"
-      onClick={async () => {
-        if (!confirm('Recomeçar a lista? Suas respostas nela serão apagadas.')) return;
-        setBusy(true);
-        await restartList(id).catch(() => null);
-        setBusy(false);
-        router.refresh();
-      }}
-      disabled={busy}
     >
-      {busy ? <Spinner /> : <RotateCcw className="size-4" />} Recomeçar
-    </Button>
+      <RotateCcw className="size-4" /> Refazer
+    </ActionButton>
   );
 }
 

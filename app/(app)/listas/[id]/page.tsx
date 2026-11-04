@@ -49,7 +49,12 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
           `select question_id, letter, correct from list_responses where list_id = $1 and user_id = $2`,
           [list.id, viewer.userId],
         ),
-    sim ? Promise.resolve(null) : sql.one(`select 1 from list_finishes where list_id = $1 and user_id = $2`, [list.id, viewer.userId]),
+    sim
+      ? Promise.resolve(null)
+      : sql.one<{ open: boolean; attempts: number; ok: number | null; total: number | null }>(
+          `select open, attempts, ok, total from list_finishes where list_id = $1 and user_id = $2`,
+          [list.id, viewer.userId],
+        ),
   ]);
   const by = new Map(resp.map((r) => [r.question_id, r]));
   if (sim) {
@@ -61,7 +66,9 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
     });
   }
   const test = list.mode === 'teste' || Boolean(sim);
-  const finished = Boolean(sim) || Boolean(fin);
+  // fin.open = refazendo (a 1ª tentativa já está guardada e é a que conta nas estatísticas)
+  const finished = Boolean(sim) || Boolean(fin && !fin.open);
+  const retry = fin && (fin.open || fin.attempts > 1) ? fin : null;
   // resolução: livre na lista comum e nas listas do aluno; no teste do professor, só depois de liberar
   const resOpen = sim ? sim.resolution_released || Boolean(list.resolution_released) : resolutionOpen(list);
   const showResolution = !test || (finished && resOpen);
@@ -80,7 +87,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
       <PageHeader
         eyebrow={sim ? 'Simulado' : list.mode === 'teste' ? (mineList ? 'Minha lista' : 'Teste') : 'Lista de questões'}
         title={sim ? sim.title : list.title}
-        actions={(mineList && finished) || (!test && by.size > 0) ? <RestartButton id={list.id} /> : undefined}
+        actions={!sim && ((test && finished) || (!test && by.size > 0)) ? <RestartButton id={list.id} /> : undefined}
       />
       {/* baixar e navegação (voltar, todas as questões e finalizar, avançar): presa no alto ao rolar */}
       <div className="sticky top-14 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/95 px-4 py-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
@@ -120,6 +127,13 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
             {counted.length ? Math.round((right / counted.length) * 100) : 0}% de acerto · {counted.length - by.size} em branco
           </p>
         </Card>
+      )}
+      {retry && (
+        <div className="mb-5 rounded-2xl border border-brand/30 bg-brand/8 p-3 text-sm text-ink-2">
+          <strong className="text-ink">{fin!.open ? `Tentativa ${fin!.attempts}` : `Você já fez ${fin!.attempts} tentativas`}</strong> · só a 1ª conta nas
+          estatísticas
+          {fin!.ok !== null && fin!.total ? ` (${fin!.ok}/${fin!.total} acertos)` : ''}.
+        </div>
       )}
       {test && finished && !resOpen && (
         <div className="mb-5 flex items-center gap-2 rounded-2xl border border-line bg-surface p-3 text-sm text-ink-2">

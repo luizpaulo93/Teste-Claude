@@ -85,9 +85,8 @@ function RandomModal({ onClose }: { onClose: () => void }) {
     const base = [5, 10, 15, 20, 30, 45].filter((n) => n < max);
     return max > 0 ? [...base, max] : [];
   }, [avail]);
-  useEffect(() => {
-    if (counts.length && !counts.includes(Number(count))) setCount(String(counts.includes(20) ? 20 : counts[counts.length - 1]));
-  }, [counts, count]);
+  // quantidade valendo: a escolhida, se ainda couber nos filtros; senão 20 (ou o máximo possível)
+  const qty = counts.includes(Number(count)) ? count : String(counts.includes(20) ? 20 : (counts[counts.length - 1] ?? 20));
   useEffect(() => {
     randomOptions()
       .then(setRows)
@@ -118,7 +117,7 @@ function RandomModal({ onClose }: { onClose: () => void }) {
   async function generate() {
     if (!title.trim()) return toast.error('Dê um nome para a lista.');
     setBusy(true);
-    const r = await createRandomList({ title, count: Number(count), ...f }).catch(() => ({ error: 'Não foi possível gerar agora.' }));
+    const r = await createRandomList({ title, count: Number(qty), ...f }).catch(() => ({ error: 'Não foi possível gerar agora.' }));
     setBusy(false);
     if ('error' in r && r.error) return toast.error(r.error);
     const ok = r as { id: string; count: number };
@@ -167,7 +166,7 @@ function RandomModal({ onClose }: { onClose: () => void }) {
           </>
         )}
         <Field label="Quantidade de questões">
-          <Select value={count} onChange={(e) => setCount(e.target.value)} aria-label="Quantidade de questões" disabled={!counts.length}>
+          <Select value={qty} onChange={(e) => setCount(e.target.value)} aria-label="Quantidade de questões" disabled={!counts.length}>
             {counts.map((n) => (
               <option key={n} value={n}>
                 {n}
