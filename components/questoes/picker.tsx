@@ -2,6 +2,7 @@
 
 import 'katex/dist/katex.min.css';
 import { Check, ChevronDown, Eye, EyeOff, Filter, ListPlus, Plus, Search, X } from 'lucide-react';
+import { taxOrder } from '@/lib/taxonomy';
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { bankOptions, idsForFilter, previewQuestion, searchBank } from '@/app/(app)/admin/questoes/bank-actions';
 import { toast } from '@/components/toast';
@@ -190,6 +191,8 @@ export function QuestionPicker({
         }),
       );
       const vals = [...new Set(rows.map((o) => String(o[col] ?? '')).filter(Boolean))];
+      // assunto e subassunto na ordem da taxonomia do curso
+      if (key === 'assunto' || key === 'especifico') return taxOrder(vals);
       return vals.sort((a, b) => (key === 'ano' ? Number(b) - Number(a) : a.localeCompare(b, 'pt-BR', { numeric: true })));
     },
     [opts, draft],
@@ -281,8 +284,13 @@ export function QuestionPicker({
       >
         <div className="grid gap-3 sm:grid-cols-2">
           {FILTERS.filter((x) => x.key !== 'texto').map((x) => (
-            <Field key={x.key} label={x.label}>
+            <Field
+              key={x.key}
+              label={x.label}
+              hint={x.key === 'especifico' && !(draft.disciplina && draft.assunto) ? 'Escolha uma disciplina e um assunto geral primeiro.' : undefined}
+            >
               <Select
+                disabled={x.key === 'especifico' && !(draft.disciplina && draft.assunto)}
                 value={draft[x.key] ?? ''}
                 onChange={(e) => {
                   const v = e.target.value;

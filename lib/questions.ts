@@ -1,6 +1,8 @@
 import 'server-only';
 import { sql } from '@/lib/db';
 import { splitBands, splitTall } from '@/lib/split-alts';
+import { classify, subassuntosDe } from '@/lib/taxonomy';
+import { RECLASSIFIED } from '@/lib/taxonomy-reclass';
 import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
 import { DIFFICULTY, fileName, imagesOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
@@ -122,10 +124,57 @@ type Row = ReturnType<typeof cleanQuestion>;
 const imgsOfRow = (r: Row) => imagesOf({ ...r, imagemAlternativas: r.imagem_alternativas, numero: r.numero } as unknown as QuestaoIn);
 
 /** Grava (ou atualiza) uma prova inteira. Reimportar não duplica: as respostas dos alunos continuam. */
+// ---------------------------------------------------------------- taxonomia de assuntos
+type TaxRow = { id: string; disciplina: string; assunto_geral: string; assunto_especifico: string; blocos: QBloco[] };
+
+/**
+ * Assunto geral e específico na taxonomia do curso: a reclassificação revisada (questões já conhecidas),
+ * o que já veio dentro da taxonomia, ou a classificação automática pelo assunto que veio e pelo enunciado.
+ */
+export function taxonomyOf(q: TaxRow) {
+  const fixed = RECLASSIFIED[q.id];
+  if (fixed) return { assunto_geral: fixed[0], assunto_especifico: fixed[1] };
+  if (subassuntosDe(q.disciplina, q.assunto_geral).includes(q.assunto_especifico)) return { assunto_geral: q.assunto_geral, assunto_especifico: q.assunto_especifico };
+  const texto = (q.blocos ?? []).map((b) => (b.tipo === 'texto' ? b.conteudo : '')).join(' ');
+  const c = classify({ disciplina: q.disciplina, assuntoGeral: q.assunto_geral, assuntoEspecifico: q.assunto_especifico, texto });
+  return c ? { assunto_geral: c.assunto, assunto_especifico: c.sub } : { assunto_geral: q.assunto_geral, assunto_especifico: q.assunto_especifico };
+}
+
+const TAXONOMY_VERSION = '1';
+const gt = globalThis as unknown as { __taxonomy?: Promise<void> | null };
+/** Uma vez por servidor: passa as questões já cadastradas para a taxonomia (e grava no banco que já fez). */
+export function ensureTaxonomy() {
+  if (gt.__taxonomy) return gt.__taxonomy;
+  gt.__taxonomy = (async () => {
+    const done = await sql.one<{ value: string }>(`select value from _meta where key = 'taxonomy'`).catch(() => null);
+    if (done?.value === TAXONOMY_VERSION) return;
+    const qs = await sql.query<TaxRow>(`select id, disciplina, assunto_geral, assunto_especifico, blocos from questions`);
+    const upd = qs
+      .map((q) => ({ id: q.id, ...taxonomyOf(q), old: q }))
+      .filter((x) => x.assunto_geral !== x.old.assunto_geral || x.assunto_especifico !== x.old.assunto_especifico)
+      .map(({ id, assunto_geral, assunto_especifico }) => ({ id, g: assunto_geral, e: assunto_especifico }));
+    if (upd.length)
+      await sql.exec(
+        `update questions q set assunto_geral = x.g, assunto_especifico = x.e, updated_at = now()
+           from jsonb_to_recordset($1::jsonb) as x(id text, g text, e text) where q.id = x.id`,
+        [JSON.stringify(upd)],
+      );
+    await sql.exec(`insert into _meta (key, value) values ('taxonomy', $1) on conflict (key) do update set value = excluded.value`, [TAXONOMY_VERSION]);
+  })().catch((e) => {
+    gt.__taxonomy = null;
+    console.error('[taxonomia]', e);
+  });
+  return gt.__taxonomy;
+}
+
 export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId: string) {
   const id = str(p.provaId, 120);
   if (!/^[a-z0-9][\w-]{1,119}$/i.test(id)) throw new Error(`Prova com identificador inválido: "${id}".`);
-  const rows = (Array.isArray(p.questoes) ? p.questoes : []).slice(0, 400).map((q) => cleanQuestion(q, id, urls));
+  // assuntos já encaixados na taxonomia do curso (assunto geral e específico)
+  const rows = (Array.isArray(p.questoes) ? p.questoes : [])
+    .slice(0, 400)
+    .map((q) => cleanQuestion(q, id, urls))
+    .map((r) => ({ ...r, ...taxonomyOf(r) }));
   if (!rows.length) throw new Error(`A prova ${id} não tem questões.`);
   const imgs = rows.flatMap(imgsOfRow);
   const missing = imgs.filter((i) => !i.url).length;

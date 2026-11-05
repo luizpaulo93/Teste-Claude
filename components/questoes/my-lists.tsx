@@ -1,6 +1,7 @@
 'use client';
 
 import { BookOpenCheck, ChevronRight, Download, FileText, ListChecks, Shuffle, Trash2 } from 'lucide-react';
+import { taxOrder } from '@/lib/taxonomy';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -103,9 +104,12 @@ function RandomModal({ onClose }: { onClose: () => void }) {
         r.filter((x) => has(f.area, x.area)),
         (x) => x.disciplina,
       ),
-      assunto: uniq(
-        r.filter((x) => has(f.area, x.area) && has(f.disciplina, x.disciplina)),
-        (x) => x.assunto_geral,
+      // lista aleatória: só os assuntos gerais (na ordem da taxonomia), sem subassuntos
+      assunto: taxOrder(
+        uniq(
+          r.filter((x) => has(f.area, x.area) && has(f.disciplina, x.disciplina)),
+          (x) => x.assunto_geral,
+        ),
       ),
       habilidade: uniq(
         r.filter((x) => has(f.area, x.area) && has(f.disciplina, x.disciplina) && has(f.assunto, x.assunto_geral)),

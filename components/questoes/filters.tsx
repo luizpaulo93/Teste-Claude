@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, ChevronDown, Filter, Search, X } from 'lucide-react';
+import { taxOrder } from '@/lib/taxonomy';
 import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button, Field, Input, Select } from '@/components/ui';
@@ -55,18 +56,24 @@ export function toQuery(f: FilterState) {
 }
 
 /** Campo de várias escolhas: abre a lista com caixas de marcar (com busca nas listas longas). */
+/** Subassunto (assunto específico) só com exatamente uma disciplina e um assunto geral escolhidos. */
+const subOk = (d: { disciplina?: string[]; assunto?: string[] }) => d.disciplina?.length === 1 && d.assunto?.length === 1;
+
 export function MultiField({
   label,
   options,
   value,
   onChange,
   show = (v) => v,
+  locked,
 }: {
   label: string;
   options: string[];
   value: string[];
   onChange: (v: string[]) => void;
   show?: (v: string) => string;
+  /** campo travado: mostra o aviso no lugar das opções */
+  locked?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -74,6 +81,13 @@ export function MultiField({
   // os já marcados aparecem mesmo se os outros filtros os esconderem
   const list = [...new Set([...value, ...options])].filter((v) => !term || show(v).toLowerCase().includes(term));
   const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  if (locked)
+    return (
+      <div className="rounded-xl border border-dashed border-line px-3 py-2.5" aria-disabled="true">
+        <span className="text-xs font-semibold text-muted">{label}</span>
+        <p className="mt-0.5 text-[11px] text-muted">{locked}</p>
+      </div>
+    );
   return (
     <div className="rounded-xl border border-line">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
@@ -173,8 +187,9 @@ export function QuestionFilters({
       ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
     return {
       disciplina: uniq('disciplina', (r) => r.disciplina),
-      assunto: uniq('assunto', (r) => r.assunto_geral),
-      especifico: uniq('especifico', (r) => r.assunto_especifico),
+      // na ordem da taxonomia do curso
+      assunto: taxOrder(uniq('assunto', (r) => r.assunto_geral)),
+      especifico: taxOrder(uniq('especifico', (r) => r.assunto_especifico)),
       habilidade: uniq('habilidade', (r) => r.habilidade),
       ano: uniq('ano', (r) => (r.ano ? String(r.ano) : '')).reverse(),
       prova: papers.map((p) => p.id).filter((id) => rows.some((r) => r.paper_id === id && match(r, 'prova'))),
@@ -260,7 +275,14 @@ export function QuestionFilters({
               options={opts[k]}
               value={d[k] ?? []}
               show={k === 'prova' ? paperName : undefined}
-              onChange={(v) => setD((o) => ({ ...o, [k]: v }))}
+              locked={k === 'especifico' && !subOk(d) ? 'Escolha uma disciplina e um assunto geral para ver os subassuntos.' : undefined}
+              onChange={(v) =>
+                setD((o) => {
+                  const n = { ...o, [k]: v };
+                  // subassunto só vale com uma disciplina e um assunto geral
+                  return subOk(n) ? n : { ...n, especifico: [] };
+                })
+              }
             />
           ))}
           <div className="grid grid-cols-2 gap-2.5 pt-1">

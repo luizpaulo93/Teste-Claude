@@ -5,12 +5,15 @@ import { AdminNav } from './admin/admin-nav';
 import { CompleteProfile } from './perfil/complete-profile';
 import { visibleLives } from '@/lib/live';
 import { pendingDoubts } from '@/lib/mentoria-space';
+import { ensureTaxonomy } from '@/lib/questions';
 import { newsFor } from '@/lib/seen';
 import { getSettings, getViewer } from '@/lib/session';
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const [viewer, settings] = await Promise.all([getViewer(), getSettings()]);
   if (!viewer) redirect('/auth/expirado');
+  // uma vez por servidor: questões já cadastradas passam para a taxonomia de assuntos
+  if (viewer.isMember || viewer.isAdmin) await ensureTaxonomy();
 
   // Tudo vem do cache ou da consulta única do usuário: nenhuma consulta extra por página
   const liveNow = (await visibleLives(viewer, ['live'])).length > 0;
