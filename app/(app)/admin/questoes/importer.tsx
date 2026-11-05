@@ -9,7 +9,7 @@ import { ActionButton, Spinner } from '@/components/ui-client';
 import { fileName, imagesOf, type ProvaIn } from '@/lib/question-types';
 import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
-import { attachPaperImages, checkImport, deletePaper, importPaper, organizeAlternatives } from './actions';
+import { attachPaperImages, checkImport, deletePaper, importPaper } from './actions';
 
 type Check = Awaited<ReturnType<typeof checkImport>>;
 const isImage = (f: File) => /\.(webp|png|jpe?g|gif|avif)$/i.test(f.name) || f.type.startsWith('image/');
@@ -322,28 +322,5 @@ export function DeletePaper({ id }: { id: string }) {
     >
       <Trash2 className="size-3.5" />
     </ActionButton>
-  );
-}
-
-/** Recorta as imagens com as alternativas desenhadas (A, B, C…) e põe cada pedaço na sua letra. */
-export function OrganizeAlternatives() {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  return (
-    <Button
-      variant="secondary"
-      size="sm"
-      disabled={busy}
-      onClick={async () => {
-        setBusy(true);
-        const r = await organizeAlternatives().catch(() => null);
-        setBusy(false);
-        if (!r) return toast.error('Não foi possível organizar agora.');
-        toast(r.done ? `${r.done} questão(ões) com cada imagem na sua alternativa` : 'Nada para organizar');
-        router.refresh();
-      }}
-    >
-      {busy ? <Spinner /> : <ImageIcon className="size-4" />} Organizar imagens das alternativas
-    </Button>
   );
 }
