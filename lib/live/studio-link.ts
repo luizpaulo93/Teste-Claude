@@ -38,6 +38,12 @@ export class StudioLink {
   /** quem transmite: uma ligação por aparelho que assiste */
   private peers = new Map<string, { pc: RTCPeerConnection; dc?: RTCDataChannel }>();
   private source: MediaStream | null = null;
+  /** espelho leve ou mínimo (aparelho da live sobrecarregado: a transmissão vem primeiro) */
+  private level: 'normal' | 'low' = 'normal';
+  /** quem só controla: junta os comandos e manda o último de cada tipo a cada 1 s (não pesa na live) */
+  private pending = new Map<string, LinkMsg>();
+  private flushTimer = 0;
+  static VIEWER_DELAY_MS = 1000;
 
   onStream?: (s: MediaStream | null) => void;
   onMessage?: (m: LinkMsg, from: string) => void;
@@ -96,6 +102,23 @@ export class StudioLink {
     if (!stream) for (const d of [...this.peers.keys()]) this.drop(d);
   }
 
+  /** Espelho: ~640 px, 15 quadros e 0,8 Mbps; no modo mínimo, 6 quadros e 0,3 Mbps. */
+  private tune(sender: RTCRtpSender) {
+    const w = sender.track?.getSettings().width ?? 1280;
+    const params = sender.getParameters();
+    const low = this.level === 'low';
+    params.encodings = [{ maxBitrate: low ? 300_000 : 800_000, maxFramerate: low ? 6 : 15, scaleResolutionDownBy: Math.max(1, w / 640) }];
+    params.degradationPreference = 'maintain-resolution';
+    void sender.setParameters(params).catch(() => {});
+  }
+
+  /** O aparelho da live apertou (perdendo quadros): o espelho fica no mínimo para não disputar com a transmissão. */
+  setLevel(level: 'normal' | 'low') {
+    if (level === this.level) return;
+    this.level = level;
+    for (const p of this.peers.values()) for (const sd of p.pc.getSenders()) if (sd.track) this.tune(sd);
+  }
+
   private drop(device: string) {
     const p = this.peers.get(device);
     p?.dc?.close();
@@ -114,9 +137,7 @@ export class StudioLink {
     if (track) {
       const sender = pc.addTrack(track, stream);
       // espelho leve: não pesa no aparelho que transmite
-      const params = sender.getParameters();
-      params.encodings = [{ maxBitrate: 1_200_000, maxFramerate: 24, scaleResolutionDownBy: track.getSettings().width && track.getSettings().width! > 1280 ? 2 : 1.34 }];
-      void sender.setParameters(params).catch(() => {});
+      this.tune(sender);
     }
     pc.ondatachannel = (e) => {
       peer.dc = e.channel;
@@ -143,8 +164,26 @@ export class StudioLink {
     }
   }
 
-  /** Manda para todos os aparelhos ligados (ou só para um). */
+  /**
+   * Manda para todos os aparelhos ligados (ou só para um).
+   * Quem só controla espera até 1 s e manda só o último comando de cada tipo; quem transmite manda na hora.
+   */
   post(m: LinkMsg, to?: string) {
+    if (this.vpc && !this.source && !to) {
+      this.pending.set(m.t, m);
+      if (!this.flushTimer)
+        this.flushTimer = window.setTimeout(() => {
+          this.flushTimer = 0;
+          const all = [...this.pending.values()];
+          this.pending.clear();
+          for (const x of all) this.postNow(x);
+        }, StudioLink.VIEWER_DELAY_MS);
+      return;
+    }
+    this.postNow(m, to);
+  }
+
+  private postNow(m: LinkMsg, to?: string) {
     const text = JSON.stringify(m);
     if (this.vdc?.readyState === 'open' && (!to || to === this.vTarget)) this.vdc.send(text);
     for (const [d, p] of this.peers) if (p.dc?.readyState === 'open' && (!to || to === d)) p.dc.send(text);

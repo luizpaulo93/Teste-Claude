@@ -303,6 +303,14 @@ export function Studio({
   const onLinkOpen = useRef<(d: string) => void>(() => {});
   /** este aparelho só controla: mostra a imagem de quem transmite */
   const viewing = Boolean(mirrorStream) && !onAir && liveOn;
+  // mexendo no PDF ou na câmera do canto aqui: mostra a prévia local na hora e volta para a imagem da live depois
+  const [touching, setTouching] = useState(false);
+  const touchTimer = useRef(0);
+  const touched = () => {
+    setTouching(true);
+    window.clearTimeout(touchTimer.current);
+    touchTimer.current = window.setTimeout(() => setTouching(false), 1800);
+  };
   useEffect(() => {
     const l = new StudioLink((to, kind, sdp) => rtcSend(liveId, device.current.id, to, kind, sdp));
     l.onStream = setMirrorStream;
@@ -464,6 +472,7 @@ export function Studio({
   // Quadradinho da câmera: arrastar move para qualquer lugar; tocar mostra a alça de tamanho; pinça também muda o tamanho
   const pipDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size') => {
     e.stopPropagation();
+    if (viewing) touched();
     e.currentTarget.setPointerCapture(e.pointerId);
     pipTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pipDrag.current = {
@@ -869,7 +878,7 @@ export function Studio({
         if (caster.current && canvasRef.current) {
           // quem transmite manda a imagem da live para os outros aparelhos
           l.unwatch();
-          mirrorSrc.current ??= canvasRef.current.captureStream(24);
+          mirrorSrc.current ??= canvasRef.current.captureStream(15);
           l.setSource(mirrorSrc.current);
         } else if (r.status === 'live' && r.holder?.fresh && r.holder.device !== device.current.id) {
           l.setSource(null);
@@ -944,12 +953,17 @@ export function Studio({
   // Mensagens da ligação direta
   const sendView = useRef<(v: PdfPos) => void>(() => {});
   const lastView = useRef(0);
+  const viewTimer = useRef(0);
   sendView.current = (v) => {
     if (sync.current.applying || !link.current?.connected) return;
-    const now = performance.now();
-    if (now - lastView.current < 33) return; // ~30 por segundo
-    lastView.current = now;
-    link.current.post({ t: 'pdfv', v });
+    void v;
+    // junta os movimentos e manda a posição final a cada 1 s (nos dois sentidos)
+    if (viewTimer.current) return;
+    viewTimer.current = window.setTimeout(() => {
+      viewTimer.current = 0;
+      if (pdf.current && !sync.current.applying) link.current?.post({ t: 'pdfv', v: pdf.current.pos });
+    }, caster.current ? 1000 : 150);
+    lastView.current = performance.now();
   };
   const devicesNow = () => ({
     cams: [...cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })), { id: 'none', name: 'Sem câmera' }],
@@ -1064,7 +1078,11 @@ export function Studio({
         // quadros adaptativos: de 22 a 54 por segundo, conforme o aparelho e a internet aguentam
         minFps: 22,
         maxFps: 54,
-        onFps: (f) => comp.current?.setFps(f),
+        onFps: (f) => {
+          comp.current?.setFps(f);
+          // aparelho apertado: o espelho para os outros aparelhos fica no mínimo
+          link.current?.setLevel(f < 30 ? 'low' : 'normal');
+        },
         onHandoff: () => {
           if (comp.current) {
             comp.current.onFrame = undefined;
@@ -1168,8 +1186,15 @@ export function Studio({
                 ref={canvasRef}
                 width={1280}
                 height={720}
-                onPointerDown={onDown}
-                onPointerMove={onMove}
+                onPointerDown={(e) => {
+                  if (viewing) touched();
+                  onDown(e);
+                }}
+                onPointerMove={(e) => {
+                  if (viewing && e.buttons) touched();
+                  onMove(e);
+                }}
+                onWheel={() => viewing && touched()}
                 onPointerUp={onUp}
                 onPointerCancel={onUp}
                 className={cn(
@@ -1186,7 +1211,7 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', !viewing && 'hidden')}
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
