@@ -38,6 +38,8 @@ function crc32(bytes: Uint8Array) {
 
 export class TsMuxer {
   private cc = new Map<number, number>();
+  /** Soma ao relógio (µs): o aparelho que assume a live continua o tempo de onde o outro parou. */
+  offsetUs = 0;
 
   private nextCc(pid: number) {
     const v = this.cc.get(pid) ?? 0;
@@ -88,7 +90,7 @@ export class TsMuxer {
 
   // ---------- PES
   private videoPes(v: VideoSample) {
-    const pts = BASE + Math.round(v.pts * 0.09);
+    const pts = BASE + Math.round((v.pts + this.offsetUs) * 0.09);
     // AUD (delimitador de quadro) antes de cada quadro, como pede o padrão
     const aud = new Uint8Array([0, 0, 0, 1, 0x09, 0xf0]);
     const header = pesHeader(0xe0, pts, 0);
@@ -96,7 +98,7 @@ export class TsMuxer {
     return this.packetize(PID_VIDEO, payload, Math.max(0, pts - 9000), v.key);
   }
   private audioPes(s: AudioSample) {
-    const pts = BASE + Math.round(s.pts * 0.09);
+    const pts = BASE + Math.round((s.pts + this.offsetUs) * 0.09);
     const header = pesHeader(0xc0, pts, s.data.length);
     return this.packetize(PID_AUDIO, concat([header, s.data]), null, false);
   }

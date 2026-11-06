@@ -111,6 +111,12 @@ export class Compositor {
     this.stopTick = workerTicker(1000 / fps, () => this.draw());
   }
 
+  /** Muda o ritmo de desenho (a live com quadros adaptativos pede mais ou menos quadros). */
+  setFps(fps: number) {
+    this.stopTick();
+    this.stopTick = workerTicker(1000 / Math.max(1, fps), () => this.draw());
+  }
+
   resize(w: number, h: number) {
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;

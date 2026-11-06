@@ -25,18 +25,18 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { claimStudio, pollStudio, setStudioScene, startStudio, stopStudio } from '../../../live-actions';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
-import { Broadcaster, checkSupport, type BroadcastStatus } from '@/lib/live/broadcaster';
+import { Broadcaster, checkSupport, type BroadcastStatus, type ResumeState } from '@/lib/live/broadcaster';
 import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
 import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
 import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
-import { startStudio, stopStudio } from '../../../live-actions';
 
 // Resolução (a C922 vai até 1080p) e taxa de vídeo pela conexão, como a "taxa dinâmica" do OBS:
 // Automático (Wi‑Fi) começa no máximo e se ajusta à velocidade de envio; Econômico (dados móveis) fica travado em 4 Mbps.
@@ -140,6 +140,26 @@ const clock = (s: number) =>
  * para o YouTube. Três cenas, como no OBS: só a câmera, só a tela, ou a tela com a câmera no canto.
  * Dá para trocar de cena no meio da live. O áudio passa por um mixer: trocar o microfone não corta o som.
  */
+/** Este aparelho no estúdio (fica guardado no navegador) e um nome para os outros aparelhos verem. */
+function studioDevice() {
+  let id = '';
+  try {
+    id = localStorage.getItem('studio-device') ?? '';
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 12);
+      localStorage.setItem('studio-device', id);
+    }
+  } catch {
+    id = Math.random().toString(36).slice(2, 12);
+  }
+  const ua = navigator.userAgent;
+  const touchMac = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+  const label = /iPad/.test(ua) || touchMac ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? (/Mobile/.test(ua) ? 'Celular Android' : 'Tablet Android') : /Mac/.test(ua) ? 'Mac' : 'Computador';
+  return { id, label };
+}
+
+type StudioPoll = Awaited<ReturnType<typeof pollStudio>>;
+
 export function Studio({
   liveId,
   live,
@@ -257,6 +277,20 @@ export function Studio({
   useEffect(() => setAndroid(/Android/i.test(navigator.userAgent)), []);
   const caster = useRef<Broadcaster | null>(null);
   const onAir = status?.state === 'live' || status?.state === 'starting' || status?.state === 'reconnecting';
+
+  // ---- vários aparelhos na mesma live: um transmite, os outros mostram a mesma cena e controlam
+  const device = useRef<{ id: string; label: string }>({ id: '', label: '' });
+  const [remote, setRemote] = useState<StudioPoll>(null);
+  const sync = useRef({ rev: 0, applying: false, sent: '' });
+  const [autoTake, setAutoTake] = useState(false);
+  useEffect(() => {
+    device.current = studioDevice();
+    try {
+      setAutoTake(localStorage.getItem('studio-auto') === '1');
+    } catch {}
+  }, []);
+  const liveOn = remote ? remote.status === 'live' : live;
+
 
   // Mixer de áudio (sempre existe uma trilha de áudio, mesmo sem microfone)
   const mixer = useCallback(() => {
@@ -656,6 +690,13 @@ export function Studio({
           const st = t.getSettings();
           if (st.width && st.height) setCamInfo({ w: Math.max(st.width, st.height), h: Math.min(st.width, st.height), fps: Math.round(st.frameRate ?? 0) });
         };
+        // quadros adaptativos: pede até 60 fps mantendo a resolução que a câmera já entregou
+        const st0 = t.getSettings();
+        if (st0.width && st0.height)
+          void t
+            .applyConstraints({ width: { exact: st0.width }, height: { exact: st0.height }, frameRate: { ideal: 60 } })
+            .catch(() => {})
+            .finally(read);
         read();
         window.setTimeout(read, 1500);
       })
@@ -788,6 +829,84 @@ export function Studio({
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  // Situação da live em todos os aparelhos (a cada 1,5 s): quem transmite e qual a cena
+  const applyRef = useRef<(r: NonNullable<StudioPoll>) => Promise<void>>(async () => {});
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      const r = await pollStudio(liveId).catch(() => null);
+      if (!alive || !r) return;
+      setRemote(r);
+      // live encerrada em outro aparelho: este para na hora
+      if (r.status !== 'live' && caster.current) {
+        if (comp.current) comp.current.onFrame = undefined;
+        caster.current.abort('A live foi encerrada.');
+        caster.current = null;
+        setStatus(null);
+      }
+      await applyRef.current(r);
+    };
+    void tick();
+    const t = window.setInterval(() => void tick(), 1500);
+    return () => {
+      alive = false;
+      window.clearInterval(t);
+    };
+  }, [liveId]);
+
+  // Aplica a cena que veio de outro aparelho (câmera ou PDF, PDF e página, câmera no canto, microfone)
+  applyRef.current = async (r) => {
+    // a live tem uma resolução: quem vai assumir usa a mesma
+    if (r.status === 'live' && !caster.current && r.res && r.res !== res) setRes(r.res);
+    if (r.rev <= sync.current.rev) return;
+    const st = r.state;
+    // PDF que outro aparelho acabou de subir: busca a lista nova antes
+    if (st.pdfId && !materials.some((m) => m.id === st.pdfId)) {
+      router.refresh();
+      return;
+    }
+    sync.current.rev = r.rev;
+    sync.current.applying = true;
+    try {
+      if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId);
+      if (st.scene && st.scene !== scene) setScene(st.scene);
+      if (st.page && pdf.current?.pages && st.page !== pdf.current.view.page) await pdf.current.goTo(st.page);
+      if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
+      if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
+      sync.current.sent = JSON.stringify({ scene: st.scene ?? scene, pdfId: st.pdfId ?? pdfId, page: st.page ?? pdfView?.page ?? 0, pip: st.pip ?? pip, muted: st.muted ?? muted });
+    } finally {
+      window.setTimeout(() => (sync.current.applying = false), 300);
+    }
+  };
+
+  // Mudou a cena aqui: avisa os outros aparelhos
+  useEffect(() => {
+    if (sync.current.applying) return;
+    const now = { scene, pdfId, page: pdfView?.page ?? 0, pip, muted };
+    const key = JSON.stringify(now);
+    if (key === sync.current.sent) return;
+    const t = window.setTimeout(async () => {
+      if (sync.current.applying) return;
+      sync.current.sent = key;
+      const r = await setStudioScene(liveId, { scene, pdfId: pdfId || undefined, page: pdfView?.page || undefined, pip, muted }).catch(() => null);
+      if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [scene, pdfId, pdfView?.page, pip, muted, liveId]);
+
+  // Assumir sozinho: o aparelho da live parou de enviar (caiu a internet, fechou o app) e este está pronto
+  const autoTried = useRef('');
+  useEffect(() => {
+    if (!autoTake || onAir || busy || !remote || remote.status !== 'live' || !remote.holder || remote.holder.fresh) return;
+    if (remote.holder.device === device.current.id && caster.current) return;
+    if (!camTrack.current && !screenTrack.current) return;
+    const key = `${remote.holder.device}-${remote.rev}`;
+    if (autoTried.current === key) return;
+    autoTried.current = key;
+    toast('Assumindo a live…');
+    void goLive();
+  });
+
   // Avisa antes de fechar a página no meio da live
   useEffect(() => {
     if (!onAir) return;
@@ -798,10 +917,22 @@ export function Studio({
 
   async function goLive() {
     if (!camTrack.current && !screenTrack.current) return toast.error('Escolha a câmera ou espelhe a tela.');
+    if (caster.current) return;
     setBusy(true);
     try {
-      const r = await startStudio(liveId);
-      if (r.error) return void toast.error(r.error);
+      // live já no ar (em outro aparelho): este assume a MESMA transmissão, sem criar outra no YouTube
+      let lease = '';
+      let resume: ResumeState | null = null;
+      const c = await claimStudio(liveId, device.current);
+      if (c.error) return void toast.error(c.error);
+      if (c.lease) {
+        lease = c.lease;
+        resume = c.resume ?? null;
+      } else {
+        const r = await startStudio(liveId, device.current);
+        if (r.error) return void toast.error(r.error);
+        lease = r.lease ?? '';
+      }
       const m = mixer();
       await m.ctx.resume();
       const n = rangeOf(res, net);
@@ -820,11 +951,32 @@ export function Studio({
         onStatus: setStatus,
         // Safari/iPad: o som vai direto do mixer (já com o silenciar aplicado)
         audioSource: { ctx: m.ctx, node: m.gain },
+        lease,
+        resume,
+        res,
+        // quadros adaptativos: de 22 a 54 por segundo, conforme o aparelho e a internet aguentam
+        minFps: 22,
+        maxFps: 54,
+        onFps: (f) => comp.current?.setFps(f),
+        onHandoff: () => {
+          if (comp.current) {
+            comp.current.onFrame = undefined;
+            comp.current.setFps(30);
+          }
+          caster.current = null;
+          setStatus(null);
+          toast('A transmissão passou para outro aparelho.');
+          router.refresh();
+        },
       });
       caster.current = b;
       await b.start();
-      if (comp.current) comp.current.onFrame = (c) => b.pushFrame(c);
-      toast('Transmissão iniciada');
+      if (comp.current) {
+        comp.current.setFps(30);
+        comp.current.onFrame = (c) => b.pushFrame(c);
+      }
+      void setStudioScene(liveId, { res, scene, pdfId: pdfId || undefined, page: pdfView?.page, pip, muted });
+      toast(resume ? 'Transmitindo deste aparelho' : 'Transmissão iniciada');
       router.refresh();
     } finally {
       setBusy(false);
@@ -841,9 +993,13 @@ export function Studio({
     setConfirmEnd(false);
     setBusy(true);
     try {
-      if (comp.current) comp.current.onFrame = undefined;
+      if (comp.current) {
+        comp.current.onFrame = undefined;
+        comp.current.setFps(30);
+      }
       await caster.current?.stop();
       caster.current = null;
+      setStatus(null);
       const r = await stopStudio(liveId);
       if (r.error) toast.error(r.error);
       else toast('Transmissão encerrada');
@@ -957,6 +1113,17 @@ export function Studio({
             {onAir && (
               <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
                 <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
+              </span>
+            )}
+            {!onAir && liveOn && remote?.holder && (
+              <span
+                className={cn(
+                  'absolute top-3 left-3 flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold text-white',
+                  remote.holder.fresh ? 'bg-red-600' : 'bg-black/70',
+                )}
+              >
+                <span className={cn('size-1.5 rounded-full bg-white', remote.holder.fresh && 'animate-pulse')} />
+                {remote.holder.fresh ? `AO VIVO · ${remote.holder.label}` : `${remote.holder.label} sem sinal`}
               </span>
             )}
             <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
@@ -1167,7 +1334,7 @@ export function Studio({
                     disabled={busy || blocked}
                     className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
-                    {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar
+                    {busy ? <Spinner /> : <Radio className="size-4" />} {liveOn ? 'Assumir' : 'Iniciar'}
                   </button>
                 )}
               </div>
@@ -1343,7 +1510,7 @@ export function Studio({
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="text-muted">Quadros</p>
-              <p className={cn('font-bold tabular-nums', (status?.lost ?? 0) >= 15 ? 'text-warning' : 'text-ink')}>{status?.fps ?? 0} fps</p>
+              <p data-target={status?.target} className={cn('font-bold tabular-nums', (status?.lost ?? 0) >= 15 ? 'text-warning' : 'text-ink')}>{status?.fps ?? 0} fps</p>
             </div>
             <div className="rounded-xl border border-line bg-surface p-2.5">
               <p className="flex items-center justify-center gap-1 text-muted">
@@ -1367,10 +1534,36 @@ export function Studio({
           <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg', 'w-full')}>
             {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar transmissão
           </button>
+        ) : liveOn ? (
+          // live no ar em outro aparelho: este assume a mesma live (ou encerra para todos)
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
+              {busy ? <Spinner /> : <Radio className="size-4" />} Transmitir deste aparelho
+            </button>
+            <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg')} aria-label="Encerrar a live">
+              <CircleStop className="size-4" />
+            </button>
+          </div>
         ) : (
           <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
-            {busy ? <Spinner /> : <Radio className="size-4" />} {live ? 'Transmitir (sala já está no ar)' : 'Iniciar transmissão'}
+            {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar transmissão
           </button>
+        )}
+        {liveOn && (
+          <label className="flex items-center gap-2 text-xs text-ink-2">
+            <input
+              type="checkbox"
+              checked={autoTake}
+              onChange={(e) => {
+                setAutoTake(e.target.checked);
+                try {
+                  localStorage.setItem('studio-auto', e.target.checked ? '1' : '0');
+                } catch {}
+              }}
+              className="size-4 accent-red-600"
+            />
+            Assumir se o outro aparelho cair
+          </label>
         )}
         <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
         <label className="block space-y-1.5">
@@ -1473,7 +1666,7 @@ export function Studio({
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Settings2 className="size-3.5" /> Resolução
           </span>
-          <Select value={res} onChange={(e) => pickRes(e.target.value as Res)} disabled={onAir} aria-label="Resolução">
+          <Select value={res} onChange={(e) => pickRes(e.target.value as Res)} disabled={onAir || liveOn} aria-label="Resolução">
             {(Object.keys(RES) as Res[]).reverse().map((k) => (
               <option key={k} value={k}>
                 {RES[k].label}

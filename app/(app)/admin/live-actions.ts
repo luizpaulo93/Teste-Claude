@@ -5,6 +5,7 @@ import { bool, fail, refreshCatalog, requireAdminAction, str, type ActionResult 
 import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
 import type { LessonMaterial } from '@/lib/types';
+import { claimLease, endStudio, HOLDER_STALE_MS, patchScene, studioRow, type StudioResume, type StudioScene } from '@/lib/live-studio';
 import { createBroadcast, endBroadcast, getAccount, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
 
 function refresh(id?: string) {
@@ -327,7 +328,10 @@ export async function disconnectYoutube(): Promise<ActionResult> {
 }
 
 /** Prepara a live no YouTube (cria no canal ou usa a chave) e coloca a sala no ar. */
-export async function startStudio(id: string): Promise<ActionResult & { videoId?: string }> {
+export async function startStudio(
+  id: string,
+  device?: { id: string; label: string },
+): Promise<ActionResult & { videoId?: string; lease?: string }> {
   try {
     await requireAdminAction();
     if (!isDocId(id)) return { error: 'Inválido.' };
@@ -346,8 +350,10 @@ export async function startStudio(id: string): Promise<ActionResult & { videoId?
       return { error: 'Conecte a conta do YouTube em Ao vivo.' };
     }
     await sql.exec(`update live_sessions set youtube_id = $2, status = 'live', updated_at = now() where id = $1`, [id, videoId]);
+    // este aparelho transmite (live nova: a playlist começa do zero)
+    const lease = device ? (await claimLease(id, device.id, device.label, true)).lease : undefined;
     refresh(id);
-    return { ok: true, videoId };
+    return { ok: true, videoId, lease };
   } catch (e) {
     return { error: e instanceof Error && !e.message.includes('Acesso') ? e.message : 'Não foi possível iniciar.' };
   }
@@ -361,6 +367,7 @@ export async function stopStudio(id: string): Promise<ActionResult> {
       id,
     ]);
     await sql.exec(`delete from integrations where id = $1`, [`ingest:${id}`]);
+    await endStudio(id).catch(() => {});
     const acc = await getAccount();
     if (live?.youtube_id && oauthConfigured() && acc.refresh_token) await endBroadcast(live.youtube_id);
     await archiveAsLesson(id).catch(() => {});
@@ -412,4 +419,64 @@ export async function saveLiveLesson(lessonId: string, data: { title: string; ma
   } catch (e) {
     return fail(e);
   }
+}
+
+// ---------------------------------------------------------------- estúdio em vários aparelhos
+
+/**
+ * Este aparelho assume a live que já está no ar (outro aparelho transmitia): mesma transmissão do YouTube,
+ * a playlist continua de onde parou e o aparelho anterior para sozinho.
+ */
+export async function claimStudio(
+  id: string,
+  device: { id: string; label: string },
+): Promise<ActionResult & { lease?: string; resume?: StudioResume | null; notLive?: boolean }> {
+  try {
+    await requireAdminAction();
+    if (!isDocId(id)) return { error: 'Inválido.' };
+    const live = await sql.one<{ status: string }>(`select status from live_sessions where id = $1`, [id]);
+    if (!live) return { error: 'Transmissão não encontrada.' };
+    if (live.status !== 'live') return { notLive: true };
+    const ingest = await sql.one(`select 1 from integrations where id = $1`, [`ingest:${id}`]);
+    if (!ingest) return { notLive: true };
+    const r = await claimLease(id, String(device.id), String(device.label), false);
+    return { ok: true, lease: r.lease, resume: r.resume };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/** Situação do estúdio para cada aparelho: a live está no ar? quem transmite? qual a cena? */
+export async function pollStudio(id: string) {
+  await requireAdminAction();
+  if (!isDocId(id)) return null;
+  const [live, row] = await Promise.all([
+    sql.one<{ status: string; materials: LessonMaterial[] | null }>(`select status, materials from live_sessions where id = $1`, [id]),
+    studioRow(id),
+  ]);
+  if (!live) return null;
+  const at = row?.lease_at ? new Date(row.lease_at).getTime() : 0;
+  return {
+    status: live.status as 'scheduled' | 'live' | 'ended',
+    holder: row?.lease ? { device: row.device, label: row.label, fresh: Date.now() - at < HOLDER_STALE_MS } : null,
+    state: row?.state ?? {},
+    rev: row?.rev ?? 0,
+    res: row?.resume?.res ?? row?.state?.res,
+    materials: (live.materials ?? []).map((m) => m.id),
+    now: Date.now(),
+  };
+}
+
+/** Troca a cena em todos os aparelhos (câmera ou PDF, qual PDF e página, câmera no canto, microfone). */
+export async function setStudioScene(id: string, patch: StudioScene) {
+  await requireAdminAction();
+  if (!isDocId(id)) return null;
+  const clean: StudioScene = {};
+  if (patch.scene && ['camera', 'pdf', 'both', 'screen'].includes(patch.scene)) clean.scene = patch.scene;
+  if (typeof patch.pdfId === 'string' && patch.pdfId.length < 80) clean.pdfId = patch.pdfId;
+  if (typeof patch.page === 'number' && patch.page > 0 && patch.page < 10000) clean.page = Math.round(patch.page);
+  if (typeof patch.pip === 'boolean') clean.pip = patch.pip;
+  if (typeof patch.muted === 'boolean') clean.muted = patch.muted;
+  if (patch.res === '1080' || patch.res === '720') clean.res = patch.res;
+  return patchScene(id, clean);
 }

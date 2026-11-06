@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { getViewer } from '@/lib/session';
+import { checkLease, saveResume, type StudioResume } from '@/lib/live-studio';
 import { getIngest } from '@/lib/youtube';
 
 export const maxDuration = 20;
@@ -26,6 +27,10 @@ export async function POST(req: NextRequest) {
     cache.set(live, base);
   }
   if (!base.url) return NextResponse.json({ error: 'Transmissão não preparada. Toque em Iniciar de novo.' }, { status: 409 });
+  // outro aparelho assumiu a transmissão: este para (sem mexer na live)
+  const lease = req.headers.get('x-studio-lease') ?? '';
+  if (!(await checkLease(live, lease)))
+    return NextResponse.json({ error: 'A transmissão passou para outro aparelho.', code: 'handoff' }, { status: 409 });
 
   const segment = await req.arrayBuffer();
   // sem arquivo = só atualiza a playlist (segmentos chegaram fora de ordem)
@@ -47,12 +52,26 @@ export async function POST(req: NextRequest) {
   if (!seg) return NextResponse.json({ error: 'Sem conexão com o YouTube.' }, { status: 502 });
   if (seg.status === 401 || seg.status === 403) return NextResponse.json({ error: 'O YouTube recusou a chave da transmissão.' }, { status: 401 });
   if (!seg.ok) return NextResponse.json({ error: `YouTube respondeu ${seg.status}.` }, { status: 502 });
-  if (!playlist) return NextResponse.json({ ok: true });
+  if (!playlist) {
+    if (lease) await saveResume(live, lease, null).catch(() => {});
+    return NextResponse.json({ ok: true });
+  }
   const pl = await fetch(base.url + 'live.m3u8', {
     method: 'PUT',
     body: playlist,
     headers: { ...headers, 'Content-Type': 'application/vnd.apple.mpegurl' },
   }).catch(() => null);
   if (!pl || (!pl.ok && pl.status !== 202)) return NextResponse.json({ error: 'Falha ao enviar a playlist.' }, { status: 502 });
+  // onde a playlist parou: se outro aparelho assumir, continua daqui (mesma live)
+  if (lease) {
+    let resume: StudioResume | null = null;
+    try {
+      const raw = req.headers.get('x-studio-resume');
+      if (raw && raw.length < 4000) resume = JSON.parse(atob(raw)) as StudioResume;
+    } catch {
+      /* sem estado */
+    }
+    await saveResume(live, lease, resume).catch(() => {});
+  }
   return NextResponse.json({ ok: true });
 }

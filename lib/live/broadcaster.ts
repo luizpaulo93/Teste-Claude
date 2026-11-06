@@ -21,7 +21,31 @@ export interface BroadcastOptions {
   endpoint?: string;
   /** Safari (sem MediaStreamTrackProcessor): o som é lido direto do mixer por um AudioWorklet */
   audioSource?: { ctx: AudioContext; node: AudioNode };
+  /** Aparelho que transmite agora (vai em cada envio; se outro assumir, o servidor recusa e este para) */
+  lease?: string;
+  /** Assumindo uma live que já estava no ar em outro aparelho: continua a playlist e o relógio dela */
+  resume?: ResumeState | null;
+  /** resolução da live (guardada para o próximo aparelho usar a mesma) */
+  res?: '1080' | '720';
+  /** Outro aparelho assumiu a transmissão */
+  onHandoff?: () => void;
+  /** Quadros por segundo adaptativos: sobe até maxFps quando o aparelho e a rede dão conta, desce até minFps */
+  minFps?: number;
+  maxFps?: number;
+  /** a meta de quadros mudou (a mesa de cenas passa a desenhar nesse ritmo) */
+  onFps?: (fps: number) => void;
 }
+
+/** Onde a playlist do YouTube parou (o próximo aparelho continua daqui). */
+export interface ResumeState {
+  msn: number;
+  discSeq: number;
+  items: { name: string; dur: number; disc?: boolean }[];
+  nextName: number;
+  endUs: number;
+  res?: '1080' | '720';
+}
+type PlItem = { name: string; dur: number; disc?: boolean };
 
 export interface BroadcastStatus {
   state: 'starting' | 'live' | 'reconnecting' | 'stopped' | 'error';
@@ -35,6 +59,8 @@ export interface BroadcastStatus {
   fps?: number;
   /** % de quadros perdidos porque o aparelho não deu conta (últimos segundos) */
   lost?: number;
+  /** meta de quadros por segundo agora (adaptativa) */
+  target?: number;
   message?: string;
 }
 
@@ -72,7 +98,14 @@ export class Broadcaster {
   private segStart = -1;
   private lastKeyAt = -Infinity;
   private seq = 0;
-  private playlist: { name: string; dur: number }[] = [];
+  private playlist: PlItem[] = [];
+  /** descontinuidades que já saíram da janela da playlist */
+  private discRemoved = 0;
+  /** primeiro segmento deste aparelho numa live retomada: marca descontinuidade (outro codificador) */
+  private resumeDisc = false;
+  /** fim do último segmento listado, no relógio da live (µs) */
+  private listedEndUs = 0;
+  private segEnds = new Map<number, number>();
   private uploads: { n: number; name: string; data: Uint8Array; dur: number }[] = [];
   private sentBytes = 0;
   private sent = 0;
@@ -82,6 +115,19 @@ export class Broadcaster {
   private status: BroadcastStatus = { state: 'starting', seconds: 0, sent: 0, queue: 0, kbps: 0 };
   private stopTick?: () => void;
   private nextFrame = 0;
+  /** meta de quadros por segundo agora (entre minFps e maxFps) */
+  private fpsNow = 30;
+  private pendingFps = 0;
+  private offered = 0;
+  private skipped = 0;
+  private calm = 0;
+  private fpsCooldown = 0;
+  private get fpsMin() {
+    return this.o.minFps ?? this.o.fps;
+  }
+  private get fpsMax() {
+    return this.o.maxFps ?? this.o.fps;
+  }
   private audioFirstTs = -1;
   private audioOffsetUs = 0;
   private cfg?: VideoEncoderConfig;
@@ -102,6 +148,19 @@ export class Broadcaster {
   async start() {
     this.running = true;
     this.t0 = performance.now();
+    this.fpsNow = Math.min(this.fpsMax, Math.max(this.fpsMin, this.o.fps));
+    const r = this.o.resume;
+    if (r) {
+      // mesma live: o tempo continua de onde o outro aparelho parou, a playlist também
+      this.muxer.offsetUs = Math.max(0, Math.round(r.endUs)) + 200_000;
+      this.playlist = r.items.slice(-5).map((x) => ({ name: x.name, dur: x.dur, disc: x.disc }));
+      this.plRemoved = r.msn + Math.max(0, r.items.length - 5);
+      this.discRemoved = r.discSeq;
+      this.seq = r.nextName + 3; // folga: nunca regrava um arquivo que o outro aparelho possa ter enviado
+      this.nextInList = this.seq;
+      this.resumeDisc = true;
+      this.listedEndUs = r.endUs;
+    }
     this.venc = new VideoEncoder({
       output: (chunk) => this.onVideo(chunk),
       error: (e) => this.fail(`Erro no vídeo: ${e.message}`),
@@ -132,7 +191,7 @@ export class Broadcaster {
    */
   private async bestVideoConfig(): Promise<VideoEncoderConfig> {
     const big = this.o.height > 720;
-    const base = { width: this.o.width, height: this.o.height, bitrate: this.o.videoBitrate, framerate: this.o.fps, avc: { format: 'annexb' as const } };
+    const base = { width: this.o.width, height: this.o.height, bitrate: this.o.videoBitrate, framerate: this.fpsNow, avc: { format: 'annexb' as const } };
     const codecs = big ? ['avc1.640029', 'avc1.640028', 'avc1.4D4029', 'avc1.42E029'] : ['avc1.64001F', 'avc1.4D401F', 'avc1.42E01F'];
     // Tempo real primeiro: o codificador nunca fica para trás (é o que evita quadros perdidos no 1080p)
     const extras = [
@@ -220,16 +279,52 @@ export class Broadcaster {
 
   /** Troca a taxa só no quadro-chave (começo de segmento): sem falhas na imagem. */
   private applyRate() {
-    if (!this.pendingRate || !this.cfg || !this.venc) return;
+    if ((!this.pendingRate && !this.pendingFps) || !this.cfg || !this.venc) return;
     try {
-      this.cfg = { ...this.cfg, bitrate: this.pendingRate };
+      this.cfg = { ...this.cfg, bitrate: this.pendingRate || this.cfg.bitrate, framerate: this.pendingFps || this.cfg.framerate };
       this.venc.configure(this.cfg);
-      this.rate = this.pendingRate;
+      if (this.pendingRate) this.rate = this.pendingRate;
       this.status.rate = Math.round(this.rate / 1000);
     } catch {
       /* aparelho não aceitou trocar: segue na taxa atual */
     }
     this.pendingRate = 0;
+    this.pendingFps = 0;
+  }
+
+  /**
+   * Quadros por segundo adaptativos (a cada 1 s): o aparelho perdendo quadros ou o envio atrasado → desce 6;
+   * 5 s seguidos com folga → sobe 4. Sempre entre minFps e maxFps.
+   */
+  private lastFpsCheck = 0;
+  private adaptFps(measured: number) {
+    if (this.fpsMin >= this.fpsMax) return;
+    const now = performance.now();
+    if (now - this.lastFpsCheck < 900) return; // uma vez por segundo
+    this.lastFpsCheck = now;
+    const skip = this.offered ? this.skipped / this.offered : 0;
+    this.offered = 0;
+    this.skipped = 0;
+    if (this.fpsCooldown > 0) {
+      this.fpsCooldown--;
+      return;
+    }
+    const overloaded = skip > 0.08 || (this.frameWin.length >= 4 && measured < this.fpsNow * 0.85);
+    const behind = this.uploads.length >= 2 || this.status.state === 'reconnecting';
+    let next = this.fpsNow;
+    if (overloaded || behind) {
+      next = Math.max(this.fpsMin, this.fpsNow - 6);
+      this.calm = 0;
+    } else if (++this.calm >= 5) {
+      next = Math.min(this.fpsMax, this.fpsNow + 4);
+      this.calm = 0;
+    }
+    if (next === this.fpsNow) return;
+    this.fpsNow = next;
+    this.pendingFps = next;
+    this.fpsCooldown = 2; // deixa o ritmo novo assentar antes de medir de novo
+    this.frameWin = [];
+    this.o.onFps?.(next);
   }
 
   /**
@@ -250,8 +345,13 @@ export class Broadcaster {
     if (!this.running || !this.venc) return;
     const ts = this.now();
     if (ts < this.nextFrame) return;
-    this.nextFrame = ts + (1e6 / this.o.fps) * 0.9;
-    if (this.venc.encodeQueueSize > 3) return; // codificador atrasado: pula este quadro
+    // folga de 20%: o relógio da mesa de cenas oscila e nenhum quadro no ritmo certo é cortado
+    this.nextFrame = ts + (1e6 / this.fpsNow) * 0.8;
+    this.offered++;
+    if (this.venc.encodeQueueSize > 3) {
+      this.skipped++; // codificador atrasado: pula este quadro
+      return;
+    }
     this.encFrames++;
     const out = new VideoFrame(canvas, { timestamp: ts });
     const key = ts - this.lastKeyAt >= SEGMENT_US;
@@ -273,7 +373,7 @@ export class Broadcaster {
     const reader = (new MediaStreamTrackProcessor({ track }).readable as unknown as ReadableStream<VideoFrame>).getReader();
     this.videoReader = reader;
     this.readers.push(reader);
-    const frameUs = 1e6 / this.o.fps;
+    const frameUs = () => 1e6 / this.fpsNow;
     let next = 0;
     while (this.running && this.videoReader === reader) {
       const { value: frame, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
@@ -285,7 +385,7 @@ export class Broadcaster {
         continue;
       }
       this.encFrames++;
-      next = ts + frameUs * 0.9;
+      next = ts + frameUs() * 0.9;
       // desenha centralizado num quadro fixo (troca de câmera/tela não muda o tamanho do vídeo)
       const fw = frame.displayWidth;
       const fh = frame.displayHeight;
@@ -452,11 +552,12 @@ export class Broadcaster {
     this.video = this.video.filter((s) => s.pts >= at);
     const a = this.audio.filter((s) => s.pts < at);
     this.audio = this.audio.filter((s) => s.pts >= at);
-    const end = at === Infinity ? v[v.length - 1].pts + 1e6 / this.o.fps : at;
+    const end = at === Infinity ? v[v.length - 1].pts + 1e6 / this.fpsNow : at;
     const dur = Math.max(0.1, (end - v[0].pts) / 1e6);
     const data = this.muxer.segment(v, a);
     this.segStart = at === Infinity ? -1 : at;
     const n = this.seq++;
+    this.segEnds.set(n, end + this.muxer.offsetUs);
     this.uploads.push({ n, name: `seg${n}.ts`, data, dur });
     // Queda de internet: guarda até ~20 s de vídeo esperando e envia tudo quando voltar
     // (acima disso pula os mais antigos, para a live não ficar muito atrasada)
@@ -469,7 +570,7 @@ export class Broadcaster {
    * A playlist só anda em ordem: um segmento entra nela quando todos os anteriores já chegaram.
    */
   private inflight = 0;
-  private arrived = new Map<number, { name: string; dur: number } | null>();
+  private arrived = new Map<number, PlItem | null>();
   private nextInList = 0;
   private plRemoved = 0;
   private plChain: Promise<unknown> = Promise.resolve();
@@ -501,9 +602,12 @@ export class Broadcaster {
       // em ordem: já manda a playlist junto (um pedido só)
       // (só quando não há atualização de playlist pendente: ela nunca anda para trás)
       const inOrder = seg.n === this.nextInList && !this.plPending;
-      const list = inOrder ? this.windowWith({ name: seg.name, dur: seg.dur }) : null;
+      const list = inOrder ? this.windowWith({ name: seg.name, dur: seg.dur, disc: this.discFor(seg.n) }) : null;
       // Pedaço maior que o servidor aceita (imagem pesada demais para a taxa): descarta e baixa a taxa
-      const r = seg.data.length > MAX_SEGMENT ? 'drop' : await this.send(seg, list ? playlistText(list.items, list.first, false) : '');
+      const r =
+        seg.data.length > MAX_SEGMENT
+          ? 'drop'
+          : await this.send(seg, list ? playlistText(list.items, list.first, false, list.disc) : '', list ? this.resumeOf(list, seg.n) : null);
       if (r === 'drop') {
         this.want(this.rate * 0.6);
         return this.settle(seg, false);
@@ -531,21 +635,40 @@ export class Broadcaster {
     }
   }
 
-  private windowWith(extra?: { name: string; dur: number }) {
+  private windowWith(extra?: PlItem) {
     const all = extra ? [...this.playlist, extra] : this.playlist;
     const cut = Math.max(0, all.length - 5);
-    return { items: all.slice(cut), first: this.plRemoved + cut };
+    const disc = this.discRemoved + all.slice(0, cut).filter((x) => x.disc).length;
+    return { items: all.slice(cut), first: this.plRemoved + cut, disc };
+  }
+
+  /** O primeiro segmento deste aparelho numa live retomada vem com descontinuidade. */
+  private discFor(n: number) {
+    return this.resumeDisc && n === this.firstOwn;
+  }
+  private get firstOwn() {
+    return this.o.resume ? this.o.resume.nextName + 3 : 0;
+  }
+
+  /** Estado para o servidor guardar junto com a playlist (outro aparelho continua daqui). */
+  private resumeOf(list: { items: PlItem[]; first: number; disc: number }, lastN: number): ResumeState {
+    const endUs = this.segEnds.get(lastN) ?? this.listedEndUs;
+    return { msn: list.first, discSeq: list.disc, items: list.items, nextName: this.seq, endUs, res: this.o.res };
   }
 
   /** Segmento chegou (ou foi pulado): avança a playlist na ordem. */
   private settle(seg: { n: number; name: string; dur: number }, ok: boolean, posted = false) {
-    this.arrived.set(seg.n, ok ? { name: seg.name, dur: seg.dur } : null);
+    this.arrived.set(seg.n, ok ? { name: seg.name, dur: seg.dur, disc: this.discFor(seg.n) } : null);
+    // segmento descartado logo no começo: a descontinuidade passa para o próximo
+    if (!ok && this.discFor(seg.n) && this.o.resume) this.o.resume = { ...this.o.resume, nextName: this.o.resume.nextName + 1 };
     let moved = false;
     let onlyPosted = true;
     while (this.arrived.has(this.nextInList)) {
       const it = this.arrived.get(this.nextInList)!;
       this.arrived.delete(this.nextInList);
       if (it) {
+        this.listedEndUs = this.segEnds.get(this.nextInList) ?? this.listedEndUs;
+        this.segEnds.delete(this.nextInList);
         this.playlist.push(it);
         moved = true;
         if (!(posted && it.name === seg.name)) onlyPosted = false;
@@ -553,7 +676,7 @@ export class Broadcaster {
       this.nextInList++;
     }
     while (this.playlist.length > 5) {
-      this.playlist.shift();
+      if (this.playlist.shift()?.disc) this.discRemoved++;
       this.plRemoved++;
     }
     // a playlist que foi junto com o segmento já está certa; senão, atualiza só ela
@@ -566,24 +689,34 @@ export class Broadcaster {
     this.plPending++;
     this.plChain = this.plChain
       .then(async () => {
-        const { items, first } = this.windowWith();
-        if (!items.length) return;
-        const text = playlistText(items, first, end);
-        for (let i = 0; i < 4; i++) if ((await this.send(null, text)) !== 'retry') return;
+        const w = this.windowWith();
+        if (!w.items.length) return;
+        const text = playlistText(w.items, w.first, end, w.disc);
+        const state = { msn: w.first, discSeq: w.disc, items: w.items, nextName: this.seq, endUs: this.listedEndUs, res: this.o.res };
+        for (let i = 0; i < 4; i++) if ((await this.send(null, text, state)) !== 'retry') return;
       })
       .finally(() => this.plPending--);
     return this.plChain;
   }
 
   /** ok = chegou; retry = falha de rede (tenta de novo); drop = recusado (não adianta insistir) */
-  private async send(seg: { name: string; data: Uint8Array } | null, playlist: string): Promise<'ok' | 'retry' | 'drop'> {
+  private async send(seg: { name: string; data: Uint8Array } | null, playlist: string, resume: ResumeState | null = null): Promise<'ok' | 'retry' | 'drop'> {
+    if (this.handedOff) return 'drop';
     try {
       const url = `${this.o.endpoint ?? '/api/youtube/ingest'}?live=${encodeURIComponent(this.o.liveId)}${seg ? `&file=${seg.name}` : ''}`;
       const headers: Record<string, string> = { 'Content-Type': 'video/mp2t' };
       if (playlist) headers['X-Hls-Playlist'] = btoa(playlist);
+      if (this.o.lease) headers['X-Studio-Lease'] = this.o.lease;
+      if (playlist && resume && this.o.lease) headers['X-Studio-Resume'] = btoa(unescape(encodeURIComponent(JSON.stringify(resume))));
       const res = await fetch(url, { method: 'POST', body: (seg ? seg.data : new Uint8Array(0)) as BodyInit, headers });
       if (res.status === 401 || res.status === 403 || res.status === 409) {
-        const msg = (await res.json().catch(() => ({}))).error;
+        const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+        // outro aparelho assumiu: para sem encerrar a live
+        if (body.code === 'handoff') {
+          this.handoff();
+          return 'drop';
+        }
+        const msg = body.error;
         this.fail(msg || 'O YouTube recusou a transmissão. Confira a chave da transmissão.');
         return 'drop'; // não insiste
       }
@@ -592,6 +725,32 @@ export class Broadcaster {
     } catch {
       return 'retry';
     }
+  }
+
+  private handedOff = false;
+  /** Outro aparelho assumiu: para de codificar e de enviar (a live continua pelo outro). */
+  private handoff() {
+    if (this.handedOff) return;
+    this.handedOff = true;
+    this.abort('A transmissão passou para outro aparelho.');
+    this.o.onHandoff?.();
+  }
+
+  /** Para tudo na hora, sem enviar o fim da live (outro aparelho segue, ou a live já foi encerrada). */
+  abort(message = '') {
+    this.running = false;
+    for (const r of this.readers) r.cancel().catch(() => {});
+    this.worklet?.disconnect();
+    this.stopTick?.();
+    this.uploads = [];
+    try {
+      this.venc?.close();
+      this.aenc?.close();
+    } catch {
+      /* já fechado */
+    }
+    this.status = { ...this.status, state: 'stopped', message };
+    this.emit();
   }
 
   private fail(message: string) {
@@ -611,29 +770,34 @@ export class Broadcaster {
     const a = this.frameWin[0];
     const secs = Math.max(0.5, (now - a.t) / 1000);
     const e = this.encFrames - a.e;
-    if (this.frameWin.length < 2) return { fps: this.o.fps, lost: 0 };
+    if (this.frameWin.length < 2) return { fps: this.fpsNow, lost: 0 };
     const fps = e / secs;
-    return { fps: Math.round(fps), lost: Math.max(0, Math.round((1 - fps / this.o.fps) * 100)) };
+    return { fps: Math.round(fps), lost: Math.max(0, Math.round((1 - fps / this.fpsNow) * 100)) };
   }
 
   private emit() {
     const seconds = Math.round((performance.now() - this.t0) / 1000);
+    const fr = this.frameStats();
+    if (this.running) this.adaptFps(fr.fps);
     this.status = {
       ...this.status,
       seconds,
       sent: this.sent,
       queue: this.uploads.length,
-      ...this.frameStats(),
+      ...fr,
+      target: this.fpsNow,
       kbps: seconds ? Math.round((this.sentBytes * 8) / 1000 / seconds) : 0,
     };
     this.o.onStatus?.({ ...this.status });
   }
 }
 
-function playlistText(list: { name: string; dur: number }[], firstSeq: number, end: boolean) {
+function playlistText(list: PlItem[], firstSeq: number, end: boolean, discSeq = 0) {
   const target = Math.max(2, Math.ceil(Math.max(...list.map((s) => s.dur))));
   let t = `#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:${target}\n#EXT-X-MEDIA-SEQUENCE:${firstSeq}\n`;
-  for (const s of list) t += `#EXTINF:${s.dur.toFixed(3)},\n${s.name}\n`;
+  // troca de aparelho no meio da live: outro codificador a partir daqui (padrão do HLS)
+  if (discSeq || list.some((s) => s.disc)) t += `#EXT-X-DISCONTINUITY-SEQUENCE:${discSeq}\n`;
+  for (const s of list) t += `${s.disc ? '#EXT-X-DISCONTINUITY\n' : ''}#EXTINF:${s.dur.toFixed(3)},\n${s.name}\n`;
   if (end) t += '#EXT-X-ENDLIST\n';
   return t;
 }

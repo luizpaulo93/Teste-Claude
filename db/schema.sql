@@ -770,3 +770,19 @@ create table if not exists seen_marks (
 );
 alter table simulados add column if not exists published_at timestamptz;
 update simulados set published_at = created_at where is_published and published_at is null;
+
+-- ============================================================================
+-- Versão 25: estúdio em vários aparelhos. Um aparelho transmite (lease); os outros controlam a cena
+-- e podem assumir a mesma live sem reiniciar (resume = onde a playlist do YouTube parou).
+-- ============================================================================
+create table if not exists live_studio (
+  live_id text primary key references live_sessions (id) on delete cascade,
+  lease text not null default '',
+  device text not null default '',
+  label text not null default '',
+  lease_at timestamptz,
+  resume jsonb,
+  state jsonb not null default '{}'::jsonb,
+  rev int not null default 0,
+  updated_at timestamptz not null default now()
+);
