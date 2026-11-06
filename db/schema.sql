@@ -786,3 +786,18 @@ create table if not exists live_studio (
   rev int not null default 0,
   updated_at timestamptz not null default now()
 );
+
+-- ============================================================================
+-- Versão 26: combinação da ligação direta entre os aparelhos do estúdio (espelho da live e comandos).
+-- Só a oferta/resposta passa por aqui; a imagem e os comandos vão direto entre os aparelhos.
+-- ============================================================================
+create table if not exists live_rtc (
+  id bigserial primary key,
+  live_id text not null,
+  to_device text not null,
+  from_device text not null,
+  kind text not null,
+  sdp text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists live_rtc_to_idx on live_rtc (live_id, to_device);

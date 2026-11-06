@@ -15,6 +15,12 @@ function pdfjs() {
   return lib;
 }
 
+export interface PdfPos {
+  cx: number;
+  cy: number;
+  zoom: number;
+}
+
 export interface PdfView {
   page: number;
   pages: number;
@@ -44,6 +50,25 @@ export class PdfPresenter {
   frameW = 1280;
   frameH = 720;
   onChange?: () => void;
+  /** a parte visível mudou por um gesto aqui (os outros aparelhos do estúdio seguem a mesma posição) */
+  onView?: (v: PdfPos) => void;
+
+  /** posição exata da parte visível */
+  get pos(): PdfPos {
+    return { cx: this.cx, cy: this.cy, zoom: this.zoom };
+  }
+  /** Mostra a mesma parte que outro aparelho (sem avisar de volta). */
+  setView(v: PdfPos) {
+    if (!this.doc) return;
+    this.zoom = Math.min(6, Math.max(this.minZoom, v.zoom));
+    this.cx = v.cx;
+    this.cy = v.cy;
+    this.clamp();
+    this.onChange?.();
+  }
+  private moved() {
+    this.onView?.(this.pos);
+  }
 
   async load(data: ArrayBuffer) {
     const m = await pdfjs();
@@ -124,6 +149,7 @@ export class PdfPresenter {
     this.clamp();
     this.page = n;
     this.onChange?.();
+    this.moved();
   }
 
   /** Zoom mantendo parado o ponto sob os dedos (fx, fy = fração do quadro, 0..1). */
@@ -137,6 +163,7 @@ export class PdfPresenter {
     this.cy = py - fy * this.vh;
     this.clamp();
     this.onChange?.();
+    this.moved();
   }
 
   async setZoom(z: number) {
@@ -168,6 +195,7 @@ export class PdfPresenter {
     const before = this.page;
     this.clamp();
     if (this.page !== before) this.onChange?.();
+    this.moved();
   }
 
   // ---------------- renderização das páginas visíveis (nítidas para o zoom atual)

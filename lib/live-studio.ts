@@ -34,6 +34,8 @@ export interface StudioScene {
   pip?: boolean;
   muted?: boolean;
   res?: '1080' | '720';
+  mirror?: boolean;
+  pipBox?: { x: number; y: number; w: number };
 }
 
 interface Row {

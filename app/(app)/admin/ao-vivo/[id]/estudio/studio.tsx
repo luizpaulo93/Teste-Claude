@@ -25,14 +25,15 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { claimStudio, pollStudio, setStudioScene, startStudio, stopStudio } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio } from '../../../live-actions';
+import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus, type ResumeState } from '@/lib/live/broadcaster';
 import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
-import { PdfPresenter, type PdfView } from '@/lib/live/pdf-presenter';
+import { PdfPresenter, type PdfPos, type PdfView } from '@/lib/live/pdf-presenter';
 import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
@@ -281,7 +282,7 @@ export function Studio({
   // ---- vários aparelhos na mesma live: um transmite, os outros mostram a mesma cena e controlam
   const device = useRef<{ id: string; label: string }>({ id: '', label: '' });
   const [remote, setRemote] = useState<StudioPoll>(null);
-  const sync = useRef({ rev: 0, applying: false, sent: '' });
+  const sync = useRef({ rev: 0, applying: false, sent: '', ready: false });
   const [autoTake, setAutoTake] = useState(false);
   useEffect(() => {
     device.current = studioDevice();
@@ -290,6 +291,30 @@ export function Studio({
     } catch {}
   }, []);
   const liveOn = remote ? remote.status === 'live' : live;
+
+  // Ligação direta com os outros aparelhos: espelho da live (imagem de quem transmite) e comandos na hora
+  const link = useRef<StudioLink | null>(null);
+  const [mirrorStream, setMirrorStream] = useState<MediaStream | null>(null);
+  const mirrorVideo = useRef<HTMLVideoElement>(null);
+  const mirrorSrc = useRef<MediaStream | null>(null);
+  /** câmeras e microfones do aparelho que transmite (para trocar daqui) */
+  const [hostDev, setHostDev] = useState<{ cams: { id: string; name: string }[]; mics: { id: string; name: string }[]; cam: string; mic: string } | null>(null);
+  const onLinkMsg = useRef<(m: LinkMsg, from: string) => void>(() => {});
+  const onLinkOpen = useRef<(d: string) => void>(() => {});
+  /** este aparelho só controla: mostra a imagem de quem transmite */
+  const viewing = Boolean(mirrorStream) && !onAir && liveOn;
+  useEffect(() => {
+    const l = new StudioLink((to, kind, sdp) => rtcSend(liveId, device.current.id, to, kind, sdp));
+    l.onStream = setMirrorStream;
+    l.onMessage = (m, from) => onLinkMsg.current(m, from);
+    l.onOpen = (d) => onLinkOpen.current(d);
+    link.current = l;
+    return () => l.close();
+  }, [liveId]);
+  useEffect(() => {
+    if (mirrorVideo.current) mirrorVideo.current.srcObject = mirrorStream;
+    if (!mirrorStream) setHostDev(null);
+  }, [mirrorStream, viewing]);
 
 
   // Mixer de áudio (sempre existe uma trilha de áudio, mesmo sem microfone)
@@ -321,6 +346,7 @@ export function Studio({
     if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
     pdf.current = new PdfPresenter();
     pdf.current.onChange = () => setPdfView(pdf.current!.view);
+    pdf.current.onView = (v) => sendView.current(v);
     if (comp.current) comp.current.pdf = pdf.current;
     void checkSupport().then(setSupport);
     (async () => {
@@ -834,9 +860,25 @@ export function Studio({
   useEffect(() => {
     let alive = true;
     const tick = async () => {
-      const r = await pollStudio(liveId).catch(() => null);
+      const r = await pollStudio(liveId, device.current.id).catch(() => null);
       if (!alive || !r) return;
       setRemote(r);
+      const l = link.current;
+      if (l) {
+        for (const sg of r.signals) await l.handle(sg);
+        if (caster.current && canvasRef.current) {
+          // quem transmite manda a imagem da live para os outros aparelhos
+          l.unwatch();
+          mirrorSrc.current ??= canvasRef.current.captureStream(24);
+          l.setSource(mirrorSrc.current);
+        } else if (r.status === 'live' && r.holder?.fresh && r.holder.device !== device.current.id) {
+          l.setSource(null);
+          void l.watch(r.holder.device);
+        } else {
+          l.unwatch();
+          l.setSource(null);
+        }
+      }
       // live encerrada em outro aparelho: este para na hora
       if (r.status !== 'live' && caster.current) {
         if (comp.current) comp.current.onFrame = undefined;
@@ -845,9 +887,10 @@ export function Studio({
         setStatus(null);
       }
       await applyRef.current(r);
+      sync.current.ready = true;
     };
     void tick();
-    const t = window.setInterval(() => void tick(), 1500);
+    const t = window.setInterval(() => void tick(), 1000);
     return () => {
       alive = false;
       window.clearInterval(t);
@@ -866,6 +909,23 @@ export function Studio({
       return;
     }
     sync.current.rev = r.rev;
+    await applyScene(st);
+  };
+
+  type SceneState = {
+    scene?: Scene;
+    pdfId?: string;
+    page?: number;
+    pip?: boolean;
+    muted?: boolean;
+    mirror?: boolean;
+    pipBox?: { x: number; y: number; w: number };
+  };
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox]);
+  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox });
+  /** Aplica a cena de outro aparelho (sem mandar de volta). */
+  async function applyScene(st: SceneState) {
+    if (st.pdfId && !materials.some((m) => m.id === st.pdfId)) return router.refresh();
     sync.current.applying = true;
     try {
       if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId);
@@ -873,26 +933,73 @@ export function Studio({
       if (st.page && pdf.current?.pages && st.page !== pdf.current.view.page) await pdf.current.goTo(st.page);
       if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
       if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
-      sync.current.sent = JSON.stringify({ scene: st.scene ?? scene, pdfId: st.pdfId ?? pdfId, page: st.page ?? pdfView?.page ?? 0, pip: st.pip ?? pip, muted: st.muted ?? muted });
+      if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
+      if (st.pipBox && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
+      sync.current.sent = sceneKey({ ...sceneNow(), ...st, page: st.page ?? pdfView?.page ?? 0 });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
     }
+  }
+
+  // Mensagens da ligação direta
+  const sendView = useRef<(v: PdfPos) => void>(() => {});
+  const lastView = useRef(0);
+  sendView.current = (v) => {
+    if (sync.current.applying || !link.current?.connected) return;
+    const now = performance.now();
+    if (now - lastView.current < 33) return; // ~30 por segundo
+    lastView.current = now;
+    link.current.post({ t: 'pdfv', v });
   };
+  const devicesNow = () => ({
+    cams: [...cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })), { id: 'none', name: 'Sem câmera' }],
+    mics: [...(android ? [{ id: AUTO_MIC, name: AUTO_MIC_NAME }] : []), ...mics.map((m, i) => ({ id: m.deviceId, name: micName(m, i) })), { id: 'none', name: 'Sem microfone' }],
+    cam,
+    mic,
+  });
+  onLinkMsg.current = (m) => {
+    if (m.t === 'scene') void applyScene(m.s as SceneState);
+    else if (m.t === 'pdfv' && pdf.current) pdf.current.setView(m.v as PdfPos);
+    else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
+    else if (m.t === 'cam' && caster.current) setCam(String(m.id));
+    else if (m.t === 'mic' && caster.current) setMic(String(m.id));
+  };
+  // quem transmite manda o estado completo para o aparelho que acabou de ligar
+  onLinkOpen.current = (d) => {
+    if (!caster.current || !link.current) return;
+    link.current.post({ t: 'scene', s: sceneNow() }, d);
+    if (pdf.current?.pages) link.current.post({ t: 'pdfv', v: pdf.current.pos }, d);
+    link.current.post({ t: 'devices', d: devicesNow() }, d);
+  };
+  // câmeras/microfones de quem transmite mudaram: avisa os outros aparelhos
+  useEffect(() => {
+    if (caster.current) link.current?.post({ t: 'devices', d: devicesNow() });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cams, mics, cam, mic, onAir]);
 
   // Mudou a cena aqui: avisa os outros aparelhos
   useEffect(() => {
     if (sync.current.applying) return;
-    const now = { scene, pdfId, page: pdfView?.page ?? 0, pip, muted };
-    const key = JSON.stringify(now);
+    const now = sceneNow();
+    const key = sceneKey(now);
+    // aparelho que acabou de abrir: primeiro recebe a cena da live, não manda a sua (padrão) por cima
+    if (!sync.current.ready) {
+      sync.current.sent = key;
+      return;
+    }
     if (key === sync.current.sent) return;
+    // direto para os outros aparelhos (na hora) ...
+    link.current?.post({ t: 'scene', s: now });
+    // ... e guardado no servidor (quem abrir o estúdio depois já vê igual)
     const t = window.setTimeout(async () => {
       if (sync.current.applying) return;
       sync.current.sent = key;
-      const r = await setStudioScene(liveId, { scene, pdfId: pdfId || undefined, page: pdfView?.page || undefined, pip, muted }).catch(() => null);
+      const r = await setStudioScene(liveId, { scene, pdfId: pdfId || undefined, page: pdfView?.page || undefined, pip, muted, mirror, pipBox }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
-    }, 250);
+    }, 400);
     return () => window.clearTimeout(t);
-  }, [scene, pdfId, pdfView?.page, pip, muted, liveId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, liveId]);
 
   // Assumir sozinho: o aparelho da live parou de enviar (caiu a internet, fechou o app) e este está pronto
   const autoTried = useRef('');
@@ -1071,6 +1178,15 @@ export function Studio({
                 )}
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
+              />
+              {/* aparelho que só controla: mostra a imagem real da live (câmera de quem transmite) */}
+              <video
+                ref={mirrorVideo}
+                autoPlay
+                playsInline
+                muted
+                aria-label="Imagem da live"
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', !viewing && 'hidden')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
@@ -1570,15 +1686,32 @@ export function Studio({
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Camera className="size-3.5" /> Câmera
           </span>
-          <Select value={cam} onChange={(e) => setCam(e.target.value)} aria-label="Câmera">
-            {cams.map((c, i) => (
-              <option key={c.deviceId || i} value={c.deviceId}>
-                {camName(c, i, cams)}
-              </option>
-            ))}
-            <option value="none">Sem câmera</option>
-          </Select>
-          {cam !== 'none' && camInfo && (
+          {viewing && hostDev ? (
+            <Select
+              value={hostDev.cam}
+              onChange={(e) => {
+                link.current?.post({ t: 'cam', id: e.target.value });
+                setHostDev({ ...hostDev, cam: e.target.value });
+              }}
+              aria-label="Câmera"
+            >
+              {hostDev.cams.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Select value={cam} onChange={(e) => setCam(e.target.value)} aria-label="Câmera">
+              {cams.map((c, i) => (
+                <option key={c.deviceId || i} value={c.deviceId}>
+                  {camName(c, i, cams)}
+                </option>
+              ))}
+              <option value="none">Sem câmera</option>
+            </Select>
+          )}
+          {!viewing && cam !== 'none' && camInfo && (
             <span className={cn('block text-[11px]', camInfo.h < RES[res].h ? 'text-warning' : 'text-muted')}>
               Câmera entregando {camInfo.w}×{camInfo.h}
               {camInfo.fps ? ` · ${camInfo.fps} fps` : ''}
@@ -1617,15 +1750,33 @@ export function Studio({
             <Mic className="size-3.5" /> Microfone
           </span>
           <div className="flex gap-2">
-            <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone" className="min-w-0 flex-1">
-              {android && <option value={AUTO_MIC}>{AUTO_MIC_NAME}</option>}
-              {mics.map((m, i) => (
-                <option key={m.deviceId || i} value={m.deviceId}>
-                  {micName(m, i)}
-                </option>
-              ))}
-              <option value="none">Sem microfone</option>
-            </Select>
+            {viewing && hostDev ? (
+              <Select
+                value={hostDev.mic}
+                onChange={(e) => {
+                  link.current?.post({ t: 'mic', id: e.target.value });
+                  setHostDev({ ...hostDev, mic: e.target.value });
+                }}
+                aria-label="Microfone"
+                className="min-w-0 flex-1"
+              >
+                {hostDev.mics.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone" className="min-w-0 flex-1">
+                {android && <option value={AUTO_MIC}>{AUTO_MIC_NAME}</option>}
+                {mics.map((m, i) => (
+                  <option key={m.deviceId || i} value={m.deviceId}>
+                    {micName(m, i)}
+                  </option>
+                ))}
+                <option value="none">Sem microfone</option>
+              </Select>
+            )}
             <button
               type="button"
               onClick={searchDevices}

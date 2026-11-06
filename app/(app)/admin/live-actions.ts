@@ -447,12 +447,19 @@ export async function claimStudio(
 }
 
 /** Situação do estúdio para cada aparelho: a live está no ar? quem transmite? qual a cena? */
-export async function pollStudio(id: string) {
+export async function pollStudio(id: string, device = '') {
   await requireAdminAction();
   if (!isDocId(id)) return null;
-  const [live, row] = await Promise.all([
+  const [live, row, signals] = await Promise.all([
     sql.one<{ status: string; materials: LessonMaterial[] | null }>(`select status, materials from live_sessions where id = $1`, [id]),
     studioRow(id),
+    // combinação da ligação direta com outro aparelho (entregue uma vez só)
+    device
+      ? sql.query<{ from: string; kind: 'offer' | 'answer'; sdp: string }>(
+          `delete from live_rtc where live_id = $1 and (to_device = $2 or created_at < now() - interval '2 minutes') returning from_device as "from", kind, sdp, to_device`,
+          [id, device.slice(0, 64)],
+        )
+      : Promise.resolve([]),
   ]);
   if (!live) return null;
   const at = row?.lease_at ? new Date(row.lease_at).getTime() : 0;
@@ -463,6 +470,9 @@ export async function pollStudio(id: string) {
     rev: row?.rev ?? 0,
     res: row?.resume?.res ?? row?.state?.res,
     materials: (live.materials ?? []).map((m) => m.id),
+    signals: (signals as { from: string; kind: 'offer' | 'answer'; sdp: string; to_device?: string }[])
+      .filter((x) => x.to_device === device)
+      .map(({ from, kind, sdp }) => ({ from, kind, sdp })),
     now: Date.now(),
   };
 }
@@ -478,5 +488,24 @@ export async function setStudioScene(id: string, patch: StudioScene) {
   if (typeof patch.pip === 'boolean') clean.pip = patch.pip;
   if (typeof patch.muted === 'boolean') clean.muted = patch.muted;
   if (patch.res === '1080' || patch.res === '720') clean.res = patch.res;
+  if (typeof patch.mirror === 'boolean') clean.mirror = patch.mirror;
+  const b = patch.pipBox;
+  if (b && [b.x, b.y, b.w].every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 2)) clean.pipBox = { x: b.x, y: b.y, w: b.w };
   return patchScene(id, clean);
+}
+
+/** Combinação da ligação direta entre dois aparelhos do estúdio (oferta ou resposta). */
+export async function rtcSend(id: string, from: string, to: string, kind: 'offer' | 'answer', sdp: string) {
+  await requireAdminAction();
+  if (!isDocId(id) || !['offer', 'answer'].includes(kind) || typeof sdp !== 'string' || sdp.length > 30_000) return { error: 'Inválido.' };
+  // uma oferta nova substitui a anterior para o mesmo aparelho
+  await sql.exec(`delete from live_rtc where live_id = $1 and to_device = $2 and from_device = $3`, [id, String(to).slice(0, 64), String(from).slice(0, 64)]);
+  await sql.exec(`insert into live_rtc (live_id, to_device, from_device, kind, sdp) values ($1, $2, $3, $4, $5)`, [
+    id,
+    String(to).slice(0, 64),
+    String(from).slice(0, 64),
+    kind,
+    sdp,
+  ]);
+  return { ok: true };
 }
