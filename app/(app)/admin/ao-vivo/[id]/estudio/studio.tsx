@@ -7,7 +7,7 @@ import {
   Highlighter,
   MousePointerClick,
   PenLine,
-  SquareDashedMousePointer,
+  Lasso,
   Trash2,
   Undo2,
   RefreshCw,
@@ -146,7 +146,7 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
 const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
 const INK_SIZES = { pen: { s: 0.0022, m: 0.004, l: 0.007 }, marker: { s: 0.012, m: 0.02, l: 0.03 } } as const;
 type InkSize = 's' | 'm' | 'l';
-type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; band?: { x: number; y: number } };
+type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[] };
 
 const clock = (s: number) =>
   `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -385,18 +385,26 @@ export function Studio({
       // iPad se apresenta como Mac; a tela de toque denuncia
       const ipad = navigator.maxTouchPoints > 1 && /Macintosh|iPad/.test(navigator.userAgent);
       setCanInk(touch || ipad || localStorage.getItem('studio-ink') === '1');
+      // já usou a Apple Pencil aqui: a mão nunca escreve (só move e dá zoom)
+      pencilSeen.current = localStorage.getItem('studio-pencil') === '1';
     } catch {}
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
   const [inkSize, setInkSize] = useState<InkSize>('m');
-  const [inkPop, setInkPop] = useState(false);
+  const [inkPop, setInkPop] = useState<'pen' | 'marker' | null>(null);
+  /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
+  const [writing, setWriting] = useState(false);
   const inkPtr = useRef<InkPtr | null>(null);
   const pencilSeen = useRef(false);
+  /** último evento da Apple Pencil (a mão encostando logo depois é a palma, não um gesto) */
+  const lastPen = useRef(0);
+  const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
   const undoStack = useRef<InkOps[]>([]);
   const inkQueue = useRef<InkOps>({});
   const inkTimer = useRef(0);
   const inkRevSeen = useRef(-1);
-  const [band, setBand] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  /** laço da seleção sendo desenhado (aparece na camada rápida, não vai para a live) */
+  const lasso = useRef<number[] | null>(null);
   const [selBox, setSelBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const selDrag = useRef<{ mode: 'move' | 'size'; sx: number; sy: number; before: Stroke[]; last: { dx: number; dy: number; s: number }; box: { x0: number; y0: number; w: number } } | null>(null);
   const stageClaimed = useRef(false);
@@ -1223,82 +1231,113 @@ export function Studio({
   };
 
   /** Barra de escrita: ferramentas, cor e espessura, desfazer, limpar página e tela cheia */
-  function inkBar(side: boolean) {
+  async function openWriting() {
+    setInkTool('pen');
+    setInkPop(null);
+    setWriting(true);
+    // chat aberto ao lado (no celular em pé não cabe: fica no botão)
+    if (window.innerWidth >= 900) setChatOpen(true);
+    if (!full) await enterFull();
+  }
+  function closeWriting() {
+    setWriting(false);
+    setInkTool('hand');
+    setInkPop(null);
+    ink.current.selected.clear();
+    setSelBox(null);
+    void exitFull();
+  }
+  // saiu da tela cheia (gesto do sistema, Esc): o modo escrita fecha junto
+  useEffect(() => {
+    if (!full && writing) {
+      setWriting(false);
+      setInkTool('hand');
+      setInkPop(null);
+      ink.current.selected.clear();
+    }
+  }, [full, writing]);
+
+  /** ferramentas do modo escrita (na lateral da tela cheia) */
+  function inkBar() {
     const tools: { k: InkTool; label: string; icon: typeof Hand }[] = [
       { k: 'hand', label: 'Mover o PDF', icon: Hand },
       { k: 'pen', label: 'Caneta', icon: PenLine },
       { k: 'marker', label: 'Marca-texto', icon: Highlighter },
       { k: 'laser', label: 'Laser', icon: MousePointerClick },
       { k: 'eraser', label: 'Borracha', icon: Eraser },
-      { k: 'select', label: 'Selecionar escrita', icon: SquareDashedMousePointer },
+      { k: 'select', label: 'Selecionar escrita', icon: Lasso },
     ];
     const btn = (on: boolean) =>
-      cn('grid size-8 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black' : 'text-white hover:bg-white/15');
+      cn('relative grid size-10 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black' : 'text-white hover:bg-white/15');
     return (
-      <div
-        className={cn(
-          'z-30 flex items-center gap-0.5 rounded-full bg-black/75 p-1 backdrop-blur',
-          side ? 'absolute top-1/2 left-2 -translate-y-1/2 flex-col' : 'relative mx-auto w-fit max-w-full flex-wrap justify-center',
-        )}
-      >
-        {tools.map((t) => (
-          <button
-            key={t.k}
-            type="button"
-            onClick={() => {
-              setInkTool(t.k);
-              if (t.k !== 'select') ink.current.selected.clear();
-            }}
-            aria-label={t.label}
-            aria-pressed={inkTool === t.k}
-            title={t.label}
-            className={btn(inkTool === t.k)}
-          >
-            <t.icon className="size-4" />
-          </button>
-        ))}
-        <span className={side ? 'my-0.5 h-px w-5 bg-white/25' : 'mx-0.5 h-5 w-px bg-white/25'} />
-        <span className="relative">
-          <button type="button" onClick={() => setInkPop((v) => !v)} aria-label="Cor e espessura" title="Cor e espessura" className={btn(inkPop)}>
-            <span className="size-4 rounded-full border-2 border-white" style={{ background: inkColor }} />
-          </button>
-          {inkPop && (
-            <div
-              className={cn(
-                'absolute z-40 w-48 space-y-2 rounded-2xl border border-line-strong bg-surface p-2.5 shadow-2xl',
-                side ? 'top-1/2 left-11 -translate-y-1/2' : 'bottom-11 left-1/2 -translate-x-1/2',
-              )}
-            >
-              <div className="grid grid-cols-6 gap-1.5">
-                {INK_COLORS.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setInkColor(c)}
-                    aria-label={`Cor ${c}`}
-                    className={cn('size-6 rounded-full border-2', inkColor === c ? 'border-brand' : 'border-white/30')}
-                    style={{ background: c }}
+      <div className="absolute top-1/2 left-2 z-30 flex -translate-y-1/2 flex-col items-center gap-1 rounded-full bg-black/75 p-1 backdrop-blur">
+        {tools.map((t) => {
+          const paint = t.k === 'pen' || t.k === 'marker';
+          return (
+            <span key={t.k} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  // caneta e marca-texto: tocar mostra as cores e a espessura
+                  if (paint) setInkPop((p) => (inkTool === t.k && p === t.k ? null : (t.k as 'pen' | 'marker')));
+                  else setInkPop(null);
+                  setInkTool(t.k);
+                  if (t.k !== 'select') {
+                    ink.current.selected.clear();
+                    setSelBox(null);
+                  }
+                }}
+                aria-label={t.label}
+                aria-pressed={inkTool === t.k}
+                title={t.label}
+                className={btn(inkTool === t.k)}
+              >
+                <t.icon className="size-[18px]" />
+                {paint && (
+                  <span
+                    className="absolute right-1.5 bottom-1.5 size-2 rounded-full ring-1 ring-black/40"
+                    style={{ background: strokeStyle(t.k as 'pen' | 'marker').color }}
                   />
-                ))}
-              </div>
-              <div className="grid grid-cols-3 gap-1.5">
-                {(['s', 'm', 'l'] as InkSize[]).map((z, i) => (
-                  <button
-                    key={z}
-                    type="button"
-                    onClick={() => setInkSize(z)}
-                    aria-label={['Fina', 'Média', 'Grossa'][i]}
-                    className={cn('grid h-8 place-items-center rounded-lg border', inkSize === z ? 'border-brand bg-brand/10' : 'border-line')}
-                  >
-                    <span className="rounded-full bg-ink" style={{ width: 18, height: [2, 4, 7][i] }} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </span>
+                )}
+              </button>
+              {inkPop === t.k && (
+                <div className="absolute top-1/2 left-12 z-40 w-48 -translate-y-1/2 space-y-2 rounded-2xl border border-line-strong bg-surface p-2.5 shadow-2xl">
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {INK_COLORS.map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setInkColor(c)}
+                        aria-label={`Cor ${c}`}
+                        className={cn('size-6 rounded-full border-2', inkColor === c ? 'border-brand' : 'border-white/30')}
+                        style={{ background: c }}
+                      />
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(['s', 'm', 'l'] as InkSize[]).map((z, i) => (
+                      <button
+                        key={z}
+                        type="button"
+                        onClick={() => {
+                          setInkSize(z);
+                          setInkPop(null);
+                        }}
+                        aria-label={['Fina', 'Média', 'Grossa'][i]}
+                        className={cn('grid h-8 place-items-center rounded-lg border', inkSize === z ? 'border-brand bg-brand/10' : 'border-line')}
+                      >
+                        <span className="rounded-full bg-ink" style={{ width: 18, height: [2, 4, 7][i] }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </span>
+          );
+        })}
+        <span className="my-0.5 h-px w-6 bg-white/25" />
         <button type="button" onClick={undoInk} aria-label="Desfazer" title="Desfazer" className={btn(false)}>
-          <Undo2 className="size-4" />
+          <Undo2 className="size-[18px]" />
         </button>
         <button
           type="button"
@@ -1309,16 +1348,10 @@ export function Studio({
           title="Limpar a página"
           className={btn(false)}
         >
-          <Trash2 className="size-4" />
+          <Trash2 className="size-[18px]" />
         </button>
-        <button
-          type="button"
-          onClick={() => void (full ? exitFull() : enterFull())}
-          aria-label={full ? 'Sair da tela cheia' : 'Tela cheia'}
-          title={full ? 'Sair da tela cheia' : 'Tela cheia'}
-          className={btn(false)}
-        >
-          {full ? <Minimize2 className="size-4" /> : <Maximize2 className="size-4" />}
+        <button type="button" onClick={closeWriting} aria-label="Fechar escrita" title="Fechar escrita" className={cn(btn(false), 'bg-white/10')}>
+          <X className="size-[18px]" />
         </button>
       </div>
     );
@@ -1455,6 +1488,51 @@ export function Studio({
     return () => window.clearInterval(t);
   }, [inkTool]);
 
+  /**
+   * Palma da mão no iPad: enquanto a Pencil escreve, o toque da mão em qualquer lugar da página não
+   * seleciona texto, não rola e não aperta botões. No PDF, nenhum toque abre a lupa/seleção do Safari.
+   */
+  useEffect(() => {
+    if (!writing) return;
+    // a mão encostando não seleciona texto nem abre a lupa em lugar nenhum da página
+    const st = document.documentElement.style as CSSStyleDeclaration & { webkitUserSelect: string; webkitTouchCallout: string };
+    const prev = [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout];
+    st.userSelect = 'none';
+    st.webkitUserSelect = 'none';
+    st.webkitTouchCallout = 'none';
+    window.getSelection()?.removeAllRanges();
+    const finger = (t: Touch) => (t as Touch & { touchType?: string }).touchType !== 'stylus';
+    const onTouch = (e: TouchEvent) => {
+      const onCanvas = e.target === canvasRef.current;
+      if (!e.cancelable) return;
+      if (onCanvas && scene === 'pdf') e.preventDefault();
+      else if (pencilSeen.current && penBusy() && [...e.changedTouches].some(finger)) e.preventDefault();
+    };
+    // o clique vem depois do toque: lembra se foi a mão (a Pencil continua apertando botões)
+    let palmDown = false;
+    const onDown = (e: PointerEvent) => {
+      palmDown = e.pointerType === 'touch' && pencilSeen.current && penBusy();
+      if (palmDown && e.target !== canvasRef.current) e.stopPropagation();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (palmDown) {
+        palmDown = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    document.addEventListener('touchstart', onTouch, { capture: true, passive: false });
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout] = prev;
+      document.removeEventListener('touchstart', onTouch, { capture: true });
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('click', onClick, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writing, scene]);
+
   /** cor e espessura de cada ferramenta */
   const strokeStyle = (tool: 'pen' | 'marker') => ({
     color: tool === 'marker' && inkColor === '#111111' ? '#facc15' : inkColor,
@@ -1499,6 +1577,27 @@ export function Studio({
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
+    const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy };
+    const L = lasso.current;
+    if (L && L.length >= 4) {
+      // laço da seleção: traço livre tracejado
+      ctx.save();
+      ctx.setLineDash([6 * dpr, 5 * dpr]);
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = '#2563eb';
+      ctx.fillStyle = 'rgba(37,99,235,0.08)';
+      ctx.beginPath();
+      for (let i = 0; i < L.length; i += 2) {
+        const x = view.x + (L[i] - view.cx) * view.k;
+        const y = view.y + (L[i + 1] - view.cy) * view.k;
+        if (i) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
     const cur = ink.current.current;
     // marca-texto é transparente: desenhado duas vezes ficaria mais escuro, então fica só na prévia normal
     if (!cur || cur.tool !== 'pen') return;
@@ -1525,12 +1624,37 @@ export function Studio({
 
   /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
   function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!canInk || scene !== 'pdf' || !pdf.current?.pages) return false;
-    if (e.pointerType === 'pen') pencilSeen.current = true;
+    if (!writing || scene !== 'pdf' || !pdf.current?.pages) return false;
+    if (e.pointerType === 'pen') {
+      if (!pencilSeen.current)
+        try {
+          localStorage.setItem('studio-pencil', '1');
+        } catch {}
+      pencilSeen.current = true;
+      lastPen.current = performance.now();
+      // mão que encostou antes da caneta: não é gesto (não move o PDF nem impede a escrita)
+      pointers.current.clear();
+      // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
+      const old = inkPtr.current;
+      if (old) {
+        inkPtr.current = null;
+        if (old.type !== 'pen') {
+          // estava "escrevendo" com a mão encostada antes da Pencil: era a palma, descarta
+          ink.current.cancel();
+          lasso.current = null;
+          fastDone();
+        } else if (old.tool === 'pen' || old.tool === 'marker') {
+          commitInk(ink.current.end(), old.before ?? []);
+          fastDone();
+        }
+      }
+    } else if (e.pointerType === 'touch' && pencilSeen.current) {
+      // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
+      return penBusy();
+    }
     // com a Apple Pencil: a caneta escreve e os dedos movem/dão zoom
     const tool: InkTool = e.pointerType === 'pen' && inkTool === 'hand' ? 'pen' : inkTool;
     if (tool === 'hand') return false;
-    if (e.pointerType === 'touch' && pencilSeen.current) return false;
     if (inkPtr.current) {
       // segundo dedo: deixa de escrever e vira pinça/rolagem
       if (inkPtr.current.type === 'pen') return true; // palma da mão encostando: ignora
@@ -1556,15 +1680,18 @@ export function Studio({
     } else if (tool === 'eraser') {
       st.erased = ink.current.erase(d.x, d.y, 0.015 * pdf.current.viewWidth);
     } else if (tool === 'select') {
-      st.band = d;
+      st.lasso = [d.x, d.y];
+      lasso.current = st.lasso;
       ink.current.selected.clear();
-      setBand({ x0: d.x, y0: d.y, x1: d.x, y1: d.y });
+      setSelBox(null);
+      fastDraw();
     }
     inkPtr.current = st;
     if (viewing) touched();
     return true;
   }
   function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.pointerType === 'pen') lastPen.current = performance.now();
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId || !pdf.current) return Boolean(st && e.pointerType === 'touch' && st.type === 'pen');
     const r = frameRect(e.currentTarget);
@@ -1575,8 +1702,9 @@ export function Studio({
       if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined);
       else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, d.x, d.y);
       else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, 0.015 * pdf.current.viewWidth));
-      else if (st.tool === 'select' && st.band) setBand({ x0: st.band.x, y0: st.band.y, x1: d.x, y1: d.y });
+      else if (st.tool === 'select' && st.lasso) st.lasso.push(d.x, d.y);
     }
+    if (st.tool === 'select') fastDraw();
     if (st.tool === 'pen') {
       // onde a caneta vai estar no próximo quadro (Chrome/Android); o Safari não prevê
       const pr = e.nativeEvent.getPredictedEvents?.() ?? [];
@@ -1596,6 +1724,7 @@ export function Studio({
     return true;
   }
   function inkUp(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.pointerType === 'pen') lastPen.current = performance.now();
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
     inkPtr.current = null;
@@ -1603,9 +1732,10 @@ export function Studio({
       commitInk(ink.current.end(), st.before ?? []);
       fastDone();
     } else if (st.tool === 'eraser' && st.erased?.length) commitInk({ remove: st.erased }, st.before ?? []);
-    else if (st.tool === 'select' && band) {
-      ink.current.selectIn(band.x0, band.y0, band.x1, band.y1);
-      setBand(null);
+    else if (st.tool === 'select' && st.lasso) {
+      ink.current.selectLasso(st.lasso);
+      lasso.current = null;
+      fastDraw();
     } else if (st.tool === 'laser' && st.laser) {
       const l = ink.current.lasers.get(st.laser);
       if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, pts: l.pts.flatMap((q) => [q.x, q.y]) });
@@ -1636,6 +1766,17 @@ export function Studio({
       ink.current.transform(0, 0, sc / d.last.s, d.box.x0, d.box.y0);
       d.last = { ...d.last, s: sc };
     }
+  };
+  /** apaga o que está selecionado */
+  const deleteSel = () => {
+    const ids = [...ink.current.selected];
+    if (!ids.length) return;
+    const before = [...ink.current.strokes];
+    const ops = { remove: ids };
+    ink.current.apply(ops);
+    ink.current.selected.clear();
+    setSelBox(null);
+    commitInk(ops, before);
   };
   const selUp = () => {
     const d = selDrag.current;
@@ -1791,7 +1932,11 @@ export function Studio({
   );
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div
+      className={cn(
+        'grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]',
+      )}
+    >
       <div className="order-1 min-w-0 space-y-3 lg:col-start-1 lg:row-start-1">
         <div
           ref={stage}
@@ -1836,16 +1981,6 @@ export function Studio({
               />
               <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
-              {scene === 'pdf' && band && pdf.current && (() => {
-                const a = pdf.current.toFrame(Math.min(band.x0, band.x1), Math.min(band.y0, band.y1));
-                const c = pdf.current.toFrame(Math.max(band.x0, band.x1), Math.max(band.y0, band.y1));
-                return (
-                  <div
-                    className="pointer-events-none absolute z-10 border-2 border-dashed border-brand bg-brand/10"
-                    style={{ left: `${a.fx * 100}%`, top: `${a.fy * 100}%`, width: `${(c.fx - a.fx) * 100}%`, height: `${(c.fy - a.fy) * 100}%` }}
-                  />
-                );
-              })()}
               {scene === 'pdf' && inkTool === 'select' && selBox && (
                 <div
                   role="button"
@@ -1868,6 +2003,15 @@ export function Studio({
                   >
                     <Maximize2 className="size-3.5 text-white" />
                   </div>
+                  <button
+                    type="button"
+                    aria-label="Excluir seleção"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={deleteSel}
+                    className="absolute -top-11 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full bg-red-600 text-white shadow-lg"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
                 </div>
               )}
               {/* reserva: foto da imagem da live (1 por segundo) quando a ligação direta não conecta */}
@@ -2107,7 +2251,17 @@ export function Studio({
             )}
 
             {/* escrita na tela cheia: barra na lateral */}
-            {full && canInk && scene === 'pdf' && !!pdfView?.pages && inkBar(true)}
+            {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
+            {full && !writing && canInk && scene === 'pdf' && !!pdfView?.pages && (
+              <button
+                type="button"
+                onClick={() => void openWriting()}
+                aria-label="Escrever"
+                className="absolute top-1/2 left-2 z-30 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/75 text-white backdrop-blur"
+              >
+                <PenLine className="size-5" />
+              </button>
+            )}
 
             {/* Controles na tela cheia */}
             {full && (
@@ -2223,7 +2377,11 @@ export function Studio({
           )}
         </div>
 
-        {scene === 'pdf' && canInk && !!pdfView?.pages && !full && inkBar(false)}
+        {scene === 'pdf' && canInk && !!pdfView?.pages && !full && (
+          <button type="button" onClick={() => void openWriting()} className={buttonClass('secondary', 'md', 'mx-auto flex w-fit')}>
+            <PenLine className="size-4" /> Escrever
+          </button>
+        )}
 
         {mobile && !full && (
           <button type="button" onClick={enterFull} className={buttonClass('secondary', 'md', 'w-full')}>

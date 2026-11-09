@@ -477,6 +477,51 @@ export class InkLayer {
     );
     return this.selected.size;
   }
+  /**
+   * Seleção em laço (traço livre em volta da escrita): entra o traço que tem a maior parte dos pontos
+   * dentro do laço. poly = x,y,x,y… em coordenadas do documento.
+   */
+  selectLasso(poly: number[]) {
+    const n = poly.length / 2;
+    if (n < 3) {
+      this.selected = new Set();
+      return 0;
+    }
+    const inside = (x: number, y: number) => {
+      let c = false;
+      for (let i = 0, j = n - 1; i < n; j = i++) {
+        const xi = poly[2 * i];
+        const yi = poly[2 * i + 1];
+        const xj = poly[2 * j];
+        const yj = poly[2 * j + 1];
+        if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+      }
+      return c;
+    };
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < poly.length; i += 2) {
+      x0 = Math.min(x0, poly[i]);
+      x1 = Math.max(x1, poly[i]);
+      y0 = Math.min(y0, poly[i + 1]);
+      y1 = Math.max(y1, poly[i + 1]);
+    }
+    this.selected = new Set(
+      this.list
+        .filter((s) => {
+          const b = this.box(s);
+          if (b.x1 < x0 || b.x0 > x1 || b.y1 < y0 || b.y0 > y1) return false;
+          let k = 0;
+          const m = s.pts.length / 2;
+          for (let i = 0; i < s.pts.length; i += 2) if (inside(s.pts[i], s.pts[i + 1])) k++;
+          return k >= Math.max(1, m * 0.5);
+        })
+        .map((s) => s.id),
+    );
+    return this.selected.size;
+  }
   /** caixa em volta do que está selecionado */
   selectionBox(): Box | null {
     let b: Box | null = null;
