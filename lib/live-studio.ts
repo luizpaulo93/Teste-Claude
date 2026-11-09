@@ -95,4 +95,14 @@ export async function patchScene(liveId: string, patch: StudioScene) {
   return row ?? { rev: 0, state: {} };
 }
 
-export const endStudio = (liveId: string) => sql.exec(`update live_studio set lease = '', device = '', label = '', resume = null where live_id = $1`, [liveId]);
+// fim da live: o aparelho principal (dono da câmera) continua o mesmo
+export const endStudio = (liveId: string) => sql.exec(`update live_studio set lease = '', resume = null where live_id = $1`, [liveId]);
+
+/** Aparelho principal do estúdio (o da câmera em uso), antes da live. Durante a live, quem transmite é o principal. */
+export async function setStageDevice(liveId: string, device: string, label: string) {
+  await sql.exec(
+    `insert into live_studio (live_id, device, label) values ($1, $2, $3)
+     on conflict (live_id) do update set device = excluded.device, label = excluded.label, updated_at = now() where live_studio.lease = ''`,
+    [liveId, device.slice(0, 64), label.slice(0, 60)],
+  );
+}

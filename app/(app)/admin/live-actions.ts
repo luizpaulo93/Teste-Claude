@@ -5,7 +5,7 @@ import { bool, fail, refreshCatalog, requireAdminAction, str, type ActionResult 
 import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
 import type { LessonMaterial } from '@/lib/types';
-import { claimLease, endStudio, HOLDER_STALE_MS, patchScene, studioRow, type StudioResume, type StudioScene } from '@/lib/live-studio';
+import { claimLease, endStudio, setStageDevice, HOLDER_STALE_MS, patchScene, studioRow, type StudioResume, type StudioScene } from '@/lib/live-studio';
 import { createBroadcast, endBroadcast, getAccount, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
 
 function refresh(id?: string) {
@@ -455,7 +455,7 @@ export interface StudioDevice {
   cam: string;
   mic: string;
 }
-type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan'; id?: string };
+type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan' | 'start'; id?: string };
 
 export async function pollStudio(id: string, device = '', report?: Omit<StudioDevice, 'device'>) {
   await requireAdminAction();
@@ -512,6 +512,8 @@ export async function pollStudio(id: string, device = '', report?: Omit<StudioDe
       .map(({ from, kind, sdp }) => ({ from, kind, sdp })),
     devices,
     cmd,
+    // aparelho principal: o da câmera em uso (durante a live, o que transmite); só vale se está com o estúdio aberto
+    stage: row?.device ? { device: row.device, label: row.label, present: devices.some((d) => d.device === row.device) } : null,
     now: Date.now(),
   };
 }
@@ -554,7 +556,7 @@ export async function rtcSend(id: string, from: string, to: string, kind: 'offer
 /** Comando para outro aparelho do estúdio: trocar câmera/microfone de quem transmite ou assumir a live com uma câmera. */
 export async function studioCommand(id: string, device: string, cmd: StudioCmd) {
   await requireAdminAction();
-  if (!isDocId(id) || !['cam', 'mic', 'take', 'scan'].includes(cmd?.t)) return { error: 'Inválido.' };
+  if (!isDocId(id) || !['cam', 'mic', 'take', 'scan', 'start'].includes(cmd?.t)) return { error: 'Inválido.' };
   await sql.exec(`update live_devices set cmd = $3 where live_id = $1 and device = $2`, [
     id,
     String(device).slice(0, 64),
@@ -568,5 +570,13 @@ export async function studioScan(id: string) {
   await requireAdminAction();
   if (!isDocId(id)) return { error: 'Inválido.' };
   await sql.exec(`update live_devices set cmd = '{"t":"scan"}'::jsonb where live_id = $1 and seen_at > now() - interval '8 seconds' and cmd is null`, [id]);
+  return { ok: true };
+}
+
+/** Este aparelho passa a ser o principal do estúdio (a câmera dele é a da live), antes de a live começar. */
+export async function setStage(id: string, device: { id: string; label: string }) {
+  await requireAdminAction();
+  if (!isDocId(id)) return { error: 'Inválido.' };
+  await setStageDevice(id, String(device.id), String(device.label));
   return { ok: true };
 }

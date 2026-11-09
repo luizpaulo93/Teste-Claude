@@ -27,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
@@ -304,14 +304,34 @@ export function Studio({
   const onLinkMsg = useRef<(m: LinkMsg, from: string) => void>(() => {});
   const onLinkOpen = useRef<(d: string) => void>(() => {});
   /** este aparelho só controla: mostra a imagem de quem transmite */
-  const viewing = Boolean(mirrorStream) && !onAir && liveOn;
+  // (definido logo abaixo, depois do modo leve)
   /**
    * Modo leve: a live está no ar por outro aparelho e este só controla. Não abre câmera nem microfone,
    * não recebe o espelho (só se pedir) e desenha a prévia devagar: não esquenta nem gasta bateria.
    */
   const [armed, setArmed] = useState(false);
-  const light = !onAir && !armed && liveOn && (!remote?.holder || remote.holder.device !== device.current.id || !caster.current);
-  const [wantMirror, setWantMirror] = useState(false);
+  /**
+   * Aparelho principal do estúdio: o da câmera em uso (na live, o que transmite). Só ele abre câmera e microfone;
+   * os outros só controlam e mostram a imagem dele. Muda quando você escolhe a câmera de outro aparelho.
+   */
+  const liveHolderDev = remote?.status === 'live' && remote.holder?.fresh ? remote.holder.device : '';
+  const stageDev = liveHolderDev || (remote?.stage?.present ? remote.stage.device : '');
+  const stageLabel = (liveHolderDev ? remote?.holder?.label : remote?.stage?.label) ?? '';
+  const light = !onAir && !armed && (!remote || (stageDev !== '' && stageDev !== device.current.id));
+  const viewing = Boolean(mirrorStream) && !onAir && light;
+  const [wantMirror, setWantMirror] = useState(true);
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('studio-mirror') === '0') setWantMirror(false);
+    } catch {}
+  }, []);
+  const toggleMirror = () =>
+    setWantMirror((v) => {
+      try {
+        localStorage.setItem('studio-mirror', v ? '0' : '1');
+      } catch {}
+      return !v;
+    });
   const wantMirrorRef = useRef(false);
   wantMirrorRef.current = wantMirror;
   useEffect(() => {
@@ -321,6 +341,7 @@ export function Studio({
   const [devices, setDevices] = useState<StudioDevice[]>([]);
   const reported = useRef({ key: '', at: 0 });
   const [scanning, setScanning] = useState(false);
+  const stageClaimed = useRef(false);
   // som travado pelo sistema (iPad/iPhone que assumiu a live sem ninguém tocar na tela)
   const [soundLocked, setSoundLocked] = useState(false);
   useEffect(() => {
@@ -904,15 +925,22 @@ export function Studio({
       const l = link.current;
       if (l) {
         for (const sg of r.signals) await l.handle(sg);
-        if (caster.current && canvasRef.current) {
-          // quem transmite manda a imagem da live para os outros aparelhos
+        const holder = r.status === 'live' && r.holder?.fresh ? r.holder.device : '';
+        const stage = holder || (r.stage?.present ? r.stage.device : '');
+        if (!stage && r.status !== 'live' && !stageClaimed.current) {
+          // ninguém é o principal (ou ele fechou o estúdio): este passa a ser
+          stageClaimed.current = true;
+          void setStage(liveId, device.current).finally(() => window.setTimeout(() => (stageClaimed.current = false), 5000));
+        }
+        if ((caster.current || stage === device.current.id) && canvasRef.current) {
+          // aparelho principal: manda a imagem (a da live) para os outros aparelhos
           l.unwatch();
           mirrorSrc.current ??= canvasRef.current.captureStream(15);
           l.setSource(mirrorSrc.current);
-        } else if (r.status === 'live' && r.holder?.fresh && r.holder.device !== device.current.id && wantMirrorRef.current) {
-          // espelho só quando pedido (o olho na prévia): ver a imagem da live custa processamento
+        } else if (stage && stage !== device.current.id && wantMirrorRef.current) {
+          // os outros mostram a mesma câmera (espelho leve; o olho na prévia desliga)
           l.setSource(null);
-          void l.watch(r.holder.device);
+          void l.watch(stage);
         } else {
           l.unwatch();
           l.setSource(null);
@@ -1077,6 +1105,12 @@ export function Studio({
     }
     if (camId) setCam(camId);
     setArmed(true);
+    if (!liveOn) {
+      // antes da live: este aparelho passa a ser o principal (a câmera dele é a da live)
+      await setStage(liveId, device.current).catch(() => null);
+      window.setTimeout(() => setArmed(false), 2500);
+      return;
+    }
     // espera a câmera abrir (até 6 s)
     const t0 = Date.now();
     while (Date.now() - t0 < 6000 && (!camTrack.current || (camId && camTrack.current.getSettings().deviceId !== camId && camId !== 'none'))) await new Promise((r) => setTimeout(r, 150));
@@ -1093,37 +1127,37 @@ export function Studio({
     } else if (c.t === 'cam' && caster.current && c.id) setCam(c.id);
     else if (c.t === 'mic' && caster.current && c.id) setMic(c.id);
     else if (c.t === 'take') {
-      toast('Assumindo a live…');
+      if (liveOn) toast('Assumindo a live…');
       await takeOver(c.id);
-    }
+    } else if (c.t === 'start' && !caster.current && !liveOn) await goLive();
   };
 
   /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
   async function pickAnyCam(v: string) {
     const [dev, id] = v.split('|');
-    const holder = remote?.status === 'live' && remote.holder?.fresh ? remote.holder.device : '';
     if (dev === device.current.id) {
-      if (onAir || !holder) setCam(id);
+      if (onAir || !stageDev || stageDev === device.current.id) setCam(id);
       else await takeOver(id);
       return;
     }
-    if (dev === holder) await studioCommand(liveId, dev, { t: 'cam', id });
+    if (dev === stageDev) await studioCommand(liveId, dev, { t: 'cam', id });
     else {
       await studioCommand(liveId, dev, { t: 'take', id });
-      toast(`Passando a live para o ${devices.find((d) => d.device === dev)?.label ?? 'outro aparelho'}…`);
+      toast(`${liveOn ? 'Passando a live para o' : 'Câmera do'} ${devices.find((d) => d.device === dev)?.label ?? 'outro aparelho'}…`);
     }
   }
-  const liveHolder = remote?.status === 'live' && remote.holder?.fresh ? remote.holder.device : '';
-  const holderDev = devices.find((d) => d.device === liveHolder && d.device !== device.current.id) ?? null;
+  /** o aparelho principal (outro aparelho): a câmera e o microfone em uso são os dele */
+  const holderDev = light ? (devices.find((d) => d.device === stageDev) ?? null) : null;
+  const tag = (dev: string) => (dev !== stageDev ? '' : liveOn ? ' · no ar' : ' · em uso');
   const camGroups = [
     {
       device: device.current.id,
-      label: `${device.current.label || 'Este aparelho'}${onAir ? ' · no ar' : devices.length > 1 ? ' · este' : ''}`,
+      label: `${device.current.label || 'Este aparelho'}${onAir || stageDev === device.current.id || !stageDev ? tag(device.current.id) || (devices.length > 1 ? ' · em uso' : '') : ' · este'}`,
       cams: cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })),
     },
     ...devices
       .filter((d) => d.device !== device.current.id && d.cams.length)
-      .map((d) => ({ device: d.device, label: `${d.label}${d.device === liveHolder ? ' · no ar' : ''}`, cams: d.cams })),
+      .map((d) => ({ device: d.device, label: `${d.label}${tag(d.device)}`, cams: d.cams })),
   ];
   const camValue = holderDev ? `${holderDev.device}|${holderDev.cam}` : `${device.current.id}|${cam}`;
   async function scanAll() {
@@ -1384,6 +1418,19 @@ export function Studio({
                 Toque para ativar o som
               </button>
             )}
+            {light && !liveOn && stageLabel && (
+              <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-black/70 px-2 py-1 text-[11px] font-bold text-white">
+                <Camera className="size-3" /> {stageLabel}
+                <button
+                  type="button"
+                  onClick={toggleMirror}
+                  aria-label={wantMirror ? 'Esconder a imagem da live' : 'Ver a imagem da live'}
+                  className="ml-1 rounded p-0.5 hover:bg-white/20"
+                >
+                  {wantMirror ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                </button>
+              </span>
+            )}
             {!onAir && liveOn && remote?.holder && (
               <span
                 className={cn(
@@ -1396,7 +1443,7 @@ export function Studio({
                 {remote.holder.fresh && (
                   <button
                     type="button"
-                    onClick={() => setWantMirror((v) => !v)}
+                    onClick={toggleMirror}
                     aria-label={wantMirror ? 'Esconder a imagem da live' : 'Ver a imagem da live'}
                     className="pointer-events-auto ml-1 rounded p-0.5 hover:bg-white/20"
                   >
@@ -1824,7 +1871,18 @@ export function Studio({
             </button>
           </div>
         ) : (
-          <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
+          <button
+            type="button"
+            onClick={() => {
+              // a live começa no aparelho principal (o da câmera em uso)
+              if (light && stageDev) {
+                void studioCommand(liveId, stageDev, { t: 'start' });
+                toast(`Iniciando no ${stageLabel || 'outro aparelho'}…`);
+              } else void goLive();
+            }}
+            disabled={busy || (!light && blocked)}
+            className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}
+          >
             {busy ? <Spinner /> : <Radio className="size-4" />} Iniciar transmissão
           </button>
         )}
