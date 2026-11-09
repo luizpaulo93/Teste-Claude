@@ -801,3 +801,20 @@ create table if not exists live_rtc (
   created_at timestamptz not null default now()
 );
 create index if not exists live_rtc_to_idx on live_rtc (live_id, to_device);
+
+-- ============================================================================
+-- Versão 27: aparelhos abertos no estúdio de cada live (nome, câmeras, microfones) e comandos entre eles
+-- (trocar câmera/microfone de quem transmite, ou mandar outro aparelho assumir com a câmera escolhida).
+-- ============================================================================
+create table if not exists live_devices (
+  live_id text not null,
+  device text not null,
+  label text not null default '',
+  cams jsonb not null default '[]'::jsonb,
+  mics jsonb not null default '[]'::jsonb,
+  cam text not null default '',
+  mic text not null default '',
+  cmd jsonb,
+  seen_at timestamptz not null default now(),
+  primary key (live_id, device)
+);

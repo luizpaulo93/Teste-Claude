@@ -447,10 +447,43 @@ export async function claimStudio(
 }
 
 /** Situação do estúdio para cada aparelho: a live está no ar? quem transmite? qual a cena? */
-export async function pollStudio(id: string, device = '') {
+export interface StudioDevice {
+  device: string;
+  label: string;
+  cams: { id: string; name: string }[];
+  mics: { id: string; name: string }[];
+  cam: string;
+  mic: string;
+}
+type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan'; id?: string };
+
+export async function pollStudio(id: string, device = '', report?: Omit<StudioDevice, 'device'>) {
   await requireAdminAction();
   if (!isDocId(id)) return null;
-  const [live, row, signals] = await Promise.all([
+  const dev = device.slice(0, 64);
+  // este aparelho está no estúdio (e o que ele tem); pega o comando que outro aparelho deixou para ele
+  let cmd: StudioCmd | null = null;
+  if (dev) {
+    const clean = (l: unknown) =>
+      (Array.isArray(l) ? l : []).slice(0, 12).map((x: { id?: unknown; name?: unknown }) => ({ id: String(x?.id ?? '').slice(0, 200), name: String(x?.name ?? '').slice(0, 80) }));
+    const r = report
+      ? await sql.one<{ cmd: StudioCmd | null }>(
+          `insert into live_devices (live_id, device, label, cams, mics, cam, mic, seen_at) values ($1, $2, $3, $4, $5, $6, $7, now())
+           on conflict (live_id, device) do update set label = excluded.label, cams = excluded.cams, mics = excluded.mics, cam = excluded.cam,
+             mic = excluded.mic, seen_at = now()
+           returning cmd`,
+          [id, dev, String(report.label).slice(0, 40), JSON.stringify(clean(report.cams)), JSON.stringify(clean(report.mics)), String(report.cam).slice(0, 200), String(report.mic).slice(0, 200)],
+        )
+      : await sql.one<{ cmd: StudioCmd | null }>(
+          `insert into live_devices (live_id, device, seen_at) values ($1, $2, now())
+           on conflict (live_id, device) do update set seen_at = now()
+           returning cmd`,
+          [id, dev],
+        );
+    cmd = r?.cmd ?? null;
+    if (cmd) await sql.exec(`update live_devices set cmd = null where live_id = $1 and device = $2`, [id, dev]);
+  }
+  const [live, row, signals, devices] = await Promise.all([
     sql.one<{ status: string; materials: LessonMaterial[] | null }>(`select status, materials from live_sessions where id = $1`, [id]),
     studioRow(id),
     // combinação da ligação direta com outro aparelho (entregue uma vez só)
@@ -460,6 +493,10 @@ export async function pollStudio(id: string, device = '') {
           [id, device.slice(0, 64)],
         )
       : Promise.resolve([]),
+    sql.query<StudioDevice>(
+      `select device, label, cams, mics, cam, mic from live_devices where live_id = $1 and seen_at > now() - interval '8 seconds' order by label, device`,
+      [id],
+    ),
   ]);
   if (!live) return null;
   const at = row?.lease_at ? new Date(row.lease_at).getTime() : 0;
@@ -473,6 +510,8 @@ export async function pollStudio(id: string, device = '') {
     signals: (signals as { from: string; kind: 'offer' | 'answer'; sdp: string; to_device?: string }[])
       .filter((x) => x.to_device === device)
       .map(({ from, kind, sdp }) => ({ from, kind, sdp })),
+    devices,
+    cmd,
     now: Date.now(),
   };
 }
@@ -489,6 +528,8 @@ export async function setStudioScene(id: string, patch: StudioScene) {
   if (typeof patch.muted === 'boolean') clean.muted = patch.muted;
   if (patch.res === '1080' || patch.res === '720') clean.res = patch.res;
   if (typeof patch.mirror === 'boolean') clean.mirror = patch.mirror;
+  const v = patch.pdfPos;
+  if (v && [v.cx, v.cy, v.zoom].every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1000)) clean.pdfPos = { cx: v.cx, cy: v.cy, zoom: v.zoom };
   const b = patch.pipBox;
   if (b && [b.x, b.y, b.w].every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) <= 2)) clean.pipBox = { x: b.x, y: b.y, w: b.w };
   return patchScene(id, clean);
@@ -507,5 +548,25 @@ export async function rtcSend(id: string, from: string, to: string, kind: 'offer
     kind,
     sdp,
   ]);
+  return { ok: true };
+}
+
+/** Comando para outro aparelho do estúdio: trocar câmera/microfone de quem transmite ou assumir a live com uma câmera. */
+export async function studioCommand(id: string, device: string, cmd: StudioCmd) {
+  await requireAdminAction();
+  if (!isDocId(id) || !['cam', 'mic', 'take', 'scan'].includes(cmd?.t)) return { error: 'Inválido.' };
+  await sql.exec(`update live_devices set cmd = $3 where live_id = $1 and device = $2`, [
+    id,
+    String(device).slice(0, 64),
+    JSON.stringify({ t: cmd.t, id: cmd.id ? String(cmd.id).slice(0, 200) : undefined }),
+  ]);
+  return { ok: true };
+}
+
+/** "Atualizar": todos os aparelhos abertos no estúdio leem as câmeras e microfones de novo. */
+export async function studioScan(id: string) {
+  await requireAdminAction();
+  if (!isDocId(id)) return { error: 'Inválido.' };
+  await sql.exec(`update live_devices set cmd = '{"t":"scan"}'::jsonb where live_id = $1 and seen_at > now() - interval '8 seconds' and cmd is null`, [id]);
   return { ok: true };
 }

@@ -2,6 +2,8 @@
 
 import {
   AppWindow,
+  Eye,
+  EyeOff,
   RefreshCw,
   X,
   MessageSquare,
@@ -25,7 +27,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
@@ -303,6 +305,29 @@ export function Studio({
   const onLinkOpen = useRef<(d: string) => void>(() => {});
   /** este aparelho só controla: mostra a imagem de quem transmite */
   const viewing = Boolean(mirrorStream) && !onAir && liveOn;
+  /**
+   * Modo leve: a live está no ar por outro aparelho e este só controla. Não abre câmera nem microfone,
+   * não recebe o espelho (só se pedir) e desenha a prévia devagar: não esquenta nem gasta bateria.
+   */
+  const [armed, setArmed] = useState(false);
+  const light = !onAir && !armed && liveOn && (!remote?.holder || remote.holder.device !== device.current.id || !caster.current);
+  const [wantMirror, setWantMirror] = useState(false);
+  const wantMirrorRef = useRef(false);
+  wantMirrorRef.current = wantMirror;
+  useEffect(() => {
+    if (!onAir) comp.current?.setFps(light ? 4 : 30);
+  }, [light, onAir]);
+  /** aparelhos abertos no estúdio (nome, câmeras, microfones) */
+  const [devices, setDevices] = useState<StudioDevice[]>([]);
+  const reported = useRef({ key: '', at: 0 });
+  const [scanning, setScanning] = useState(false);
+  // som travado pelo sistema (iPad/iPhone que assumiu a live sem ninguém tocar na tela)
+  const [soundLocked, setSoundLocked] = useState(false);
+  useEffect(() => {
+    if (!onAir) return setSoundLocked(false);
+    const t = window.setInterval(() => setSoundLocked(Boolean(audio.current && audio.current.ctx.state !== 'running')), 2000);
+    return () => window.clearInterval(t);
+  }, [onAir]);
   // mexendo no PDF ou na câmera do canto aqui: mostra a prévia local na hora e volta para a imagem da live depois
   const [touching, setTouching] = useState(false);
   const touchTimer = useRef(0);
@@ -695,7 +720,7 @@ export function Studio({
   // Câmera escolhida
   useEffect(() => {
     if (!cam) return;
-    if (cam === 'none') {
+    if (cam === 'none' || light) {
       comp.current?.setCamera(null);
       camTrack.current?.stop();
       camTrack.current = null;
@@ -739,7 +764,7 @@ export function Studio({
     return () => {
       cancelled = true;
     };
-  }, [cam, res]);
+  }, [cam, res, light]);
 
   /** Espelhar a tela inteira ou uma janela (o navegador mostra a lista para escolher). */
   async function shareScreen(surface: 'monitor' | 'window') {
@@ -806,7 +831,7 @@ export function Studio({
     micStream.current?.getTracks().forEach((t) => t.stop());
     micStream.current = null;
     setMicLabel('');
-    if (mic === 'none') return;
+    if (mic === 'none' || light) return;
     let cancelled = false;
     navigator.mediaDevices
       .getUserMedia({
@@ -834,7 +859,7 @@ export function Studio({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mic, mixer, micKick]);
+  }, [mic, mixer, micKick, light]);
 
   // Silenciar o microfone (a live continua, só sem som)
   useEffect(() => {
@@ -844,6 +869,7 @@ export function Studio({
 
   // Medidor do microfone
   useEffect(() => {
+    if (light) return;
     let raf = 0;
     let last = 0;
     const buf = new Uint8Array(256);
@@ -862,16 +888,19 @@ export function Studio({
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [light]);
 
   // Situação da live em todos os aparelhos (a cada 1,5 s): quem transmite e qual a cena
   const applyRef = useRef<(r: NonNullable<StudioPoll>) => Promise<void>>(async () => {});
   useEffect(() => {
     let alive = true;
     const tick = async () => {
-      const r = await pollStudio(liveId, device.current.id).catch(() => null);
+      const rep = reportRef.current();
+      const r = await pollStudio(liveId, device.current.id, rep ?? undefined).catch(() => null);
       if (!alive || !r) return;
       setRemote(r);
+      setDevices(r.devices);
+      if (r.cmd) void onCmd.current(r.cmd);
       const l = link.current;
       if (l) {
         for (const sg of r.signals) await l.handle(sg);
@@ -880,7 +909,8 @@ export function Studio({
           l.unwatch();
           mirrorSrc.current ??= canvasRef.current.captureStream(15);
           l.setSource(mirrorSrc.current);
-        } else if (r.status === 'live' && r.holder?.fresh && r.holder.device !== device.current.id) {
+        } else if (r.status === 'live' && r.holder?.fresh && r.holder.device !== device.current.id && wantMirrorRef.current) {
+          // espelho só quando pedido (o olho na prévia): ver a imagem da live custa processamento
           l.setSource(null);
           void l.watch(r.holder.device);
         } else {
@@ -922,6 +952,7 @@ export function Studio({
   };
 
   type SceneState = {
+    pdfPos?: PdfPos;
     scene?: Scene;
     pdfId?: string;
     page?: number;
@@ -944,6 +975,7 @@ export function Studio({
       if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
       if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
       if (st.pipBox && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
+      if (st.pdfPos && pdf.current?.pages) pdf.current.setView(st.pdfPos);
       sync.current.sent = sceneKey({ ...sceneNow(), ...st, page: st.page ?? pdfView?.page ?? 0 });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
@@ -954,9 +986,19 @@ export function Studio({
   const sendView = useRef<(v: PdfPos) => void>(() => {});
   const lastView = useRef(0);
   const viewTimer = useRef(0);
+  const viewDbTimer = useRef(0);
   sendView.current = (v) => {
-    if (sync.current.applying || !link.current?.connected) return;
+    if (sync.current.applying) return;
     void v;
+    // pelo servidor: quem só controla manda a posição final ~1 s depois; quem transmite também (os outros seguem)
+    if (!viewDbTimer.current)
+      viewDbTimer.current = window.setTimeout(async () => {
+        viewDbTimer.current = 0;
+        if (!pdf.current || sync.current.applying) return;
+        const r = await setStudioScene(liveId, { pdfPos: pdf.current.pos }).catch(() => null);
+        if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
+      }, caster.current ? 1000 : 600);
+    if (!link.current?.connected) return;
     // junta os movimentos e manda a posição final a cada 1 s (nos dois sentidos)
     if (viewTimer.current) return;
     viewTimer.current = window.setTimeout(() => {
@@ -1015,17 +1057,93 @@ export function Studio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, liveId]);
 
+  // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
+  const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
+  reportRef.current = () => {
+    const d = devicesNow();
+    const rep = { label: device.current.label, cams: d.cams.filter((c) => c.id !== 'none'), mics: d.mics.filter((m) => m.id !== 'none'), cam, mic };
+    const key = JSON.stringify(rep);
+    const now = Date.now();
+    if (key === reported.current.key && now - reported.current.at < 15_000) return null;
+    reported.current = { key, at: now };
+    return rep;
+  };
+
+  /** Este aparelho assume a live com a câmera escolhida (abre câmera e microfone só agora). */
+  async function takeOver(camId?: string) {
+    if (caster.current) {
+      if (camId) setCam(camId);
+      return;
+    }
+    if (camId) setCam(camId);
+    setArmed(true);
+    // espera a câmera abrir (até 6 s)
+    const t0 = Date.now();
+    while (Date.now() - t0 < 6000 && (!camTrack.current || (camId && camTrack.current.getSettings().deviceId !== camId && camId !== 'none'))) await new Promise((r) => setTimeout(r, 150));
+    await goLive();
+    setArmed(false);
+  }
+
+  // Comandos de outros aparelhos
+  const onCmd = useRef<(c: { t: string; id?: string }) => Promise<void>>(async () => {});
+  onCmd.current = async (c) => {
+    if (c.t === 'scan') {
+      await refreshDevices(false);
+      reported.current.key = '';
+    } else if (c.t === 'cam' && caster.current && c.id) setCam(c.id);
+    else if (c.t === 'mic' && caster.current && c.id) setMic(c.id);
+    else if (c.t === 'take') {
+      toast('Assumindo a live…');
+      await takeOver(c.id);
+    }
+  };
+
+  /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
+  async function pickAnyCam(v: string) {
+    const [dev, id] = v.split('|');
+    const holder = remote?.status === 'live' && remote.holder?.fresh ? remote.holder.device : '';
+    if (dev === device.current.id) {
+      if (onAir || !holder) setCam(id);
+      else await takeOver(id);
+      return;
+    }
+    if (dev === holder) await studioCommand(liveId, dev, { t: 'cam', id });
+    else {
+      await studioCommand(liveId, dev, { t: 'take', id });
+      toast(`Passando a live para o ${devices.find((d) => d.device === dev)?.label ?? 'outro aparelho'}…`);
+    }
+  }
+  const liveHolder = remote?.status === 'live' && remote.holder?.fresh ? remote.holder.device : '';
+  const holderDev = devices.find((d) => d.device === liveHolder && d.device !== device.current.id) ?? null;
+  const camGroups = [
+    {
+      device: device.current.id,
+      label: `${device.current.label || 'Este aparelho'}${onAir ? ' · no ar' : devices.length > 1 ? ' · este' : ''}`,
+      cams: cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })),
+    },
+    ...devices
+      .filter((d) => d.device !== device.current.id && d.cams.length)
+      .map((d) => ({ device: d.device, label: `${d.label}${d.device === liveHolder ? ' · no ar' : ''}`, cams: d.cams })),
+  ];
+  const camValue = holderDev ? `${holderDev.device}|${holderDev.cam}` : `${device.current.id}|${cam}`;
+  async function scanAll() {
+    setScanning(true);
+    await refreshDevices(false);
+    reported.current.key = '';
+    await studioScan(liveId).catch(() => null);
+    window.setTimeout(() => setScanning(false), 2500);
+  }
+
   // Assumir sozinho: o aparelho da live parou de enviar (caiu a internet, fechou o app) e este está pronto
   const autoTried = useRef('');
   useEffect(() => {
     if (!autoTake || onAir || busy || !remote || remote.status !== 'live' || !remote.holder || remote.holder.fresh) return;
     if (remote.holder.device === device.current.id && caster.current) return;
-    if (!camTrack.current && !screenTrack.current) return;
     const key = `${remote.holder.device}-${remote.rev}`;
     if (autoTried.current === key) return;
     autoTried.current = key;
     toast('Assumindo a live…');
-    void goLive();
+    void takeOver();
   });
 
   // Avisa antes de fechar a página no meio da live
@@ -1055,7 +1173,8 @@ export function Studio({
         lease = r.lease ?? '';
       }
       const m = mixer();
-      await m.ctx.resume();
+      // iPad/iPhone sem toque na tela (troca pedida por outro aparelho): não trava esperando o som liberar
+      await Promise.race([m.ctx.resume().catch(() => {}), new Promise((r) => setTimeout(r, 1500))]);
       const n = rangeOf(res, net);
       const d = dims();
       // Só o áudio vai pela trilha; o vídeo vem da mesa de cenas (quadro a quadro)
@@ -1256,6 +1375,15 @@ export function Studio({
                 <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
               </span>
             )}
+            {onAir && soundLocked && (
+              <button
+                type="button"
+                onClick={() => void audio.current?.ctx.resume()}
+                className="absolute bottom-3 left-1/2 z-10 -translate-x-1/2 rounded-full bg-amber-500 px-3 py-1.5 text-xs font-bold text-black"
+              >
+                Toque para ativar o som
+              </button>
+            )}
             {!onAir && liveOn && remote?.holder && (
               <span
                 className={cn(
@@ -1265,6 +1393,16 @@ export function Studio({
               >
                 <span className={cn('size-1.5 rounded-full bg-white', remote.holder.fresh && 'animate-pulse')} />
                 {remote.holder.fresh ? `AO VIVO · ${remote.holder.label}` : `${remote.holder.label} sem sinal`}
+                {remote.holder.fresh && (
+                  <button
+                    type="button"
+                    onClick={() => setWantMirror((v) => !v)}
+                    aria-label={wantMirror ? 'Esconder a imagem da live' : 'Ver a imagem da live'}
+                    className="pointer-events-auto ml-1 rounded p-0.5 hover:bg-white/20"
+                  >
+                    {wantMirror ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                  </button>
+                )}
               </span>
             )}
             <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
@@ -1471,7 +1609,7 @@ export function Studio({
                 ) : (
                   <button
                     type="button"
-                    onClick={goLive}
+                    onClick={() => void (liveOn ? takeOver() : goLive())}
                     disabled={busy || blocked}
                     className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
@@ -1678,7 +1816,7 @@ export function Studio({
         ) : liveOn ? (
           // live no ar em outro aparelho: este assume a mesma live (ou encerra para todos)
           <div className="grid grid-cols-[1fr_auto] gap-2">
-            <button type="button" onClick={goLive} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
+            <button type="button" onClick={() => void takeOver()} disabled={busy || blocked} className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}>
               {busy ? <Spinner /> : <Radio className="size-4" />} Transmitir deste aparelho
             </button>
             <button type="button" onClick={() => void endLive()} disabled={busy} className={buttonClass('secondary', 'lg')} aria-label="Encerrar a live">
@@ -1707,43 +1845,40 @@ export function Studio({
           </label>
         )}
         <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
-        <label className="block space-y-1.5">
+        <div className="block space-y-1.5">
           <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
             <Camera className="size-3.5" /> Câmera
-          </span>
-          {viewing && hostDev ? (
-            <Select
-              value={hostDev.cam}
-              onChange={(e) => {
-                link.current?.post({ t: 'cam', id: e.target.value });
-                setHostDev({ ...hostDev, cam: e.target.value });
-              }}
-              aria-label="Câmera"
+            {/* lê de novo as câmeras de todos os aparelhos abertos no estúdio */}
+            <button
+              type="button"
+              onClick={() => void scanAll()}
+              disabled={scanning}
+              className="ml-auto flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-[11px] font-semibold text-brand disabled:opacity-60"
             >
-              {hostDev.cams.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </Select>
-          ) : (
-            <Select value={cam} onChange={(e) => setCam(e.target.value)} aria-label="Câmera">
-              {cams.map((c, i) => (
-                <option key={c.deviceId || i} value={c.deviceId}>
-                  {camName(c, i, cams)}
-                </option>
-              ))}
-              <option value="none">Sem câmera</option>
-            </Select>
-          )}
-          {!viewing && cam !== 'none' && camInfo && (
+              <RefreshCw className={cn('size-3', scanning && 'animate-spin')} /> Atualizar
+            </button>
+          </span>
+          {/* câmeras de todos os aparelhos: escolher a de outro aparelho passa a live para ele */}
+          <Select value={camValue} onChange={(e) => void pickAnyCam(e.target.value)} aria-label="Câmera">
+            {camGroups.map((g) => (
+              <optgroup key={g.device} label={g.label}>
+                {g.cams.map((c) => (
+                  <option key={c.id} value={`${g.device}|${c.id}`}>
+                    {c.name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            <option value={`${device.current.id}|none`}>Sem câmera</option>
+          </Select>
+          {!light && cam !== 'none' && camInfo && (
             <span className={cn('block text-[11px]', camInfo.h < RES[res].h ? 'text-warning' : 'text-muted')}>
               Câmera entregando {camInfo.w}×{camInfo.h}
               {camInfo.fps ? ` · ${camInfo.fps} fps` : ''}
               {camInfo.h < RES[res].h ? ` — abaixo de ${res}p, a imagem não ganha detalhe` : ''}
             </span>
           )}
-        </label>
+        </div>
         {scene !== 'pdf' && <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />}
 
         <div className="space-y-1.5">
@@ -1775,21 +1910,20 @@ export function Studio({
             <Mic className="size-3.5" /> Microfone
           </span>
           <div className="flex gap-2">
-            {viewing && hostDev ? (
+            {light && holderDev ? (
               <Select
-                value={hostDev.mic}
-                onChange={(e) => {
-                  link.current?.post({ t: 'mic', id: e.target.value });
-                  setHostDev({ ...hostDev, mic: e.target.value });
-                }}
+                value={holderDev.mic}
+                onChange={(e) => void studioCommand(liveId, holderDev.device, { t: 'mic', id: e.target.value })}
                 aria-label="Microfone"
                 className="min-w-0 flex-1"
               >
-                {hostDev.mics.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.name}
-                  </option>
-                ))}
+                <optgroup label={holderDev.label}>
+                  {holderDev.mics.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </optgroup>
               </Select>
             ) : (
               <Select value={mic} onChange={(e) => setMic(e.target.value)} aria-label="Microfone" className="min-w-0 flex-1">
