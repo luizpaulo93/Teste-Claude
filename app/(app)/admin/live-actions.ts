@@ -457,10 +457,19 @@ export interface StudioDevice {
 }
 type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan' | 'start'; id?: string };
 
-export async function pollStudio(id: string, device = '', report?: Omit<StudioDevice, 'device'>) {
+export async function pollStudio(
+  id: string,
+  device = '',
+  report?: Omit<StudioDevice, 'device'>,
+  /** reserva do espelho: needPreview = este aparelho não recebe a imagem direta; preview = foto do aparelho principal */
+  extra?: { needPreview?: boolean; preview?: string },
+) {
   await requireAdminAction();
   if (!isDocId(id)) return null;
   const dev = device.slice(0, 64);
+  if (dev && extra?.needPreview) await sql.exec(`update live_devices set want_preview = now() where live_id = $1 and device = $2`, [id, dev]);
+  if (dev && extra?.preview && extra.preview.length < 200_000 && extra.preview.startsWith('data:image/jpeg;base64,'))
+    await sql.exec(`update live_studio set preview = $3, preview_at = now() where live_id = $1 and device = $2`, [id, dev, extra.preview]);
   // este aparelho está no estúdio (e o que ele tem); pega o comando que outro aparelho deixou para ele
   let cmd: StudioCmd | null = null;
   if (dev) {
@@ -483,7 +492,7 @@ export async function pollStudio(id: string, device = '', report?: Omit<StudioDe
     cmd = r?.cmd ?? null;
     if (cmd) await sql.exec(`update live_devices set cmd = null where live_id = $1 and device = $2`, [id, dev]);
   }
-  const [live, row, signals, devices] = await Promise.all([
+  const [live, row, signals, devices, pv] = await Promise.all([
     sql.one<{ status: string; materials: LessonMaterial[] | null }>(`select status, materials from live_sessions where id = $1`, [id]),
     studioRow(id),
     // combinação da ligação direta com outro aparelho (entregue uma vez só)
@@ -496,6 +505,11 @@ export async function pollStudio(id: string, device = '', report?: Omit<StudioDe
     sql.query<StudioDevice>(
       `select device, label, cams, mics, cam, mic from live_devices where live_id = $1 and seen_at > now() - interval '8 seconds' order by label, device`,
       [id],
+    ),
+    sql.one<{ wanted: boolean; preview: string | null }>(
+      `select exists (select 1 from live_devices where live_id = $1 and want_preview > now() - interval '5 seconds') as wanted,
+              (select case when $2 and preview_at > now() - interval '6 seconds' then preview end from live_studio where live_id = $1) as preview`,
+      [id, Boolean(extra?.needPreview)],
     ),
   ]);
   if (!live) return null;
@@ -513,6 +527,9 @@ export async function pollStudio(id: string, device = '', report?: Omit<StudioDe
     devices,
     cmd,
     // aparelho principal: o da câmera em uso (durante a live, o que transmite); só vale se está com o estúdio aberto
+    // o aparelho principal manda a foto enquanto alguém precisar; quem precisa recebe a última
+    previewWanted: Boolean(pv?.wanted),
+    preview: pv?.preview ?? null,
     stage: row?.device ? { device: row.device, label: row.label, present: devices.some((d) => d.device === row.device) } : null,
     now: Date.now(),
   };

@@ -818,3 +818,11 @@ create table if not exists live_devices (
   seen_at timestamptz not null default now(),
   primary key (live_id, device)
 );
+
+-- ============================================================================
+-- Versão 28: reserva do espelho do estúdio quando a ligação direta não conecta (ex.: celular no 4G/5G):
+-- o aparelho principal manda uma foto pequena da imagem por segundo, só enquanto alguém precisa.
+-- ============================================================================
+alter table live_devices add column if not exists want_preview timestamptz;
+alter table live_studio add column if not exists preview text;
+alter table live_studio add column if not exists preview_at timestamptz;

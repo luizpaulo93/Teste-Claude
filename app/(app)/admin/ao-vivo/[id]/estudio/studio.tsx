@@ -2,8 +2,6 @@
 
 import {
   AppWindow,
-  Eye,
-  EyeOff,
   RefreshCw,
   X,
   MessageSquare,
@@ -319,21 +317,40 @@ export function Studio({
   const stageLabel = (liveHolderDev ? remote?.holder?.label : remote?.stage?.label) ?? '';
   const light = !onAir && !armed && (!remote || (stageDev !== '' && stageDev !== device.current.id));
   const viewing = Boolean(mirrorStream) && !onAir && light;
-  const [wantMirror, setWantMirror] = useState(true);
+  // o aparelho que só controla sempre mostra a imagem do principal
+  const wantMirrorRef = useRef(true);
+
+  /**
+   * Reserva do espelho: se a ligação direta não conecta (celular no 4G/5G, rede que bloqueia),
+   * o principal manda uma foto pequena por segundo pelo servidor, só enquanto alguém precisa.
+   */
+  const [mirrorOk, setMirrorOk] = useState(false);
+  const [previewSrc, setPreviewSrc] = useState('');
+  const noMirrorSince = useRef(0);
+  const needPreview = useRef(false);
+  const pendingPreview = useRef('');
   useEffect(() => {
-    try {
-      if (localStorage.getItem('studio-mirror') === '0') setWantMirror(false);
-    } catch {}
-  }, []);
-  const toggleMirror = () =>
-    setWantMirror((v) => {
-      try {
-        localStorage.setItem('studio-mirror', v ? '0' : '1');
-      } catch {}
-      return !v;
-    });
-  const wantMirrorRef = useRef(false);
-  wantMirrorRef.current = wantMirror;
+    const t = window.setInterval(() => {
+      const v = mirrorVideo.current;
+      const okNow = Boolean(v && v.srcObject && v.videoWidth > 0 && v.readyState >= 2);
+      setMirrorOk(okNow);
+      if (okNow || !light) noMirrorSince.current = 0;
+      else if (!noMirrorSince.current) noMirrorSince.current = Date.now();
+      needPreview.current = light && !okNow && noMirrorSince.current > 0 && Date.now() - noMirrorSince.current > 6000;
+      if (!needPreview.current) setPreviewSrc((p) => (p ? '' : p));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [light]);
+  /** foto pequena da imagem da live (aparelho principal) */
+  const snapshot = () => {
+    const c = canvasRef.current;
+    if (!c) return '';
+    const t = document.createElement('canvas');
+    t.width = 480;
+    t.height = Math.round((480 * c.height) / c.width);
+    t.getContext('2d')?.drawImage(c, 0, 0, t.width, t.height);
+    return t.toDataURL('image/jpeg', 0.55);
+  };
   useEffect(() => {
     if (!onAir) comp.current?.setFps(light ? 4 : 30);
   }, [light, onAir]);
@@ -922,8 +939,14 @@ export function Studio({
     let alive = true;
     const tick = async () => {
       const rep = reportRef.current();
-      const r = await pollStudio(liveId, device.current.id, rep ?? undefined).catch(() => null);
+      const extra = { needPreview: needPreview.current, preview: pendingPreview.current || undefined };
+      pendingPreview.current = '';
+      const r = await pollStudio(liveId, device.current.id, rep ?? undefined, extra).catch(() => null);
       if (!alive || !r) return;
+      if (r.preview && needPreview.current) setPreviewSrc(r.preview);
+      // principal: alguém não recebe a imagem direta → prepara a foto para o próximo envio
+      const isStage = caster.current || (r.status === 'live' && r.holder?.fresh ? r.holder.device : r.stage?.present ? r.stage.device : '') === device.current.id;
+      if (isStage && r.previewWanted) pendingPreview.current = snapshot();
       setRemote(r);
       setDevices(r.devices);
       if (r.cmd) void onCmd.current(r.cmd);
@@ -1376,6 +1399,11 @@ export function Studio({
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
+              {/* reserva: foto da imagem da live (1 por segundo) quando a ligação direta não conecta */}
+              {light && !mirrorOk && previewSrc && !touching && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={previewSrc} alt="Imagem da live" className="pointer-events-none absolute inset-0 size-full bg-black object-contain" />
+              )}
               {/* aparelho que só controla: mostra a imagem real da live (câmera de quem transmite) */}
               <video
                 ref={mirrorVideo}
@@ -1383,7 +1411,7 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden')}
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
@@ -1442,14 +1470,6 @@ export function Studio({
             {light && !liveOn && stageLabel && (
               <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-black/70 px-2 py-1 text-[11px] font-bold text-white">
                 <Camera className="size-3" /> {stageLabel}
-                <button
-                  type="button"
-                  onClick={toggleMirror}
-                  aria-label={wantMirror ? 'Esconder a imagem da live' : 'Ver a imagem da live'}
-                  className="ml-1 rounded p-0.5 hover:bg-white/20"
-                >
-                  {wantMirror ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                </button>
               </span>
             )}
             {!onAir && liveOn && remote?.holder && (
@@ -1461,16 +1481,6 @@ export function Studio({
               >
                 <span className={cn('size-1.5 rounded-full bg-white', remote.holder.fresh && 'animate-pulse')} />
                 {remote.holder.fresh ? `AO VIVO · ${remote.holder.label}` : `${remote.holder.label} sem sinal`}
-                {remote.holder.fresh && (
-                  <button
-                    type="button"
-                    onClick={toggleMirror}
-                    aria-label={wantMirror ? 'Esconder a imagem da live' : 'Ver a imagem da live'}
-                    className="pointer-events-auto ml-1 rounded p-0.5 hover:bg-white/20"
-                  >
-                    {wantMirror ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-                  </button>
-                )}
               </span>
             )}
             <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
