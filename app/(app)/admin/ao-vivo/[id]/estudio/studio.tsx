@@ -498,10 +498,16 @@ export function Studio({
     setPipRect(c.pipRect());
   }, [scene, pipBox, rotation, mirror, fit, pip]);
 
-  // o retângulo do quadradinho acompanha o formato da câmera
+  // o retângulo do quadradinho acompanha o formato da câmera (o principal mede e manda para os outros)
+  const [pipAspect, setPipAspect] = useState(0);
   useEffect(() => {
     const t = window.setInterval(() => {
       const r = comp.current?.pipRect();
+      const c = canvasRef.current;
+      if (r && c && camTrack.current) {
+        const a = Math.round(((r.h * c.height) / (r.w * c.width)) * 100) / 100;
+        setPipAspect((o) => (o === a ? o : a));
+      }
       if (r) setPipRect((o) => (o.x === r.x && o.y === r.y && o.w === r.w && o.h === r.h ? o : r));
     }, 700);
     return () => window.clearInterval(t);
@@ -518,7 +524,6 @@ export function Studio({
   // Quadradinho da câmera: arrastar move para qualquer lugar; tocar mostra a alça de tamanho; pinça também muda o tamanho
   const pipDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size') => {
     e.stopPropagation();
-    if (viewing) touched();
     e.currentTarget.setPointerCapture(e.pointerId);
     pipTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pipDrag.current = {
@@ -988,9 +993,10 @@ export function Studio({
     muted?: boolean;
     mirror?: boolean;
     pipBox?: { x: number; y: number; w: number };
+    pipAspect?: number;
   };
-  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox]);
-  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox });
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect]);
+  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
   /** Aplica a cena de outro aparelho (sem mandar de volta). */
   async function applyScene(st: SceneState) {
     if (st.pdfId && !materials.some((m) => m.id === st.pdfId)) return router.refresh();
@@ -1004,6 +1010,10 @@ export function Studio({
       if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
       if (st.pipBox && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
       if (st.pdfPos && pdf.current?.pages) pdf.current.setView(st.pdfPos);
+      if (st.pipAspect && comp.current && !camTrack.current) {
+        comp.current.camAspect = st.pipAspect;
+        setPipRect(comp.current.pipRect());
+      }
       sync.current.sent = sceneKey({ ...sceneNow(), ...st, page: st.page ?? pdfView?.page ?? 0 });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
@@ -1078,12 +1088,21 @@ export function Studio({
     const t = window.setTimeout(async () => {
       if (sync.current.applying) return;
       sync.current.sent = key;
-      const r = await setStudioScene(liveId, { scene, pdfId: pdfId || undefined, page: pdfView?.page || undefined, pip, muted, mirror, pipBox }).catch(() => null);
+      const r = await setStudioScene(liveId, {
+        scene,
+        pdfId: pdfId || undefined,
+        page: pdfView?.page || undefined,
+        pip,
+        muted,
+        mirror,
+        pipBox,
+        ...(camTrack.current && pipAspect ? { pipAspect } : {}),
+      }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
     }, 400);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, liveId]);
+  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, pipAspect, liveId]);
 
   // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
@@ -1367,7 +1386,7 @@ export function Studio({
                 className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
-              {(scene === 'both' || (scene === 'pdf' && pip)) && camTrack.current && (
+              {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
                 <div ref={pipArea} className="pointer-events-none absolute inset-0">
                   <div
                     role="button"
@@ -1378,6 +1397,8 @@ export function Studio({
                     onPointerCancel={pipUp}
                     className={cn(
                       'pointer-events-auto absolute cursor-move touch-none rounded-[6%]',
+                      // aparelho que só controla: contorno para ver onde está a câmera do principal
+                      light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
                     )}
                     style={{

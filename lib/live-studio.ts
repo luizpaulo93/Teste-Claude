@@ -36,6 +36,8 @@ export interface StudioScene {
   res?: '1080' | '720';
   mirror?: boolean;
   pipBox?: { x: number; y: number; w: number };
+  /** formato (altura/largura) da câmera do aparelho principal */
+  pipAspect?: number;
   /** posição exata do PDF (os aparelhos que só controlam seguem sem precisar do espelho) */
   pdfPos?: { cx: number; cy: number; zoom: number };
 }

@@ -530,6 +530,7 @@ export async function setStudioScene(id: string, patch: StudioScene) {
   if (typeof patch.muted === 'boolean') clean.muted = patch.muted;
   if (patch.res === '1080' || patch.res === '720') clean.res = patch.res;
   if (typeof patch.mirror === 'boolean') clean.mirror = patch.mirror;
+  if (typeof patch.pipAspect === 'number' && patch.pipAspect > 0.2 && patch.pipAspect < 5) clean.pipAspect = patch.pipAspect;
   const v = patch.pdfPos;
   if (v && [v.cx, v.cy, v.zoom].every((n) => typeof n === 'number' && Number.isFinite(n) && Math.abs(n) < 1000)) clean.pdfPos = { cx: v.cx, cy: v.cy, zoom: v.zoom };
   const b = patch.pipBox;

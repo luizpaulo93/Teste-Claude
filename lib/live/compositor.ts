@@ -100,6 +100,8 @@ export class Compositor {
   private screen: Source | ElSource | null = null;
   private ctx: CanvasRenderingContext2D;
   private stopTick: () => void;
+  /** altura/largura da câmera do aparelho principal (para o retângulo no aparelho que só controla) */
+  camAspect = 0;
   /** chamado a cada quadro desenhado (a transmissão codifica o canvas) */
   onFrame?: (canvas: HTMLCanvasElement) => void;
 
@@ -141,7 +143,8 @@ export class Compositor {
   pipRect() {
     const { width: W, height: H } = this.canvas;
     const f = this.cam?.frame;
-    const { w: cw, h: ch } = f ? this.camSize(f) : { w: 16, h: 9 };
+    // sem câmera aqui (aparelho que só controla): usa o formato da câmera do aparelho principal
+    const { w: cw, h: ch } = f ? this.camSize(f) : { w: 1, h: this.camAspect || 9 / 16 };
     const w = Math.min(0.9, Math.max(0.1, this.pipW));
     let h = (w * W * (ch / cw)) / H;
     let ww = w;
