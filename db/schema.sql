@@ -826,3 +826,19 @@ create table if not exists live_devices (
 alter table live_devices add column if not exists want_preview timestamptz;
 alter table live_studio add column if not exists preview text;
 alter table live_studio add column if not exists preview_at timestamptz;
+
+-- ============================================================================
+-- Versão 29: escrita por cima dos PDFs do estúdio (caneta e marca-texto), por live e por PDF.
+-- ============================================================================
+-- Um traço por linha, compacto (pontos como diferenças num texto curto): escrever um traço novo
+-- grava só ele, sem regravar a página toda.
+create table if not exists live_ink (
+  live_id text not null,
+  pdf_id text not null,
+  id text not null,
+  n bigint generated always as identity,
+  data text not null,
+  primary key (live_id, pdf_id, id)
+);
+create index if not exists live_ink_order on live_ink (live_id, pdf_id, n);
+alter table live_studio add column if not exists ink_rev int not null default 0;

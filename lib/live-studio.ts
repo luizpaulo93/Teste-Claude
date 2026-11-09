@@ -50,13 +50,14 @@ interface Row {
   resume: StudioResume | null;
   state: StudioScene;
   rev: number;
+  ink_rev?: number;
 }
 
 /** Sem envio há mais que isso: o aparelho que transmitia caiu. */
 export const HOLDER_STALE_MS = 10_000;
 
 export const studioRow = (liveId: string) =>
-  sql.one<Row>(`select lease, device, label, lease_at, resume, state, rev from live_studio where live_id = $1`, [liveId]);
+  sql.one<Row>(`select lease, device, label, lease_at, resume, state, rev, ink_rev from live_studio where live_id = $1`, [liveId]);
 
 /** Este aparelho passa a transmitir. Devolve o lease (vai em cada envio) e onde a live parou. */
 export async function claimLease(liveId: string, device: string, label: string, fresh: boolean) {

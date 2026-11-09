@@ -177,10 +177,11 @@ export class Broadcaster {
     else if (typeof MediaStreamTrackProcessor !== 'undefined' && at) void this.pumpAudio(at);
     // Relógio de Worker: não para quando a aba do estúdio fica em segundo plano
     let n = 0;
-    this.stopTick = workerTicker(200, () => {
+    const tick = workerTicker(200, () => {
       this.flush();
       if (++n % 5 === 0) this.emit();
     });
+    this.stopTick = tick.stop;
     this.emit();
   }
 

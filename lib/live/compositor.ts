@@ -7,7 +7,7 @@
  * Desenha tudo num único quadro (canvas) no tamanho da live; a transmissão envia esse quadro.
  */
 import type { PdfPresenter } from './pdf-presenter';
-import { workerTicker } from './ticker';
+import { workerTicker, type Ticker } from './ticker';
 
 export type Scene = 'camera' | 'screen' | 'both' | 'pdf';
 export type Fit = 'cover' | 'contain';
@@ -99,7 +99,8 @@ export class Compositor {
   private cam: Source | ElSource | null = null;
   private screen: Source | ElSource | null = null;
   private ctx: CanvasRenderingContext2D;
-  private stopTick: () => void;
+  private tick: Ticker;
+  private fps = 0;
   /** altura/largura da câmera do aparelho principal (para o retângulo no aparelho que só controla) */
   camAspect = 0;
   /** chamado a cada quadro desenhado (a transmissão codifica o canvas) */
@@ -110,13 +111,16 @@ export class Compositor {
     fps = 30,
   ) {
     this.ctx = canvas.getContext('2d', { alpha: false })!;
-    this.stopTick = workerTicker(1000 / fps, () => this.draw());
+    this.fps = fps;
+    this.tick = workerTicker(1000 / fps, () => this.draw());
   }
 
   /** Muda o ritmo de desenho (a live com quadros adaptativos pede mais ou menos quadros). */
   setFps(fps: number) {
-    this.stopTick();
-    this.stopTick = workerTicker(1000 / Math.max(1, fps), () => this.draw());
+    fps = Math.max(1, fps);
+    if (fps === this.fps) return;
+    this.fps = fps;
+    this.tick.set(1000 / fps);
   }
 
   resize(w: number, h: number) {
@@ -215,7 +219,8 @@ export class Compositor {
     c.restore();
   }
 
-  private draw() {
+  /** desenha um quadro agora (também chamado pelo relógio) */
+  draw() {
     const { width: W, height: H } = this.canvas;
     const c = this.ctx;
     c.fillStyle = '#000';
@@ -269,7 +274,7 @@ export class Compositor {
   }
 
   destroy() {
-    this.stopTick();
+    this.tick.stop();
     this.cam?.close();
     this.screen?.close();
   }

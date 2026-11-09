@@ -3,6 +3,7 @@
  * zoom por pinça e a parte escolhida aparecendo na transmissão.
  * Medidas em "larguras de página": cada página tem largura 1 e altura = proporção dela (A4 ≈ 1,414).
  */
+import type { InkLayer } from './ink';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 
 let lib: Promise<typeof import('pdfjs-dist')> | null = null;
@@ -36,6 +37,14 @@ export class PdfPresenter {
   private tops: number[] = [];
   private total = 0;
   private cache = new Map<number, { canvas: HTMLCanvasElement; width: number; used: number }>();
+  /** muda quando uma página termina de renderizar */
+  private pagesVer = 0;
+  /**
+   * Quadro pronto (páginas + escrita terminada). Com o PDF parado, cada quadro da live só copia esta
+   * imagem (o mesmo custo de mostrar o PDF sem escrita); refaz quando algo muda.
+   */
+  private still: { canvas: HTMLCanvasElement; key: string } | null = null;
+  private lastKey = '';
   private queue = new Set<number>();
   private busy = false;
   private docId = 0;
@@ -52,6 +61,27 @@ export class PdfPresenter {
   onChange?: () => void;
   /** a parte visível mudou por um gesto aqui (os outros aparelhos do estúdio seguem a mesma posição) */
   onView?: (v: PdfPos) => void;
+
+  /** escrita por cima do PDF (caneta, marca-texto, laser) */
+  ink: InkLayer | null = null;
+
+  /** ponto do quadro (fração 0..1) → coordenadas do documento */
+  toDoc(fx: number, fy: number) {
+    return { x: this.cx + fx * this.vw, y: this.cy + fy * this.vh };
+  }
+  /** coordenadas do documento → fração do quadro */
+  toFrame(x: number, y: number) {
+    return { fx: (x - this.cx) / this.vw, fy: (y - this.cy) / this.vh };
+  }
+  /** largura visível (em larguras de página): para a espessura da borracha acompanhar o zoom */
+  get viewWidth() {
+    return this.vw;
+  }
+  /** começo e fim da página no documento */
+  pageRange(page: number) {
+    const top = this.tops[page - 1] ?? 0;
+    return { top, bottom: top + (this.ratios[page - 1] ?? 1.414) };
+  }
 
   /** posição exata da parte visível */
   get pos(): PdfPos {
@@ -232,6 +262,7 @@ export class PdfPresenter {
         await p.render({ canvas: c, canvasContext: c.getContext('2d')!, viewport: vp }).promise;
         if (id !== this.docId) return;
         this.cache.set(i, { canvas: c, width, used: performance.now() });
+        this.pagesVer++;
         if (this.cache.size > KEEP) {
           const old = [...this.cache.entries()].sort((a, b) => a[1].used - b[1].used).slice(0, this.cache.size - KEEP);
           old.forEach(([k]) => this.cache.delete(k));
@@ -245,12 +276,44 @@ export class PdfPresenter {
   }
 
   draw(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number) {
+    if (!this.pages) {
+      ctx.fillStyle = '#2b2f36';
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+    this.clamp();
+    const k = w / this.vw; // pixels do quadro por largura de página
+    const v = { x, y, k, cx: this.cx, cy: this.cy, w, h };
+    const key = `${x},${y},${w},${h},${this.cx},${this.cy},${this.vw},${this.pagesVer},${this.ink?.version ?? 0},${this.docId}`;
+    // parado (igual ao quadro anterior): usa ou refaz o quadro pronto; mexendo (zoom/rolagem): desenha direto
+    const still = key === this.lastKey && typeof document !== 'undefined';
+    this.lastKey = key;
+    if (still) {
+      if (this.still?.key !== key) {
+        const c = this.still?.canvas ?? document.createElement('canvas');
+        if (c.width !== Math.ceil(w) || c.height !== Math.ceil(h)) {
+          c.width = Math.ceil(w);
+          c.height = Math.ceil(h);
+        }
+        const g = c.getContext('2d', { alpha: false })!;
+        this.drawPages(g, 0, 0, w, h, k);
+        this.ink?.drawDoneAll(g, { ...v, x: 0, y: 0 });
+        this.still = { canvas: c, key };
+      } else this.requestVisible();
+      ctx.drawImage(this.still.canvas, x, y);
+    } else {
+      this.drawPages(ctx, x, y, w, h, k);
+      // escrita por cima, na resolução do quadro (nítida em qualquer zoom)
+      this.ink?.drawDoneAll(ctx, v);
+    }
+    this.ink?.drawLive(ctx, v);
+  }
+
+  /** páginas visíveis (pede a renderização das que faltam ou estão na resolução errada) */
+  private drawPages(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, k: number) {
     ctx.fillStyle = '#2b2f36';
     ctx.fillRect(x, y, w, h);
-    if (!this.pages) return;
-    this.clamp();
     const vh = this.vh;
-    const k = w / this.vw; // pixels do quadro por largura de página
     for (let i = 1; i <= this.pages; i++) {
       const top = this.tops[i - 1];
       const r = this.ratios[i - 1];
@@ -269,8 +332,20 @@ export class PdfPresenter {
     // já prepara a próxima página
     if (this.page < this.pages) this.request(this.page + 1);
   }
+  /** mantém as páginas visíveis "em uso" no cache (sem desenhar) */
+  private requestVisible() {
+    const vh = this.vh;
+    for (let i = 1; i <= this.pages; i++) {
+      const top = this.tops[i - 1];
+      if (top + this.ratios[i - 1] < this.cy) continue;
+      if (top > this.cy + vh) break;
+      this.request(i);
+    }
+    if (this.page < this.pages) this.request(this.page + 1);
+  }
 
   destroy() {
+    this.still = null;
     void this.doc?.loadingTask.destroy();
     this.doc = null;
     this.cache.clear();

@@ -24,6 +24,7 @@
     "next": "^16.4.3",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "6.5.438",
+    "perfect-freehand": "1.2.2",
     "pg": "^8.23.1",
     "puppeteer-core": "25.14.0",
     "react": "^19.3.1",
