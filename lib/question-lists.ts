@@ -102,6 +102,8 @@ export const listsOfLesson = (lessonId: string) =>
 
 // ---------------------------------------------------------------- busca do admin (montar listas, excluir)
 export interface AdminFilters {
+  /** ENEM, CESUPA… */
+  vestibular?: string;
   disciplina?: string;
   area?: string;
   banca?: string;
@@ -115,6 +117,7 @@ export interface AdminFilters {
 
 export interface AdminItem {
   id: string;
+  vestibular: string;
   disciplina: string;
   area: string;
   banca: string;
@@ -137,6 +140,7 @@ function adminWhere(f: AdminFilters) {
     args.push(v);
     conds.push(`${col} = $${args.length}`);
   };
+  eq('q.vestibular', f.vestibular);
   eq('q.disciplina', f.disciplina);
   eq('q.area', f.area);
   eq(`coalesce(nullif(q.banca, ''), p.banca)`, f.banca);
@@ -165,7 +169,7 @@ export async function adminSearch(f: AdminFilters, page = 1, per = 30, seed?: st
   const base = `from questions q join exam_papers p on p.id = q.paper_id ${w.where}`;
   const [items, total] = await Promise.all([
     sql.query<AdminItem>(
-      `select q.id, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral,
+      `select q.id, q.vestibular, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral,
               q.assunto_especifico, q.status, q.param_b, p.aplicacao, p.exame,
               left(coalesce((select string_agg(b->>'conteudo', ' ') from jsonb_array_elements(q.blocos) b where b->>'tipo' = 'texto'), ''), 260) as snippet
          ${base} ${order} limit ${per} offset ${(Math.max(1, page) - 1) * per}`,
@@ -180,7 +184,7 @@ export async function adminSearch(f: AdminFilters, page = 1, per = 30, seed?: st
 export async function itemsOf(ids: string[]) {
   if (!ids.length) return [];
   const rows = await sql.query<AdminItem>(
-    `select q.id, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral,
+    `select q.id, q.vestibular, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral,
             q.assunto_especifico, q.status, q.param_b, p.aplicacao, p.exame,
             left(coalesce((select string_agg(b->>'conteudo', ' ') from jsonb_array_elements(q.blocos) b where b->>'tipo' = 'texto'), ''), 260) as snippet
        from questions q join exam_papers p on p.id = q.paper_id where q.id = any($1::text[])`,
@@ -201,6 +205,7 @@ export async function adminSearchIds(f: AdminFilters, seed?: string) {
 
 export async function adminFilterOptions() {
   const rows = await sql.query<{
+    vestibular: string;
     disciplina: string;
     area: string;
     banca: string;
@@ -209,7 +214,7 @@ export async function adminFilterOptions() {
     assunto_geral: string;
     assunto_especifico: string;
   }>(
-    `select distinct q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral, q.assunto_especifico
+    `select distinct q.vestibular, q.disciplina, q.area, coalesce(nullif(q.banca, ''), p.banca) as banca, coalesce(q.ano, p.ano) as ano, q.habilidade, q.assunto_geral, q.assunto_especifico
        from questions q join exam_papers p on p.id = q.paper_id`,
   );
   return rows;
@@ -234,6 +239,8 @@ export async function deleteQuestions(ids: string[]) {
 
 // ---------------------------------------------------------------- lista aleatória do aluno
 export interface RandomFilters {
+  /** nenhum escolhido: questões de todos os vestibulares, misturadas */
+  vestibular?: string[];
   area?: string[];
   disciplina?: string[];
   assunto?: string[];
@@ -252,6 +259,7 @@ function randomWhere(f: RandomFilters) {
     args.push(v);
     conds.push(`${col} = any($${args.length}::text[])`);
   };
+  any('q.vestibular', f.vestibular);
   any('q.area', f.area);
   any('q.disciplina', f.disciplina);
   any('q.assunto_geral', f.assunto);

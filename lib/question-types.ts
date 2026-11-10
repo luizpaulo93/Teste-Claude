@@ -66,6 +66,28 @@ export function imagesOf(q: QuestaoIn): QImg[] {
 /** "img/brasil_q094_regua.webp" → "brasil_q094_regua.webp" (é assim que o arquivo é achado na pasta) */
 export const fileName = (arquivo: string) => arquivo.split(/[\\/]/).pop() ?? arquivo;
 
+/**
+ * Vestibular da questão (Enem, Cesupa…), a partir do exame da prova ou da banca.
+ * Guardado em maiúsculas; o Enem às vezes vem só como banca INEP.
+ */
+export function vestibularOf(exame?: string | null, banca?: string | null) {
+  const raw = (exame || banca || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .toUpperCase();
+  if (!raw) return '';
+  if (/ENEM|INEP/.test(raw)) return 'ENEM';
+  if (raw.includes('CESUPA')) return 'CESUPA';
+  return raw.slice(0, 40);
+}
+const VEST_NAMES: Record<string, string> = { ENEM: 'Enem', CESUPA: 'Cesupa' };
+/** Nome do vestibular para mostrar ("Enem", "Cesupa"; os outros como vieram). */
+export const vestLabel = (v: string) => VEST_NAMES[v] ?? v;
+/** "Enem 2023": vestibular e ano da questão. */
+export const vestYear = (q: { vestibular?: string | null; exame?: string | null; banca?: string | null; ano?: number | null; paper_ano?: number | null }) =>
+  [vestLabel(q.vestibular || vestibularOf(q.exame, q.banca)), q.ano ?? q.paper_ano].filter(Boolean).join(' ');
+
 export const DIFFICULTY = [
   { key: 'facil', label: 'Fácil', max: 0.8 },
   { key: 'media', label: 'Média', max: 1.6 },

@@ -8,7 +8,7 @@ import { QImage } from '@/components/questoes/q-image';
 import { QuestionBody } from '@/components/questoes/question-body';
 import { Badge, buttonClass, Card } from '@/components/ui';
 import { sql } from '@/lib/db';
-import { DIFFICULTY, difficultyOf, type QImg, altImagesToShow, blankAlternatives } from '@/lib/question-types';
+import { DIFFICULTY, difficultyOf, type QImg, altImagesToShow, blankAlternatives, vestYear } from '@/lib/question-types';
 import { filterQuery, getQuestion, neighbors, paperLabel, readFilters } from '@/lib/questions';
 import { rich } from '@/lib/rich';
 import { requireViewer } from '@/lib/session';
@@ -26,6 +26,11 @@ export default async function QuestaoPage({
   if (!viewer.isMember && !viewer.isAdmin) redirect('/');
   const { id } = await params;
   const f = readFilters(await searchParams);
+  // o aluno não filtra por ano (nem por prova)
+  if (!viewer.isAdmin) {
+    f.ano = [];
+    f.prova = [];
+  }
   const [q, nav, mine] = await Promise.all([
     getQuestion(id),
     neighbors(f, viewer.userId, id),
@@ -59,7 +64,7 @@ export default async function QuestaoPage({
       <Card className="mb-4 space-y-2 p-4">
         <p className="text-xs font-semibold tracking-wider text-brand uppercase">
           {nav.pos > 0 ? `Questão ${nav.pos} de ${nav.total} · ` : ''}
-          {paperLabel(q.paper)}
+          {viewer.isAdmin ? paperLabel(q.paper) : vestYear({ ...q, paper_ano: q.paper.ano })}
         </p>
         <p className="text-base font-bold text-ink">
           {q.disciplina} · {q.assunto_geral}
@@ -77,7 +82,7 @@ export default async function QuestaoPage({
           )}
           {q.status === 'anulada' && (
             <Badge className="max-w-full whitespace-normal break-words" tone="danger">
-              Questão anulada pelo INEP
+              Questão anulada{q.vestibular === 'ENEM' ? ' pelo INEP' : ''}
             </Badge>
           )}
           {q.status === 'abandonado_na_calibracao' && (

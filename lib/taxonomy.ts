@@ -168,6 +168,18 @@ export const TAXONOMY: Record<TaxDisc, TaxTopic[]> = {
       ],
     },
     {
+      assunto: 'Movimento Harmônico Simples (MHS)',
+      subs: [
+        'Movimentos periódicos e oscilatórios: período, frequência e amplitude',
+        'Funções horárias do MHS (elongação, velocidade e aceleração)',
+        'MHS e movimento circular uniforme (projeção)',
+        'Oscilador massa-mola',
+        'Pêndulo simples',
+        'Energia no MHS (cinética, potencial elástica e mecânica)',
+        'Oscilações amortecidas e forçadas',
+      ],
+    },
+    {
       assunto: 'Ondulatória e Acústica',
       subs: [
         'Classificação de ondas (mecânicas, eletromagnéticas, transversais, longitudinais)',
@@ -1356,13 +1368,13 @@ function idx() {
  * Encaixa uma questão na taxonomia: compara o assunto que veio (geral e específico) e o começo do enunciado
  * com cada subassunto da disciplina. Devolve null se a disciplina não estiver na taxonomia.
  */
-export function classify(q: { disciplina: string; assuntoGeral?: string; assuntoEspecifico?: string; texto?: string }) {
+export function classify(q: { disciplina: string; assuntoGeral?: string; assuntoEspecifico?: string; texto?: string }, only?: string) {
   if (!isDisc(q.disciplina)) return null;
   const strong = roots(`${q.assuntoEspecifico ?? ''} ${q.assuntoGeral ?? ''}`);
   const weak = roots((q.texto ?? '').slice(0, 600));
   let best: { assunto: string; sub: string; score: number } | null = null;
   for (const e of idx()) {
-    if (e.disc !== q.disciplina) continue;
+    if (e.disc !== q.disciplina || (only && e.assunto !== only)) continue;
     let score = 0;
     for (const w of strong) if (e.words.has(w)) score += 3;
     for (const w of strong) if (e.head.has(w)) score += 1.5;
@@ -1371,4 +1383,17 @@ export function classify(q: { disciplina: string; assuntoGeral?: string; assunto
     if (!best || score > best.score) best = { assunto: e.assunto, sub: e.sub, score };
   }
   return best && best.score > 0 ? best : null;
+}
+
+/** Assunto do MHS (entrou depois na taxonomia): questões de Física que falam dele vão para lá. */
+export const MHS = 'Movimento Harmônico Simples (MHS)';
+// no assunto que veio: pêndulo, massa-mola, oscilação…; no enunciado só os termos próprios do MHS
+// (um pêndulo numa questão de energia continua em Energia)
+const MHS_TOPIC = /p[êe]ndulo|massa[- ]mola|harm[ôo]nic|\bMHS\b|oscila/i;
+const MHS_TEXT = /movimento harm[ôo]nico|\bMHS\b|oscilador harm[ôo]nico|sistema massa[- ]mola|per[íi]odo de oscila[çc][ãa]o/i;
+export function mhsOf(q: { disciplina: string; assuntoGeral?: string; assuntoEspecifico?: string; texto?: string }) {
+  if (q.disciplina !== 'Física') return null;
+  if (!MHS_TOPIC.test(`${q.assuntoGeral ?? ''} ${q.assuntoEspecifico ?? ''}`) && !MHS_TEXT.test(q.texto ?? '')) return null;
+  const c = classify(q, MHS);
+  return { assunto: MHS, sub: c?.sub ?? TAXONOMY['Física'].find((t) => t.assunto === MHS)!.subs[0] };
 }

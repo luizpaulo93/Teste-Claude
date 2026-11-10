@@ -13,7 +13,8 @@ async function student() {
 }
 const clean = (f: AdminFilters): AdminFilters => {
   const out: AdminFilters = {};
-  for (const k of ['disciplina', 'area', 'banca', 'ano', 'habilidade', 'assunto', 'especifico', 'texto', 'prova'] as const) {
+  // o aluno filtra por vestibular, mas não por ano (nem por prova, que já diz o ano)
+  for (const k of ['vestibular', 'disciplina', 'area', 'habilidade', 'assunto', 'especifico', 'texto'] as const) {
     const v = f?.[k];
     if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 200);
   }
@@ -34,7 +35,15 @@ export async function idsStudent(f: AdminFilters) {
 }
 export async function optionsStudent() {
   await student();
-  return adminFilterOptions();
+  // sem ano e banca nas opções do aluno
+  const rows = await adminFilterOptions();
+  const seen = new Set<string>();
+  return rows
+    .map((r) => ({ ...r, ano: null, banca: '' }))
+    .filter((r) => {
+      const k = JSON.stringify(r);
+      return !seen.has(k) && Boolean(seen.add(k));
+    });
 }
 export async function previewStudent(id: string) {
   await student();
@@ -72,8 +81,9 @@ export async function saveMyList(input: { id?: string; title: string; ids: strin
   return { id };
 }
 
-type RandomInput = { area?: string[]; disciplina?: string[]; assunto?: string[]; habilidade?: string[]; dificuldade?: string[] };
+type RandomInput = { vestibular?: string[]; area?: string[]; disciplina?: string[]; assunto?: string[]; habilidade?: string[]; dificuldade?: string[] };
 const randomFilters = (input: RandomInput) => ({
+  vestibular: strs(input.vestibular, 20),
   area: strs(input.area),
   disciplina: strs(input.disciplina),
   assunto: strs(input.assunto),
@@ -91,6 +101,7 @@ export async function countRandom(input: RandomInput) {
 export async function createRandomList(input: {
   title: string;
   count: number;
+  vestibular?: string[];
   area?: string[];
   disciplina?: string[];
   assunto?: string[];
@@ -122,10 +133,10 @@ export async function deleteMyList(id: string) {
   return {};
 }
 
-/** Opções do sorteio: área, disciplina, assunto e habilidade (as que existem no banco). */
+/** Opções do sorteio: vestibular, área, disciplina, assunto e habilidade (as que existem no banco). */
 export async function randomOptions() {
   await student();
-  return sql.query<{ area: string; disciplina: string; assunto_geral: string; habilidade: string }>(
-    `select distinct area, disciplina, assunto_geral, habilidade from questions where status <> 'anulada'`,
+  return sql.query<{ vestibular: string; area: string; disciplina: string; assunto_geral: string; habilidade: string }>(
+    `select distinct vestibular, area, disciplina, assunto_geral, habilidade from questions where status <> 'anulada'`,
   );
 }

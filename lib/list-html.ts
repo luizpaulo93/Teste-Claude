@@ -1,5 +1,5 @@
 import 'server-only';
-import { altImagesToShow, blankAlternatives, difficultyOf, type QImg } from '@/lib/question-types';
+import { altImagesToShow, blankAlternatives, difficultyOf, vestYear, type QImg } from '@/lib/question-types';
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import type { Question } from '@/lib/questions';
 import { pdfFontsCss } from '@/lib/pdf-fonts';
@@ -34,9 +34,10 @@ export function stars(q: ListQuestion) {
 
 /** Linha pequena de cada questão: banca, ano e habilidade (as estrelas vão à parte). */
 export function metaParts(q: ListQuestion) {
-  const exame = q.exame || '';
-  const banca = q.banca && q.banca !== exame ? q.banca : '';
-  return [banca, [exame, q.ano ?? q.paper_ano].filter(Boolean).join(' '), q.habilidade].filter(Boolean);
+  const vy = vestYear(q);
+  // banca só quando diz algo a mais (INEP no Enem)
+  const banca = q.banca && !vy.toUpperCase().startsWith(q.banca.toUpperCase()) ? q.banca : '';
+  return [banca, vy, q.habilidade].filter(Boolean);
 }
 
 /** Disciplinas da lista e os assuntos de cada uma (na ordem em que aparecem). */
@@ -55,8 +56,9 @@ export function subjectsOf(qs: ListQuestion[]) {
 const STAR =
   '<svg viewBox="0 0 24 24" width="7.5" height="7.5"><path fill="currentColor" d="M12 2l2.9 6.9 7.1.6-5.4 4.7 1.7 7.1L12 17.6 5.7 21.3l1.7-7.1L2 9.5l7.1-.6z"/></svg>';
 
+/** "Enem 2023", "Cesupa 2022": vestibular e ano da questão */
 export function source(q: ListQuestion) {
-  return [q.exame || q.banca, q.ano ?? q.paper_ano].filter(Boolean).join(' ');
+  return vestYear(q);
 }
 
 export function questionHtml(q: ListQuestion, n: number, hideMeta = false) {
@@ -91,8 +93,8 @@ export function questionHtml(q: ListQuestion, n: number, hideMeta = false) {
   const cols = !q.alternativas.length ? 0 : longest <= 7 ? 5 : longest <= 16 ? 3 : longest <= 28 ? 2 : 0;
   const list = ia.length && blankAlternatives(q) ? '' : `<ol class="alts${cols ? ` row c${cols}` : ''}">${alts}</ol>`;
   const st = stars(q);
-  // PDF do aluno: só as questões (sem ano nem dificuldade)
-  const meta = hideMeta ? '' : `${metaParts(q).map(esc).join(' · ')}${st ? `<span class="stars" title="dificuldade">${STAR.repeat(st)}</span>` : ''}`;
+  // PDF do aluno: só o vestibular e o ano (sem habilidade nem dificuldade)
+  const meta = hideMeta ? esc(source(q)) : `${metaParts(q).map(esc).join(' · ')}${st ? `<span class="stars" title="dificuldade">${STAR.repeat(st)}</span>` : ''}`;
   return `<section class="q"><h3><span class="lab">QUESTÃO ${String(n).padStart(2, '0')}</span>${meta ? ` <span class="meta">${meta}</span>` : ''}</h3>${parts.join('')}${list}</section>`;
 }
 

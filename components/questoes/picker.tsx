@@ -8,7 +8,7 @@ import { bankOptions, idsForFilter, previewQuestion, searchBank } from '@/app/(a
 import { toast } from '@/components/toast';
 import { Badge, Button, Field, Input, Select } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
-import { DIFFICULTY, difficultyOf } from '@/lib/question-types';
+import { DIFFICULTY, difficultyOf, vestLabel, vestYear } from '@/lib/question-types';
 import type { AdminFilters, AdminItem } from '@/lib/question-lists';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +20,8 @@ export interface PickerApi {
   ids: typeof idsForFilter;
   options: typeof bankOptions;
   preview: (id: string) => Promise<{ html: string; gabarito?: string } | null>;
+  /** filtros que não aparecem (o aluno não filtra por ano nem por banca) */
+  hide?: (keyof AdminFilters)[];
 }
 const ApiCtx = createContext<PickerApi>({ search: searchBank, ids: idsForFilter, options: bankOptions, preview: previewQuestion });
 export const PickerApiProvider = ApiCtx.Provider;
@@ -33,6 +35,7 @@ export const plainText = (s: string) =>
     .trim();
 
 const FILTERS: { key: keyof AdminFilters; label: string }[] = [
+  { key: 'vestibular', label: 'Vestibular' },
   { key: 'disciplina', label: 'Disciplina' },
   { key: 'area', label: 'Área do conhecimento' },
   { key: 'banca', label: 'Banca' },
@@ -98,7 +101,7 @@ export function QuestionCard({
           {item.assunto_especifico && <p className="text-xs break-words text-ink-2">{item.assunto_especifico}</p>}
           {!open && <p className="mt-1 line-clamp-2 text-xs text-muted">{plainText(item.snippet)}</p>}
           <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge className="max-w-full whitespace-normal">{[item.exame || item.banca, item.ano].filter(Boolean).join(' ')}</Badge>
+            <Badge className="max-w-full whitespace-normal">{vestYear(item)}</Badge>
             {item.habilidade && <Badge>{item.habilidade}</Badge>}
             {dif && <Badge tone={dif === 'dificil' ? 'danger' : dif === 'media' ? 'warning' : 'success'}>{DIFFICULTY.find((d) => d.key === dif)!.label}</Badge>}
             {item.status === 'anulada' && <Badge tone="danger">Anulada</Badge>}
@@ -174,6 +177,7 @@ export function QuestionPicker({
   const optionsFor = useMemo(
     () => (key: keyof AdminFilters) => {
       const col = {
+        vestibular: 'vestibular',
         disciplina: 'disciplina',
         area: 'area',
         banca: 'banca',
@@ -184,9 +188,11 @@ export function QuestionPicker({
       }[key as string] as keyof Opt | undefined;
       if (!col) return [];
       const rows = opts.filter((o) =>
-        (['disciplina', 'area', 'banca', 'ano', 'habilidade', 'assunto'] as const).every((k) => {
+        (['vestibular', 'disciplina', 'area', 'banca', 'ano', 'habilidade', 'assunto'] as const).every((k) => {
           if (k === key || !draft[k]) return true;
-          const c = { disciplina: 'disciplina', area: 'area', banca: 'banca', ano: 'ano', habilidade: 'habilidade', assunto: 'assunto_geral' }[k] as keyof Opt;
+          const c = (
+            { vestibular: 'vestibular', disciplina: 'disciplina', area: 'area', banca: 'banca', ano: 'ano', habilidade: 'habilidade', assunto: 'assunto_geral' } as const
+          )[k] as keyof Opt;
           return String(o[c] ?? '') === draft[k];
         }),
       );
@@ -242,7 +248,7 @@ export function QuestionPicker({
               onClick={() => apply({ ...f, [k]: '' })}
               className="flex max-w-full items-center gap-1 rounded-lg bg-brand/12 px-2 py-1 text-left text-[11px] font-semibold break-words text-brand"
             >
-              {FILTERS.find((x) => x.key === k)?.label}: {v} <X className="size-3 shrink-0" />
+              {FILTERS.find((x) => x.key === k)?.label}: {k === 'vestibular' ? vestLabel(String(v)) : v} <X className="size-3 shrink-0" />
             </button>
           ))}
         </div>
@@ -283,7 +289,7 @@ export function QuestionPicker({
         }
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          {FILTERS.filter((x) => x.key !== 'texto').map((x) => (
+          {FILTERS.filter((x) => x.key !== 'texto' && !api.hide?.includes(x.key)).map((x) => (
             <Field
               key={x.key}
               label={x.label}
@@ -303,10 +309,10 @@ export function QuestionPicker({
                 aria-label={x.label}
                 className="min-w-0"
               >
-                <option value="">Todos</option>
+                <option value="">{x.key === 'vestibular' ? 'Todos (misturados)' : 'Todos'}</option>
                 {optionsFor(x.key).map((v) => (
                   <option key={v} value={v}>
-                    {v}
+                    {x.key === 'vestibular' ? vestLabel(v) : v}
                   </option>
                 ))}
               </Select>

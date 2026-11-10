@@ -165,7 +165,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
               <p className="text-xs font-bold tracking-wider text-brand uppercase">
                 Questão {i + 1}
                 {source(q) && <span className="font-semibold text-muted normal-case"> · {source(q)}</span>}
-                {q.status === 'anulada' && <span className="text-danger normal-case"> · anulada pelo INEP</span>}
+                {q.status === 'anulada' && <span className="text-danger normal-case"> · anulada{q.vestibular === 'ENEM' ? ' pelo INEP' : ''}</span>}
                 {test && finished && q.status !== 'anulada' && !mine && <span className="text-warning normal-case"> · em branco</span>}
               </p>
               <QuestionBody blocos={q.blocos} />

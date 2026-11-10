@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { idsStudent, itemsStudent, optionsStudent, previewStudent, saveMyList, searchStudent } from '../aluno-actions';
 
 // o aluno usa as buscas dele: a prévia não mostra o gabarito
-const API: PickerApi = { search: searchStudent, ids: idsStudent, options: optionsStudent, preview: previewStudent };
+const API: PickerApi = { search: searchStudent, ids: idsStudent, options: optionsStudent, preview: previewStudent, hide: ['ano', 'banca'] };
 
 /** O aluno escolhe questão por questão (com filtros), dá um nome e salva a lista. */
 export function StudentBuilder() {

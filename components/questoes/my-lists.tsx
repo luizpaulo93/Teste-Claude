@@ -12,6 +12,7 @@ import { Button, Card, Field, Input, Select } from '@/components/ui';
 import { ActionButton, Modal, Spinner } from '@/components/ui-client';
 import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { stampedPdfUrl } from '@/lib/pdf-stamp';
+import { vestLabel } from '@/lib/question-types';
 import { cn } from '@/lib/utils';
 import { MultiField } from './filters';
 
@@ -61,7 +62,8 @@ function RandomModal({ onClose }: { onClose: () => void }) {
   const router = useRouter();
   const [rows, setRows] = useState<Row[] | null>(null);
   const [title, setTitle] = useState('');
-  const [f, setF] = useState<{ area: string[]; disciplina: string[]; assunto: string[]; habilidade: string[]; dificuldade: string[] }>({
+  const [f, setF] = useState<{ vestibular: string[]; area: string[]; disciplina: string[]; assunto: string[]; habilidade: string[]; dificuldade: string[] }>({
+    vestibular: [],
     area: [],
     disciplina: [],
     assunto: [],
@@ -94,11 +96,14 @@ function RandomModal({ onClose }: { onClose: () => void }) {
       .catch(() => setRows([]));
   }, []);
   const opts = useMemo(() => {
-    const r = rows ?? [];
     const has = (l: string[], v: string) => !l.length || l.includes(v);
+    const all = rows ?? [];
+    // nenhum vestibular marcado: todos (a lista vem misturada)
+    const r = all.filter((x) => has(f.vestibular, x.vestibular));
     const uniq = (list: Row[], get: (x: Row) => string) =>
       [...new Set(list.map(get).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
     return {
+      vestibular: uniq(all, (x) => x.vestibular),
       area: uniq(r, (x) => x.area),
       disciplina: uniq(
         r.filter((x) => has(f.area, x.area)),
@@ -156,6 +161,7 @@ function RandomModal({ onClose }: { onClose: () => void }) {
           <Spinner />
         ) : (
           <>
+            <MultiField label="Vestibular" options={opts.vestibular} value={f.vestibular} onChange={set('vestibular')} show={vestLabel} />
             <MultiField label="Área do conhecimento" options={opts.area} value={f.area} onChange={set('area')} />
             <MultiField label="Disciplina" options={opts.disciplina} value={f.disciplina} onChange={set('disciplina')} />
             <MultiField label="Assunto" options={opts.assunto} value={f.assunto} onChange={set('assunto')} />

@@ -1,10 +1,10 @@
 import 'server-only';
 import { sql } from '@/lib/db';
 import { splitBands, splitTall } from '@/lib/split-alts';
-import { classify, subassuntosDe } from '@/lib/taxonomy';
+import { classify, MHS, mhsOf, subassuntosDe } from '@/lib/taxonomy';
 import { RECLASSIFIED } from '@/lib/taxonomy-reclass';
 import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
-import { DIFFICULTY, fileName, imagesOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
+import { DIFFICULTY, fileName, imagesOf, vestibularOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
 export interface Paper {
   id: string;
@@ -26,6 +26,8 @@ export interface Question {
   numero: number;
   banca: string;
   ano: number | null;
+  /** ENEM, CESUPA… (vestibular da prova) */
+  vestibular: string;
   area_sigla: string;
   area: string;
   disciplina: string;
@@ -134,13 +136,19 @@ type TaxRow = { id: string; disciplina: string; assunto_geral: string; assunto_e
 export function taxonomyOf(q: TaxRow) {
   const fixed = RECLASSIFIED[q.id];
   if (fixed) return { assunto_geral: fixed[0], assunto_especifico: fixed[1] };
-  if (subassuntosDe(q.disciplina, q.assunto_geral).includes(q.assunto_especifico)) return { assunto_geral: q.assunto_geral, assunto_especifico: q.assunto_especifico };
   const texto = (q.blocos ?? []).map((b) => (b.tipo === 'texto' ? b.conteudo : '')).join(' ');
+  // MHS (pêndulo, massa-mola, oscilações): assunto próprio
+  if (q.assunto_geral !== MHS) {
+    const m = mhsOf({ disciplina: q.disciplina, assuntoGeral: q.assunto_geral, assuntoEspecifico: q.assunto_especifico, texto });
+    if (m) return { assunto_geral: m.assunto, assunto_especifico: m.sub };
+  }
+  if (subassuntosDe(q.disciplina, q.assunto_geral).includes(q.assunto_especifico)) return { assunto_geral: q.assunto_geral, assunto_especifico: q.assunto_especifico };
   const c = classify({ disciplina: q.disciplina, assuntoGeral: q.assunto_geral, assuntoEspecifico: q.assunto_especifico, texto });
   return c ? { assunto_geral: c.assunto, assunto_especifico: c.sub } : { assunto_geral: q.assunto_geral, assunto_especifico: q.assunto_especifico };
 }
 
-const TAXONOMY_VERSION = '1';
+// 2: entrou o assunto MHS (as questões de pêndulo e massa-mola passam para ele)
+const TAXONOMY_VERSION = '2';
 const gt = globalThis as unknown as { __taxonomy?: Promise<void> | null };
 /** Uma vez por servidor: passa as questões já cadastradas para a taxonomia (e grava no banco que já fez). */
 export function ensureTaxonomy() {
@@ -203,6 +211,8 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
        microdados = excluded.microdados, updated_at = now()`,
     [JSON.stringify(rows)],
   );
+  // vestibular (Enem, Cesupa…) de todas as questões da prova
+  await sql.exec(`update questions set vestibular = $2 where paper_id = $1 and vestibular <> $2`, [id, vestibularOf(str(p.exame, 80), str(p.banca, 80) || rows[0]?.banca)]);
   // questões que saíram da prova numa reimportação
   await sql.exec(`delete from questions where paper_id = $1 and not (id = any($2::text[]))`, [id, rows.map((r) => r.id)]);
   await splitAlternatives(id).catch(() => 0);
@@ -399,6 +409,8 @@ export const MULTI = ['disciplina', 'assunto', 'especifico', 'habilidade', 'ano'
 export type MultiKey = (typeof MULTI)[number];
 
 export interface QFilters {
+  /** ENEM, CESUPA… */
+  vestibular?: string[];
   disciplina?: string[];
   assunto?: string[];
   especifico?: string[];
@@ -455,6 +467,7 @@ export function readFilters(sp: Record<string, string | string[] | undefined>): 
   const dif = one('dif');
   const sit = one('sit');
   return {
+    vestibular: many('vestibular', 40).map((v) => v.toUpperCase()),
     disciplina: many('disciplina', 80),
     assunto: many('assunto', 200),
     especifico: many('especifico', 400),
@@ -484,6 +497,7 @@ function where(f: QFilters, userId: string) {
     args.push(v);
     conds.push(sqlText.replace('$?', `$${args.length}`));
   };
+  if (f.vestibular?.length) add('q.vestibular = any($?::text[])', f.vestibular);
   if (f.disciplina?.length) add('q.disciplina = any($?::text[])', f.disciplina);
   if (f.assunto?.length) add('q.assunto_geral = any($?::text[])', f.assunto);
   if (f.prova?.length) add('q.paper_id = any($?::text[])', f.prova);
@@ -522,6 +536,7 @@ function where(f: QFilters, userId: string) {
 
 export interface QListItem {
   id: string;
+  vestibular: string;
   paper_id: string;
   numero: number;
   ano: number | null;
@@ -545,7 +560,7 @@ export async function listQuestions(f: QFilters, userId: string, page = 1, perPa
   const base = `from questions q join exam_papers p on p.id = q.paper_id left join question_answers a on a.question_id = q.id and a.user_id = $1 ${w.sql}`;
   const [items, total] = await Promise.all([
     sql.query<QListItem>(
-      `select q.id, q.paper_id, q.numero, coalesce(q.ano, p.ano) as ano, q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, q.status, q.param_b,
+      `select q.id, q.vestibular, q.paper_id, q.numero, coalesce(q.ano, p.ano) as ano, q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, q.status, q.param_b,
               left(coalesce((select string_agg(b->>'conteudo', ' ') from jsonb_array_elements(q.blocos) b where b->>'tipo' = 'texto'), ''), 220) as snippet,
               a.correct, p.aplicacao, p.exame
          ${base} ${ORDER} limit ${perPage} offset ${(Math.max(1, page) - 1) * perPage}`,
@@ -582,6 +597,7 @@ export const getQuestion = (id: string) =>
   sql.one<Question & { paper: Paper }>(`select q.*, to_jsonb(p) as paper from questions q join exam_papers p on p.id = q.paper_id where q.id = $1`, [id]);
 
 export interface FilterRow {
+  vestibular: string;
   disciplina: string;
   assunto_geral: string;
   assunto_especifico: string;
@@ -593,7 +609,7 @@ export interface FilterRow {
 export async function filterOptions() {
   const [rows, papers] = await Promise.all([
     sql.query<FilterRow>(
-      `select distinct q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, coalesce(q.ano, p.ano) as ano, q.paper_id
+      `select distinct q.vestibular, q.disciplina, q.assunto_geral, q.assunto_especifico, q.habilidade, coalesce(q.ano, p.ano) as ano, q.paper_id
          from questions q join exam_papers p on p.id = q.paper_id where q.disciplina <> ''`,
     ),
     sql.query<Paper>(`select * from exam_papers order by ano desc nulls last, id`),

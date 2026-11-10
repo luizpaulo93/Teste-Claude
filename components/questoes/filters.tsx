@@ -6,11 +6,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Button, Field, Input, Select } from '@/components/ui';
 import { Modal } from '@/components/ui-client';
-import { DIFFICULTY } from '@/lib/question-types';
+import { DIFFICULTY, vestLabel } from '@/lib/question-types';
 import { cn } from '@/lib/utils';
 
-type Multi = 'disciplina' | 'assunto' | 'especifico' | 'habilidade' | 'ano' | 'prova';
+type Multi = 'vestibular' | 'disciplina' | 'assunto' | 'especifico' | 'habilidade' | 'ano' | 'prova';
 export interface FilterState {
+  vestibular?: string[];
   disciplina?: string[];
   assunto?: string[];
   especifico?: string[];
@@ -24,6 +25,7 @@ export interface FilterState {
 }
 
 export interface FilterRowView {
+  vestibular: string;
   disciplina: string;
   assunto_geral: string;
   assunto_especifico: string;
@@ -33,6 +35,7 @@ export interface FilterRowView {
 }
 
 const LABELS: Record<keyof FilterState, string> = {
+  vestibular: 'Vestibular',
   disciplina: 'Disciplina',
   assunto: 'Assunto',
   especifico: 'Assunto específico',
@@ -45,7 +48,9 @@ const LABELS: Record<keyof FilterState, string> = {
   topico: 'Assunto do cronograma',
 };
 const SIT: Record<string, string> = { nao: 'Não respondidas', erradas: 'Que errei', certas: 'Que acertei' };
-const MULTI: Multi[] = ['disciplina', 'assunto', 'especifico', 'habilidade', 'ano', 'prova'];
+const MULTI: Multi[] = ['vestibular', 'disciplina', 'assunto', 'especifico', 'habilidade', 'ano', 'prova'];
+/** o aluno não filtra por ano (nem por prova, que já diz o ano) */
+const ADMIN_ONLY: Multi[] = ['ano', 'prova'];
 
 export function toQuery(f: FilterState) {
   const p = new URLSearchParams();
@@ -150,12 +155,15 @@ export function QuestionFilters({
   rows,
   papers,
   total,
+  admin = false,
 }: {
   value: FilterState;
   rows: FilterRowView[];
   papers: { id: string; label: string }[];
   total: number;
+  admin?: boolean;
 }) {
+  const fields = MULTI.filter((k) => admin || !ADMIN_ONLY.includes(k));
   const router = useRouter();
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -170,6 +178,7 @@ export function QuestionFilters({
   const opts = useMemo(() => {
     const has = (list: string[] | undefined, v: string) => !list?.length || list.includes(v);
     const match = (r: FilterRowView, skip: Multi) =>
+      (skip === 'vestibular' || has(d.vestibular, r.vestibular)) &&
       (skip === 'disciplina' || has(d.disciplina, r.disciplina)) &&
       (skip === 'assunto' || has(d.assunto, r.assunto_geral)) &&
       (skip === 'especifico' || has(d.especifico, r.assunto_especifico)) &&
@@ -186,6 +195,7 @@ export function QuestionFilters({
         ),
       ].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
     return {
+      vestibular: uniq('vestibular', (r) => r.vestibular),
       disciplina: uniq('disciplina', (r) => r.disciplina),
       // na ordem da taxonomia do curso
       assunto: taxOrder(uniq('assunto', (r) => r.assunto_geral)),
@@ -198,7 +208,9 @@ export function QuestionFilters({
 
   const paperName = (id: string) => papers.find((p) => p.id === id)?.label ?? id;
   const chips = [
-    ...MULTI.flatMap((k) => (value[k] ?? []).map((v) => ({ k: k as keyof FilterState, v, label: `${LABELS[k]}: ${k === 'prova' ? paperName(v) : v}` }))),
+    ...fields.flatMap((k) =>
+      (value[k] ?? []).map((v) => ({ k: k as keyof FilterState, v, label: `${LABELS[k]}: ${k === 'prova' ? paperName(v) : k === 'vestibular' ? vestLabel(v) : v}` })),
+    ),
     ...(['dif', 'sit', 'q'] as const)
       .filter((k) => value[k])
       .map((k) => ({
@@ -268,13 +280,13 @@ export function QuestionFilters({
       >
         <div className="space-y-2.5">
           <p className="text-[11px] text-muted">Dá para marcar mais de um em cada campo.</p>
-          {MULTI.map((k) => (
+          {fields.map((k) => (
             <MultiField
               key={k}
               label={LABELS[k]}
               options={opts[k]}
               value={d[k] ?? []}
-              show={k === 'prova' ? paperName : undefined}
+              show={k === 'prova' ? paperName : k === 'vestibular' ? vestLabel : undefined}
               locked={k === 'especifico' && !subOk(d) ? 'Escolha uma disciplina e um assunto geral para ver os subassuntos.' : undefined}
               onChange={(v) =>
                 setD((o) => {

@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation';
 import { QuestionFilters } from '@/components/questoes/filters';
 import { Badge, buttonClass, Card, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
-import { DIFFICULTY, difficultyOf } from '@/lib/question-types';
+import { DIFFICULTY, difficultyOf, vestYear } from '@/lib/question-types';
 import { filterOptions, filterQuery, listQuestions, paperLabel, readFilters } from '@/lib/questions';
 import { listsForViewer, myLists as myOwnLists } from '@/lib/question-lists';
 import { ListTypeCards, MyListCard } from '@/components/questoes/my-lists';
@@ -29,6 +29,11 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
   if (!viewer.isMember && !viewer.isAdmin) redirect('/');
   const sp = await searchParams;
   const f = readFilters(sp);
+  // o aluno não filtra por ano (nem por prova, que já diz o ano)
+  if (!viewer.isAdmin) {
+    f.ano = [];
+    f.prova = [];
+  }
   const page = Math.max(1, Number(sp.page) || 1);
   const [{ items, total }, opts, mine, myLists, done, own] = await Promise.all([
     // o aluno não vê o banco solto (só monta listas); a exceção é o link do cronograma, que abre as do assunto
@@ -116,7 +121,13 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
               </Link>
             </div>
           )}
-          <QuestionFilters value={f} rows={opts.rows} papers={opts.papers.map((p) => ({ id: p.id, label: paperLabel(p) }))} total={total} />
+          <QuestionFilters
+            value={f}
+            rows={opts.rows}
+            papers={opts.papers.map((p) => ({ id: p.id, label: paperLabel(p) }))}
+            total={total}
+            admin={viewer.isAdmin}
+          />
           <div className="mb-3" />
           {items.length ? (
             <ul className="space-y-2">
@@ -142,7 +153,8 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
                           <p className="mt-1 line-clamp-2 text-xs text-muted">{plain(it.snippet)}</p>
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             <Badge className="max-w-full whitespace-normal break-words">
-                              {[it.exame, it.ano].filter(Boolean).join(' ')} · {it.aplicacao.replace(/^Aplicação\s+/i, '')}
+                              {vestYear(it)}
+                              {viewer.isAdmin && it.aplicacao ? ` · ${it.aplicacao.replace(/^Aplicação\s+/i, '')}` : ''}
                             </Badge>
                             {it.habilidade && <Badge className="max-w-full whitespace-normal break-words">{it.habilidade}</Badge>}
                             {dif && (

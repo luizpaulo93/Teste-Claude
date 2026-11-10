@@ -842,3 +842,17 @@ create table if not exists live_ink (
 );
 create index if not exists live_ink_order on live_ink (live_id, pdf_id, n);
 alter table live_studio add column if not exists ink_rev int not null default 0;
+
+-- ============================================================================
+-- Versão 30: vestibular de cada questão (Enem, Cesupa…), para filtrar listas, testes e simulados.
+-- ============================================================================
+alter table questions add column if not exists vestibular text not null default '';
+-- questões já cadastradas: vem do exame da prova (ou da banca); o Enem aparece como banca INEP
+update questions q set vestibular = case
+    when upper(coalesce(nullif(p.exame, ''), nullif(q.banca, ''), p.banca, '')) ~ '(ENEM|INEP)' then 'ENEM'
+    when upper(coalesce(nullif(p.exame, ''), nullif(q.banca, ''), p.banca, '')) like '%CESUPA%' then 'CESUPA'
+    else left(upper(trim(coalesce(nullif(p.exame, ''), nullif(q.banca, ''), p.banca, ''))), 40)
+  end
+  from exam_papers p
+ where p.id = q.paper_id and q.vestibular = '';
+create index if not exists questions_vestibular_idx on questions (vestibular);

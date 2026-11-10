@@ -14,7 +14,7 @@ async function admin() {
 
 const clean = (f: AdminFilters): AdminFilters => {
   const out: AdminFilters = {};
-  for (const k of ['disciplina', 'area', 'banca', 'ano', 'habilidade', 'assunto', 'especifico', 'texto', 'prova'] as const) {
+  for (const k of ['vestibular', 'disciplina', 'area', 'banca', 'ano', 'habilidade', 'assunto', 'especifico', 'texto', 'prova'] as const) {
     const v = f?.[k];
     if (typeof v === 'string' && v.trim()) out[k] = v.trim().slice(0, 200);
   }
