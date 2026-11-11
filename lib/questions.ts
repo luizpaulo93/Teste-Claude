@@ -339,8 +339,10 @@ export async function splitTallImages(paperId: string, only?: string[]) {
     [paperId, only ?? null],
   );
   let done = 0;
-  for (const q of rows) {
-    if (q.blocos.some((b) => b.tipo === 'imagem' && (b.dividida || b.parte))) continue;
+  // várias questões ao mesmo tempo (cada uma grava só a sua linha)
+  let next_ = 0;
+  const one = async (q: (typeof rows)[number]) => {
+    if (q.blocos.some((b) => b.tipo === 'imagem' && (b.dividida || b.parte))) return;
     let changed = false;
     const next: QBloco[] = [];
     for (const b of q.blocos) {
@@ -380,10 +382,15 @@ export async function splitTallImages(paperId: string, only?: string[]) {
       }
       changed = true;
     }
-    if (!changed) continue;
+    if (!changed) return;
     await sql.exec(`update questions set blocos = $2, updated_at = now() where id = $1`, [q.id, JSON.stringify(next)]);
     done++;
-  }
+  };
+  await Promise.all(
+    Array.from({ length: 6 }, async () => {
+      while (next_ < rows.length) await one(rows[next_++]);
+    }),
+  );
   return done;
 }
 

@@ -8,7 +8,6 @@
  */
 import { useSyncExternalStore } from 'react';
 import type { ProvaIn } from '@/lib/question-types';
-import { uploadFile } from '@/lib/storage/client';
 import { attachPaperImages, importPaper } from './actions';
 
 export interface ImportState {
@@ -42,7 +41,33 @@ export const useImportJob = () =>
 export const clearImportResult = () => set({ result: null, log: [] });
 
 const typeOf = (f: File) => f.type || (/\.webp$/i.test(f.name) ? 'image/webp' : /\.png$/i.test(f.name) ? 'image/png' : 'image/jpeg');
-const BATCH = 25;
+/** imagens encaixadas por vez */
+const BATCH = 50;
+/** URLs de envio pedidas por vez (uma ida ao servidor para várias imagens) */
+const SIGN = 50;
+/** imagens subindo ao mesmo tempo */
+const PARALLEL = 8;
+
+type Signed = { uploadUrl: string; headers: Record<string, string>; publicUrl: string; error?: string };
+async function signMany(prova: string, files: File[]): Promise<Signed[]> {
+  const res = await fetch('/api/storage/upload-batch', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ folder: `questoes/${prova}`, files: files.map((f) => ({ contentType: typeOf(f), size: f.size })) }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !Array.isArray(data.items)) throw new Error(data.error || 'Falha ao preparar o envio.');
+  return data.items;
+}
+/** envia direto ao armazenamento; tenta de novo se a rede falhar */
+async function put(s: Signed, f: File) {
+  for (let k = 0; ; k++) {
+    const r = await fetch(s.uploadUrl, { method: 'PUT', headers: s.headers, body: f }).catch(() => null);
+    if (r?.ok) return;
+    if (k >= 2) throw new Error('Falha ao enviar a imagem.');
+    await new Promise((res) => setTimeout(res, 800 * (k + 1)));
+  }
+}
 
 // fechar a aba no meio: o navegador pergunta antes
 const warn = (e: BeforeUnloadEvent) => e.preventDefault();
@@ -83,31 +108,70 @@ export async function startImport(job: ImportJob) {
       else log(`${prova.provaId}: ${r.error}`);
     }
 
-    // 2) imagens em lotes: cada lote enviado já é encaixado nas questões
+    // 2) imagens: URLs pedidas em lotes, várias subindo ao mesmo tempo, encaixadas a cada 50
     const total = job.uploads.length;
     let sent = 0;
     let placed = 0;
-    let next = 0;
     const pending = new Map<string, Record<string, string>>();
-    let chain: Promise<void> = Promise.resolve();
+    // encaixe em fila por prova (questões da mesma prova não são gravadas ao mesmo tempo); provas diferentes em paralelo
+    const chains = new Map<string, Promise<void>>();
     const flush = (prova: string, force = false) => {
       const batch = pending.get(prova);
       if (!batch || (!force && Object.keys(batch).length < BATCH)) return;
       pending.delete(prova);
-      chain = chain.then(async () => {
-        const r = await attachPaperImages(prova, batch).catch(() => null);
-        if (r) placed += Object.keys(batch).length;
-        else log(`${prova}: não foi possível encaixar ${Object.keys(batch).length} imagens (envie de novo depois)`);
-      });
+      chains.set(
+        prova,
+        (chains.get(prova) ?? Promise.resolve()).then(async () => {
+          const r = await attachPaperImages(prova, batch).catch(() => null);
+          if (r) placed += Object.keys(batch).length;
+          else log(`${prova}: não foi possível encaixar ${Object.keys(batch).length} imagens (envie de novo depois)`);
+        }),
+      );
     };
+    // lotes de URLs (cada lote é de uma prova só)
+    const chunks: (typeof job.uploads)[] = [];
+    for (const u of job.uploads) {
+      const last = chunks[chunks.length - 1];
+      if (last && last.length < SIGN && last[0].prova === u.prova) last.push(u);
+      else chunks.push([u]);
+    }
+    let ci = 0;
+    const queue: { j: (typeof job.uploads)[number]; s: Signed }[] = [];
+    let signing: Promise<void> | null = null;
+    const refill = () =>
+      (signing ??= (async () => {
+        const c = chunks[ci++];
+        try {
+          const signed = await signMany(c[0].prova, c.map((j) => j.file));
+          c.forEach((j, k) => {
+            if (signed[k]?.uploadUrl) queue.push({ j, s: signed[k] });
+            else {
+              log(`Imagem ${j.name}: ${signed[k]?.error ?? 'falhou'}`);
+              set({ done: ++sent });
+            }
+          });
+        } catch (e) {
+          c.forEach((j) => log(`Imagem ${j.name}: ${e instanceof Error ? e.message : 'falhou'}`));
+          sent += c.length;
+          set({ done: sent });
+        }
+      })().finally(() => (signing = null)));
     if (total) set({ label: 'Enviando imagens', done: 0, total });
     const worker = async () => {
-      while (next < total) {
-        const j = job.uploads[next++];
+      for (;;) {
+        if (!queue.length) {
+          if (signing) await signing;
+          else if (ci < chunks.length) await refill();
+          else return;
+          continue;
+        }
+        // já pede o próximo lote enquanto este sobe
+        if (queue.length < PARALLEL * 2 && ci < chunks.length && !signing) void refill();
+        const { j, s } = queue.shift()!;
         try {
-          const r = await uploadFile('media', `questoes/${j.prova}`, j.file, typeOf(j.file));
+          await put(s, j.file);
           const b = pending.get(j.prova) ?? {};
-          b[j.name] = r.publicUrl;
+          b[j.name] = s.publicUrl;
           pending.set(j.prova, b);
           flush(j.prova);
         } catch (e) {
@@ -116,10 +180,10 @@ export async function startImport(job: ImportJob) {
         set({ done: ++sent });
       }
     };
-    await Promise.all(Array.from({ length: 4 }, worker));
+    await Promise.all(Array.from({ length: PARALLEL }, worker));
     for (const prova of [...pending.keys()]) flush(prova, true);
     set({ label: 'Encaixando imagens' });
-    await chain;
+    await Promise.all(chains.values());
 
     const parts = [
       job.provas.length ? `${job.provas.length} prova(s), ${questions} questões importadas` : '',
