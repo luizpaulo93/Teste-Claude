@@ -3,6 +3,7 @@ import { sql } from '@/lib/db';
 import { splitBands, splitTall } from '@/lib/split-alts';
 import { classify, MHS, mhsOf, subassuntosDe } from '@/lib/taxonomy';
 import { RECLASSIFIED } from '@/lib/taxonomy-reclass';
+import { formulaProblems, latexProblems } from '@/lib/rich';
 import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
 import { DIFFICULTY, fileName, imagesOf, vestibularOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
@@ -17,7 +18,15 @@ export interface Paper {
   total: number;
   images: number;
   missing_images: number;
+  /** problemas achados na importação */
+  problems: PaperProblem[];
   updated_at: string;
+}
+export interface PaperProblem {
+  /** número da questão na prova */
+  n: number;
+  onde: string;
+  msg: string;
 }
 
 export interface Question {
@@ -114,7 +123,7 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
     blocos,
     alternativas,
     imagem_alternativas,
-    resolucao: str(q.resolucao, 30000),
+    resolucao: str(resolutionOf(q), 30000),
     microdados:
       q.microdados && typeof q.microdados === 'object'
         ? JSON.parse(JSON.stringify(q.microdados, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v)))
@@ -122,7 +131,31 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
   };
 }
 
+/** resolução: aceita também outros nomes de campo que os geradores de JSON costumam usar */
+function resolutionOf(q: QuestaoIn) {
+  const x = q as unknown as Record<string, unknown>;
+  for (const k of ['resolucao', 'resolução', 'solucao', 'solução', 'comentario', 'comentário', 'explicacao', 'explicação', 'gabaritoComentado']) {
+    const v = x[k];
+    if (typeof v === 'string' && v.trim()) return v;
+    if (v && typeof v === 'object' && typeof (v as { texto?: unknown }).texto === 'string') return (v as { texto: string }).texto;
+  }
+  return '';
+}
+
 type Row = ReturnType<typeof cleanQuestion>;
+
+/** Fórmulas com erro ou texto corrompido em cada parte da questão (vai para o aviso da importação). */
+export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao'>): PaperProblem[] {
+  const out: PaperProblem[] = [];
+  const add = (onde: string, list: string[]) => list.slice(0, 1).forEach((msg) => out.push({ n: r.numero, onde, msg }));
+  for (const b of r.blocos) {
+    if (b.tipo === 'texto') add('enunciado', formulaProblems(b.conteudo));
+    else if (b.tipo === 'equacao') add('enunciado', latexProblems(b.latex));
+  }
+  for (const a of r.alternativas) add(`alternativa ${a.letra}`, formulaProblems(a.texto));
+  add('resolução', formulaProblems(r.resolucao));
+  return out;
+}
 const imgsOfRow = (r: Row) => imagesOf({ ...r, imagemAlternativas: r.imagem_alternativas, numero: r.numero } as unknown as QuestaoIn);
 
 /** Grava (ou atualiza) uma prova inteira. Reimportar não duplica: as respostas dos alunos continuam. */
@@ -184,6 +217,8 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
     .map((q) => cleanQuestion(q, id, urls))
     .map((r) => ({ ...r, ...taxonomyOf(r) }));
   if (!rows.length) throw new Error(`A prova ${id} não tem questões.`);
+  const problems = rows.flatMap(questionProblems).slice(0, 300);
+  const noResolution = rows.filter((r) => !r.resolucao.trim()).length;
   const imgs = rows.flatMap(imgsOfRow);
   const missing = imgs.filter((i) => !i.url).length;
   const before = Object.values((await knownImages([id])).have[id] ?? {});
@@ -218,7 +253,8 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
   await splitAlternatives(id).catch(() => 0);
   await splitTallImages(id).catch(() => 0);
   await dropUnused(before);
-  return { id, questions: rows.length, images: imgs.length, missing };
+  await sql.exec(`update exam_papers set problems = $2 where id = $1`, [id, JSON.stringify(problems)]);
+  return { id, questions: rows.length, images: imgs.length, missing, problems, noResolution };
 }
 
 /** URLs das imagens já guardadas no app, por nome de arquivo (para não reenviar e para encaixar imagens soltas). */

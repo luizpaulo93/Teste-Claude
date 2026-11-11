@@ -92,7 +92,12 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
       />
       {/* baixar e navegação (voltar, todas as questões e finalizar, avançar): presa no alto ao rolar */}
       <div className="sticky top-14 z-20 -mx-4 mb-4 flex items-center gap-2 border-b border-line bg-bg/95 px-4 py-2 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
-        {!sim && <ListDownloads id={list.id} title={list.title} resolutions={!test || mineList || (finished && resOpen)} />}
+        {!sim && <ListDownloads
+            id={list.id}
+            title={list.title}
+            resolutions={!test || mineList || (finished && resOpen)}
+            onlyKey={!qs.some((q) => q.resolucao?.trim())}
+          />}
         <span className="flex-1" />
         <ListNav
           items={qs.map((q, i) => {

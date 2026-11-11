@@ -130,14 +130,29 @@ export async function startImport(job: ImportJob) {
     // 1) questões primeiro: já ficam no app mesmo se as imagens pararem no meio (3 provas por vez)
     let questions = 0;
     let saved = 0;
+    let withProblems = 0;
+    let noRes = 0;
     if (job.provas.length) set({ label: 'Gravando questões', done: 0, total: job.provas.length });
     const three = limiter(3);
     await Promise.all(
       job.provas.map(({ prova, have }) =>
         three(async () => {
           try {
-            const r = await api<{ questions: number }>({ op: 'paper', prova, have });
+            const r = await api<{ questions: number; problems?: { n: number; onde: string; msg: string }[]; noResolution?: number }>({
+              op: 'paper',
+              prova,
+              have,
+            });
             questions += r.questions;
+            // avisos: fórmulas com erro e questões sem resolução
+            const ps = r.problems ?? [];
+            withProblems += new Set(ps.map((p) => p.n)).size;
+            ps.slice(0, 6).forEach((p) => log(`${prova.provaId} · questão ${p.n} (${p.onde}): ${p.msg}`));
+            if (ps.length > 6) log(`${prova.provaId}: e mais ${ps.length - 6} problemas`);
+            if (r.noResolution) {
+              noRes += r.noResolution;
+              log(`${prova.provaId}: ${r.noResolution === r.questions ? 'nenhuma questão tem' : `${r.noResolution} questões sem`} resolução`);
+            }
           } catch (e) {
             log(`${prova.provaId}: ${e instanceof Error ? e.message : 'falhou'}`);
           }
@@ -248,6 +263,8 @@ export async function startImport(job: ImportJob) {
     const parts = [
       job.provas.length ? `${job.provas.length} prova(s), ${questions} questões importadas` : '',
       total ? `${placed} de ${total} imagens no lugar` : '',
+      withProblems ? `${withProblems} questões com fórmula a revisar` : '',
+      noRes ? `${noRes} sem resolução` : '',
     ].filter(Boolean);
     set({ result: `${parts.join(' · ')}.`, finished: state.finished + 1 });
   } catch (e) {

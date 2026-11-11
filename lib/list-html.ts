@@ -148,11 +148,13 @@ export function listHtml(
       ? `<section class="key"><h2>Gabarito</h2><div class="grid">${qs
           .map((q, i) => `<span><b>${i + 1}.</b> ${q.status === 'anulada' ? 'Anulada' : esc(q.gabarito || '–')}</span>`)
           .join('')}</div></section>${
-          opts.resolutions || opts.onlyResolutions
+          // só as questões que têm resolução (o gabarito de todas já está acima)
+          (opts.resolutions || opts.onlyResolutions) && qs.some((q) => q.resolucao?.trim())
             ? `<section class="res"><h2>Resolução</h2>${qs
-                .map(
-                  (q, i) =>
-                    `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3>${q.resolucao ? `<div class="t">${rich(q.resolucao)}</div>` : '<div class="t">Sem resolução.</div>'}</div>`,
+                .map((q, i) =>
+                  q.resolucao?.trim()
+                    ? `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3><div class="t">${rich(q.resolucao)}</div></div>`
+                    : '',
                 )
                 .join('')}</section>`
             : ''

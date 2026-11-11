@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, ImageOff, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, ImageOff, Search, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -20,6 +20,10 @@ export interface PaperView {
   answers: number;
   images: number;
   missing: number;
+  /** questões sem resolução */
+  noRes: number;
+  /** fórmulas com erro / texto corrompido achados na importação */
+  problems: { n: number; onde: string; msg: string }[];
 }
 
 /** Provas do app: marcar várias (ou todas as da busca) e excluir de uma vez. */
@@ -28,6 +32,7 @@ export function PapersList({ papers }: { papers: PaperView[] }) {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState<string | null>(null);
   const term = q.trim().toLowerCase();
   const shown = useMemo(
     () => (term ? papers.filter((p) => `${p.label} ${p.caderno} ${p.id}`.toLowerCase().includes(term)) : papers),
@@ -121,9 +126,26 @@ export function PapersList({ papers }: { papers: PaperView[] }) {
             ) : (
               p.images > 0 && <Badge tone="success">{p.images} imagens</Badge>
             )}
+            {p.noRes > 0 && <Badge tone="warning">{p.noRes === p.total ? 'sem resolução' : `${p.noRes} sem resolução`}</Badge>}
+            {p.problems.length > 0 && (
+              <button type="button" onClick={() => setOpen((o) => (o === p.id ? null : p.id))} aria-expanded={open === p.id}>
+                <Badge tone="danger">
+                  <AlertTriangle className="size-3" /> {new Set(p.problems.map((x) => x.n)).size} com fórmula a revisar
+                </Badge>
+              </button>
+            )}
             <span className="ml-auto">
               <DeletePaper id={p.id} />
             </span>
+            {open === p.id && (
+              <ul className="w-full space-y-1 rounded-xl bg-surface-2 p-2.5 text-[11px] text-ink-2">
+                {p.problems.map((x, k) => (
+                  <li key={k}>
+                    <b className="text-ink">Questão {x.n}</b> ({x.onde}): {x.msg}
+                  </li>
+                ))}
+              </ul>
+            )}
           </Card>
         );
       })}

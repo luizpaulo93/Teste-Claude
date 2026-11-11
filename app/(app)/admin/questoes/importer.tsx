@@ -11,6 +11,13 @@ import { checkImport, deletePaper } from './actions';
 import { clearImportResult, startImport, useImportJob } from './import-job';
 
 type Check = Awaited<ReturnType<typeof checkImport>>;
+const RES_KEYS = ['resolucao', 'resolução', 'solucao', 'solução', 'comentario', 'comentário', 'explicacao', 'explicação', 'gabaritoComentado'];
+/** questões da prova sem texto de resolução */
+const noRes = (p: ProvaIn) =>
+  p.questoes.filter((q) => !RES_KEYS.some((k) => {
+    const v = (q as unknown as Record<string, unknown>)[k];
+    return (typeof v === 'string' && v.trim()) || (v && typeof v === 'object' && typeof (v as { texto?: unknown }).texto === 'string');
+  })).length;
 const isImage = (f: File) => /\.(webp|png|jpe?g|gif|avif)$/i.test(f.name) || f.type.startsWith('image/');
 
 /**
@@ -190,6 +197,7 @@ export function Importer() {
                 </span>
                 <Badge>{p.questoes.length} questões</Badge>
                 {st('anulada') > 0 && <Badge tone="danger">{st('anulada')} anulada(s)</Badge>}
+                {noRes(p) > 0 && <Badge tone="warning">{noRes(p) === p.questoes.length ? 'sem resolução' : `${noRes(p)} sem resolução`}</Badge>}
                 {st('abandonado_na_calibracao') > 0 && <Badge tone="warning">{st('abandonado_na_calibracao')} sem TRI</Badge>}
                 {check?.existing.includes(p.provaId) && <Badge tone="brand">já no app: será atualizada</Badge>}
               </div>

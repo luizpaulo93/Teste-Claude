@@ -87,7 +87,7 @@ function inline(text: string, out: Seg[]) {
 /** Parágrafos (separados por linha em branco), cada um com texto formatado e fórmulas. */
 function paragraphs(src: string): Seg[][] {
   let s = String(src ?? '');
-  s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?![A-Za-z\\{_^])/g, `R${DOLLAR}`);
+  s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, `R${DOLLAR}`);
   const even = (s.match(/\$/g)?.length ?? 0) % 2 === 0;
   return s
     .split(/\n{2,}/)

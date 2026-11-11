@@ -856,3 +856,8 @@ update questions q set vestibular = case
   from exam_papers p
  where p.id = q.paper_id and q.vestibular = '';
 create index if not exists questions_vestibular_idx on questions (vestibular);
+
+-- ============================================================================
+-- Versão 31: problemas achados na importação (fórmula com erro, texto corrompido), por prova.
+-- ============================================================================
+alter table exam_papers add column if not exists problems jsonb not null default '[]'::jsonb;

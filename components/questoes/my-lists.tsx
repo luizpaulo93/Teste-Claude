@@ -199,7 +199,20 @@ async function downloadList(id: string, title: string, parte: 'questoes' | 'reso
 }
 
 /** `resolutions`: false esconde as opções com resolução (teste ainda não finalizado ou não liberado). */
-export function ListDownloads({ id, title, compact, resolutions = true }: { id: string; title: string; compact?: boolean; resolutions?: boolean }) {
+export function ListDownloads({
+  id,
+  title,
+  compact,
+  resolutions = true,
+  onlyKey = false,
+}: {
+  id: string;
+  title: string;
+  compact?: boolean;
+  resolutions?: boolean;
+  /** nenhuma questão da lista tem resolução: as opções viram "gabarito" */
+  onlyKey?: boolean;
+}) {
   const owner = usePdfOwner();
   const [busy, setBusy] = useState('');
   const [open, setOpen] = useState(false);
@@ -223,8 +236,8 @@ export function ListDownloads({ id, title, compact, resolutions = true }: { id: 
   }
   const items = [
     { key: 'questoes', label: 'PDF da lista', icon: FileText },
-    { key: 'resolucoes', label: 'Resoluções', icon: BookOpenCheck },
-    { key: 'tudo', label: 'PDF com resoluções', icon: Download },
+    { key: 'resolucoes', label: onlyKey ? 'Gabarito' : 'Resoluções', icon: BookOpenCheck },
+    { key: 'tudo', label: onlyKey ? 'PDF com gabarito' : 'PDF com resoluções', icon: Download },
   ].filter((it) => resolutions || it.key === 'questoes') as { key: 'questoes' | 'resolucoes' | 'tudo'; label: string; icon: typeof Download }[];
   return (
     <div ref={ref} className="relative">

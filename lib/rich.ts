@@ -63,7 +63,7 @@ export function rich(src: string | null | undefined, inline = false): string {
   let s = String(src ?? '');
   if (!s.trim()) return '';
   // dinheiro não é fórmula: "\$" e "R$ 14,00" / "(R$)" viram cifrão de verdade
-  s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?![A-Za-z\\{_^])/g, `R${DOLLAR}`);
+  s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, `R${DOLLAR}`);
   const math: string[] = [];
   const keep = (html: string) => `${math.push(html) - 1}`;
   // $ sem par: mostra como está, sem tentar montar fórmula
@@ -88,3 +88,33 @@ export function rich(src: string | null | undefined, inline = false): string {
 }
 
 export const richTex = (latex: string) => tex(latex, true);
+
+/**
+ * Fórmulas com defeito num texto (para avisar na importação): erro do KaTeX ou caracteres que não
+ * existem numa fórmula de verdade (sinal de texto corrompido ao extrair do PDF, ex.: \frac{´}{c}).
+ */
+export function formulaProblems(src: string | null | undefined): string[] {
+  // dinheiro não é fórmula ("\$", "R$ 14,00"), como no rich()
+  const s = String(src ?? '')
+    .replace(/\\\$/g, '')
+    .replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, 'R');
+  if (!s.includes('$')) return [];
+  if ((s.match(/\$/g)?.length ?? 0) % 2) return ['cifrão ($) sem par'];
+  const out: string[] = [];
+  for (const m of s.matchAll(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g)) out.push(...latexProblems(m[1] ?? m[2] ?? ''));
+  return out;
+}
+export function latexProblems(latex: string): string[] {
+  const t = String(latex ?? '');
+  if (!t.trim()) return [];
+  try {
+    katex.renderToString(t, { throwOnError: true, strict: 'ignore' });
+  } catch (e) {
+    void e;
+    return ['fórmula com erro (não abre)'];
+  }
+  // fora de \text{…}: letra acentuada, aspas ou símbolos de fonte trocada não aparecem em fórmula
+  const bare = t.replace(/\\(?:text|textrm|mathrm|mbox|textbf|textit|operatorname)\s*\{[^{}]*\}/g, '');
+  if (/[-�\u0000-\u0008\u000E-\u001F]/.test(bare) || /["´¨¥¤¦§¶¬¯]|[À-ÖØ-öø-ÿ]/.test(bare)) return ['fórmula com caracteres estranhos'];
+  return [];
+}

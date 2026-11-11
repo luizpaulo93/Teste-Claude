@@ -11,8 +11,9 @@ export const metadata: Metadata = { title: 'Questões · Admin' };
 
 export default async function AdminQuestoes() {
   await requireAdmin();
-  const papers = await sql.query<Paper & { valid: number; answers: number }>(
+  const papers = await sql.query<Paper & { valid: number; answers: number; no_res: number }>(
     `select p.*, (select count(*)::int from questions q where q.paper_id = p.id and q.status <> 'anulada') as valid,
+            (select count(*)::int from questions q where q.paper_id = p.id and q.resolucao = '') as no_res,
             (select count(*)::int from question_answers a join questions q on q.id = a.question_id where q.paper_id = p.id) as answers
        from exam_papers p order by p.ano desc nulls last, p.id`,
   );
@@ -35,6 +36,8 @@ export default async function AdminQuestoes() {
               answers: p.answers,
               images: p.images,
               missing: p.missing_images,
+              noRes: p.no_res,
+              problems: p.problems ?? [],
             }))}
           />
         ) : (
