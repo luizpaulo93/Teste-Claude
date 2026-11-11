@@ -1,19 +1,17 @@
 'use client';
 
 import { CheckCircle2, FileJson, FolderOpen, ImageIcon, Trash2, Upload } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { Badge, Button, Card, Checkbox, ProgressBar } from '@/components/ui';
 import { ActionButton, Spinner } from '@/components/ui-client';
 import { fileName, imagesOf, type ProvaIn } from '@/lib/question-types';
-import { uploadFile } from '@/lib/storage/client';
 import { cn } from '@/lib/utils';
-import { attachPaperImages, checkImport, deletePaper, importPaper } from './actions';
+import { checkImport, deletePaper } from './actions';
+import { clearImportResult, startImport, useImportJob } from './import-job';
 
 type Check = Awaited<ReturnType<typeof checkImport>>;
 const isImage = (f: File) => /\.(webp|png|jpe?g|gif|avif)$/i.test(f.name) || f.type.startsWith('image/');
-const typeOf = (f: File) => f.type || (/\.webp$/i.test(f.name) ? 'image/webp' : /\.png$/i.test(f.name) ? 'image/png' : 'image/jpeg');
 
 /**
  * Importar provas: o provas.json + as imagens (todas de uma vez, ou a pasta inteira no computador).
@@ -21,7 +19,6 @@ const typeOf = (f: File) => f.type || (/\.webp$/i.test(f.name) ? 'image/webp' : 
  * Dá para mandar só as imagens depois: elas se encaixam nas provas já importadas.
  */
 export function Importer() {
-  const router = useRouter();
   const jsonInput = useRef<HTMLInputElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
@@ -30,10 +27,26 @@ export function Importer() {
   const [files, setFiles] = useState<Map<string, File>>(new Map());
   const [check, setCheck] = useState<Check | null>(null);
   const [allowMissing, setAllowMissing] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number; label: string } | null>(null);
-  const [log, setLog] = useState<string[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  /** imagens que o app já tem: só reenvia se pedir (ex.: versão nova da figura) */
+  const [replace, setReplace] = useState(false);
+  // a importação roda fora desta tela: continua mesmo navegando pelo app
+  const job = useImportJob();
+  const busy = job.running;
+  const progress = job.running ? { done: job.done, total: job.total, label: job.label } : null;
+  const log = job.log;
+  const done = job.running ? null : job.result;
+  // terminou: limpa a escolha e atualiza o que o app já tem
+  const seen = useRef(job.finished);
+  useEffect(() => {
+    if (job.finished === seen.current) return;
+    seen.current = job.finished;
+    setProvas(null);
+    setFiles(new Map());
+    setAllowMissing(false);
+    setReplace(false);
+    setJsonName('');
+    void refreshCheck(null);
+  }, [job.finished]);
 
   async function refreshCheck(list: ProvaIn[] | null) {
     setCheck(await checkImport((list ?? []).map((p) => p.provaId)).catch(() => null));
@@ -46,7 +59,7 @@ export function Importer() {
       if (!list.length || !list.every((p) => p?.provaId && Array.isArray(p.questoes))) throw new Error('formato');
       setProvas(list);
       setJsonName(f.name);
-      setDone(null);
+      clearImportResult();
       await refreshCheck(list);
     } catch {
       toast.error('Este arquivo não é um provas.json válido.');
@@ -64,7 +77,7 @@ export function Importer() {
         for (const f of imgs) n.set(f.name, f);
         return n;
       });
-      setDone(null);
+      clearImportResult();
     }
     if (json) await readJson(json);
     else if (!check) await refreshCheck(provas);
@@ -77,88 +90,57 @@ export function Importer() {
   let citedN = 0;
   let foundN = 0;
   let inAppN = 0;
+  let sameN = 0;
   const missing: string[] = [];
   for (const [prova, names] of cited)
     for (const n of names) {
       citedN++;
-      if (files.has(n))
-        foundN++; // escolhida agora: substitui a que estiver no app
+      if (haveIn(prova, n) && files.has(n)) sameN++;
+      if (files.has(n) && (replace || !haveIn(prova, n)))
+        foundN++; // escolhida agora (e ainda não está no app, ou vai substituir)
       else if (haveIn(prova, n)) inAppN++;
       else missing.push(n);
     }
   // só imagens: encaixam em provas que já estão no app e esperam por elas
+  // (só as que ainda faltam: escolher a pasta de novo depois de uma parada envia só o resto)
+  // (só imagens que já estão no app, nenhuma faltando: é versão nova da figura, substitui)
   const fits = new Map<string, string[]>();
-  if (!provas && check)
-    for (const prova of new Set([...Object.keys(check.want), ...Object.keys(check.have)])) {
-      const names = [...(check.want[prova] ?? []), ...Object.keys(check.have[prova] ?? {})];
-      const got = names.filter((n) => files.has(n));
+  let sameOnly = 0;
+  let missingChosen = 0;
+  if (!provas && check) {
+    const provs = [...new Set([...Object.keys(check.want), ...Object.keys(check.have)])];
+    for (const prova of provs) {
+      sameOnly += Object.keys(check.have[prova] ?? {}).filter((n) => files.has(n)).length;
+      missingChosen += (check.want[prova] ?? []).filter((n) => files.has(n)).length;
+    }
+    const swap = replace || missingChosen === 0;
+    for (const prova of provs) {
+      const inApp = Object.keys(check.have[prova] ?? {}).filter((n) => files.has(n));
+      const got = [...(check.want[prova] ?? []), ...(swap ? inApp : [])].filter((n) => files.has(n));
       if (got.length) fits.set(prova, [...new Set(got)]);
     }
+  }
   const fitsN = [...fits.values()].reduce((a, l) => a + l.length, 0);
-  const used = new Set([...cited.values()].flatMap((s) => [...s]).concat([...fits.values()].flat()));
+  const used = new Set(
+    [...cited.values()]
+      .flatMap((s) => [...s])
+      .concat([...fits.values()].flat())
+      .concat(check ? Object.values(check.have).flatMap((m) => Object.keys(m)) : []),
+  );
   const unused = [...files.keys()].filter((n) => !used.has(n));
   const canImport = provas ? !missing.length || allowMissing : fitsN > 0;
 
-  async function uploadAll(jobs: { prova: string; name: string }[]) {
-    const urls: Record<string, Record<string, string>> = {};
-    let i = 0;
-    let ok = 0;
-    setProgress({ done: 0, total: jobs.length, label: 'Enviando imagens' });
-    const worker = async () => {
-      while (i < jobs.length) {
-        const j = jobs[i++];
-        const f = files.get(j.name)!;
-        try {
-          const r = await uploadFile('media', `questoes/${j.prova}`, f, typeOf(f));
-          (urls[j.prova] ??= {})[j.name] = r.publicUrl;
-        } catch (e) {
-          setLog((l) => [...l, `Imagem ${j.name}: ${e instanceof Error ? e.message : 'falhou'}`]);
-        }
-        setProgress({ done: ++ok, total: jobs.length, label: 'Enviando imagens' });
-      }
-    };
-    await Promise.all(Array.from({ length: 4 }, worker));
-    return urls;
-  }
-
-  async function run() {
-    setBusy(true);
-    setLog([]);
-    setDone(null);
-    try {
-      if (provas) {
-        const jobs = [...cited].flatMap(([prova, names]) => [...names].filter((n) => files.has(n)).map((name) => ({ prova, name })));
-        const urls = await uploadAll(jobs);
-        let q = 0;
-        for (const [k, p] of provas.entries()) {
-          setProgress({ done: k, total: provas.length, label: `Gravando ${p.provaId}` });
-          const r = await importPaper(p, { ...(check?.have[p.provaId] ?? {}), ...(urls[p.provaId] ?? {}) });
-          if (r.ok) {
-            q += r.questions;
-            if (r.missing) setLog((l) => [...l, `${p.provaId}: ${r.missing} imagem(ns) ainda faltando`]);
-          } else setLog((l) => [...l, `${p.provaId}: ${r.error}`]);
-        }
-        setDone(`${provas.length} prova(s), ${q} questões importadas.`);
-      } else {
-        const jobs = [...fits].flatMap(([prova, names]) => names.map((name) => ({ prova, name })));
-        const urls = await uploadAll(jobs);
-        let q = 0;
-        for (const prova of Object.keys(urls)) q += (await attachPaperImages(prova, urls[prova])).questions;
-        setDone(`${jobs.length} imagens encaixadas em ${q} questões.`);
-      }
-      setProgress(null);
-      setProvas(null);
-      setFiles(new Map());
-      setAllowMissing(false);
-      await refreshCheck(null);
-      router.refresh();
-      toast('Importação concluída');
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Falha na importação.');
-    } finally {
-      setBusy(false);
-      setProgress(null);
+  function run() {
+    if (provas) {
+      const uploads = [...cited].flatMap(([prova, names]) =>
+        [...names].filter((n) => files.has(n) && (replace || !haveIn(prova, n))).map((name) => ({ prova, name, file: files.get(name)! })),
+      );
+      void startImport({ provas: provas.map((p) => ({ prova: p, have: check?.have[p.provaId] ?? {} })), uploads });
+    } else {
+      const uploads = [...fits].flatMap(([prova, names]) => names.map((name) => ({ prova, name, file: files.get(name)! })));
+      void startImport({ provas: [], uploads });
     }
+    toast('Importando… pode continuar usando o app');
   }
 
   return (
@@ -236,6 +218,14 @@ export function Importer() {
         </div>
       )}
 
+      {(provas ? sameN : missingChosen ? sameOnly : 0) > 0 && (
+        <Checkbox
+          label={`Substituir as ${provas ? sameN : sameOnly} imagens que já estão no app`}
+          checked={replace}
+          onChange={(e) => setReplace(e.target.checked)}
+        />
+      )}
+
       {provas && missing.length > 0 && (
         <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/8 p-3 text-xs text-ink-2">
           <p>
@@ -258,6 +248,7 @@ export function Importer() {
           <p className="text-xs text-muted">
             {progress.label} · {progress.done}/{progress.total}
           </p>
+          <p className="text-[11px] text-muted">Pode usar outras telas do app; não feche a aba.</p>
           <ProgressBar value={progress.total ? (progress.done / progress.total) * 100 : 0} />
         </div>
       )}

@@ -251,14 +251,14 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     if (i.url) replaced.push(i.url);
     return { ...i, url: u };
   };
-  let n = 0;
+  const changed: string[] = [];
   for (const r of rows) {
     const before = JSON.stringify([r.blocos, r.alternativas, r.imagem_alternativas]);
     const blocos = r.blocos.map((b) => (b.tipo === 'imagem' ? (fix(b) as QBloco) : b));
     const alternativas = r.alternativas.map((a) => ({ ...a, imagem: fix(a.imagem) ?? null }));
     const ia = Array.isArray(r.imagem_alternativas) ? r.imagem_alternativas.map((i) => fix(i)) : fix(r.imagem_alternativas as QImg | null);
     if (JSON.stringify([blocos, alternativas, ia]) === before) continue;
-    n++;
+    changed.push(r.id);
     await sql.exec(`update questions set blocos = $2, alternativas = $3, imagem_alternativas = $4, updated_at = now() where id = $1`, [
       r.id,
       JSON.stringify(blocos),
@@ -266,11 +266,14 @@ export async function attachImages(paperId: string, urls: Record<string, string>
       ia === null || ia === undefined ? null : JSON.stringify(ia),
     ]);
   }
-  await splitAlternatives(paperId).catch(() => 0);
-  await splitTallImages(paperId).catch(() => 0);
+  // recorta só as questões que receberam imagem agora (as imagens chegam aos poucos, em lotes)
+  if (changed.length) {
+    await splitAlternatives(paperId, changed).catch(() => 0);
+    await splitTallImages(paperId, changed).catch(() => 0);
+  }
   await refreshPaperCounts(paperId);
   await dropUnused(replaced);
-  return n;
+  return changed.length;
 }
 
 /**
@@ -278,10 +281,10 @@ export async function attachImages(paperId: string, urls: Record<string, string>
  * Várias imagens (uma por alternativa): cada uma vai direto para a sua letra.
  * Se não der para recortar com segurança, a imagem continua inteira abaixo do enunciado.
  */
-export async function splitAlternatives(paperId: string) {
+export async function splitAlternatives(paperId: string, only?: string[]) {
   const rows = await sql.query<{ id: string; alternativas: QAlternativa[]; imagem_alternativas: QImg | QImg[] | null }>(
-    `select id, alternativas, imagem_alternativas from questions where paper_id = $1 and imagem_alternativas is not null`,
-    [paperId],
+    `select id, alternativas, imagem_alternativas from questions where paper_id = $1 and imagem_alternativas is not null and ($2::text[] is null or id = any($2::text[]))`,
+    [paperId, only ?? null],
   );
   let done = 0;
   for (const q of rows) {
@@ -326,11 +329,15 @@ export async function splitAlternatives(paperId: string) {
  * Imagens do enunciado muito altas: cortadas em partes (nas faixas em branco) para não deixar espaço vazio nas
  * colunas do PDF. A original fica guardada (marcada como dividida) e as partes vêm logo depois dela.
  */
-export async function splitTallImages(paperId: string) {
+/** `only`: só estas questões (imagens que acabaram de chegar), sem baixar de novo as outras. */
+export async function splitTallImages(paperId: string, only?: string[]) {
   const COL_MM = 88; // largura da coluna no PDF
   const MAX_MM = 90; // acima disso, quebra
   const PIECE_MM = 60; // altura de cada parte
-  const rows = await sql.query<{ id: string; blocos: QBloco[] }>(`select id, blocos from questions where paper_id = $1`, [paperId]);
+  const rows = await sql.query<{ id: string; blocos: QBloco[] }>(
+    `select id, blocos from questions where paper_id = $1 and ($2::text[] is null or id = any($2::text[]))`,
+    [paperId, only ?? null],
+  );
   let done = 0;
   for (const q of rows) {
     if (q.blocos.some((b) => b.tipo === 'imagem' && (b.dividida || b.parte))) continue;
