@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { sql } from '@/lib/db';
 import type { ProvaIn } from '@/lib/question-types';
-import { attachImages, knownImages, savePaper } from '@/lib/questions';
+import { attachImages, deletePapers, knownImages, savePaper } from '@/lib/questions';
 import { getViewer } from '@/lib/session';
 
 async function admin() {
@@ -46,9 +46,15 @@ export async function attachPaperImages(paperId: string, urls: Record<string, st
 }
 
 export async function deletePaper(id: string) {
+  await deleteManyPapers([id]);
+  return {};
+}
+
+/** Exclui várias provas de uma vez (com as questões delas). */
+export async function deleteManyPapers(ids: string[]) {
   await admin();
-  await sql.exec(`delete from exam_papers where id = $1`, [id]);
+  const n = await deletePapers(Array.isArray(ids) ? ids.filter((x): x is string => typeof x === 'string') : []);
   revalidatePath('/admin/questoes');
   revalidatePath('/questoes');
-  return {};
+  return { n };
 }

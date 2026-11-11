@@ -1,12 +1,11 @@
-import { FileQuestion, ImageOff } from 'lucide-react';
+import { FileQuestion } from 'lucide-react';
 import type { Metadata } from 'next';
-import Link from 'next/link';
-import { Badge, Card, EmptyState, PageHeader, SectionHeader } from '@/components/ui';
+import { EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import { paperLabel, type Paper } from '@/lib/questions';
 import { requireAdmin } from '@/lib/session';
 import { QuestionsHub } from './hub';
-import { DeletePaper } from './importer';
+import { PapersList } from './papers-list';
 
 export const metadata: Metadata = { title: 'Questões · Admin' };
 
@@ -27,33 +26,17 @@ export default async function AdminQuestoes() {
       <section>
         <SectionHeader title={`Provas no app (${papers.length})`} href="/questoes" link="Abrir banco de questões" />
         {papers.length ? (
-          <div className="space-y-2">
-            {papers.map((p) => (
-              <Card key={p.id} className="flex flex-wrap items-center gap-2 p-3.5">
-                <div className="w-full min-w-0">
-                  <Link href={`/questoes?prova=${encodeURIComponent(p.id)}`} className="block text-sm font-bold break-words text-ink hover:text-brand">
-                    {paperLabel(p)}
-                  </Link>
-                  <p className="mt-0.5 text-[11px] break-words text-muted">
-                    {p.caderno ? `Caderno ${p.caderno} · ` : ''}
-                    {p.id}
-                  </p>
-                </div>
-                <Badge>{p.total} questões</Badge>
-                {p.answers > 0 && <Badge tone="brand">{p.answers} respostas</Badge>}
-                {p.missing_images > 0 ? (
-                  <Badge tone="warning">
-                    <ImageOff className="size-3" /> faltam {p.missing_images} imagens
-                  </Badge>
-                ) : (
-                  p.images > 0 && <Badge tone="success">{p.images} imagens</Badge>
-                )}
-                <span className="ml-auto">
-                  <DeletePaper id={p.id} />
-                </span>
-              </Card>
-            ))}
-          </div>
+          <PapersList
+            papers={papers.map((p) => ({
+              id: p.id,
+              label: paperLabel(p),
+              caderno: p.caderno,
+              total: p.total,
+              answers: p.answers,
+              images: p.images,
+              missing: p.missing_images,
+            }))}
+          />
         ) : (
           <EmptyState icon={<FileQuestion className="size-5" />} title="Nenhuma prova ainda" description="Importe o provas.json com as imagens." />
         )}

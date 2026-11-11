@@ -395,6 +395,31 @@ async function dropUnused(urls: string[]) {
   await removeObjects('media', keys);
 }
 
+/**
+ * Exclui provas inteiras: as questões saem das listas, as respostas dos alunos nelas somem junto
+ * e as imagens que só elas usavam são apagadas do armazenamento.
+ */
+export async function deletePapers(ids: string[]) {
+  const list = [...new Set(ids.map((x) => String(x).slice(0, 130)))].slice(0, 500);
+  if (!list.length) return 0;
+  const qs = await sql.query<{ id: string; media: string }>(
+    `select id, blocos::text || alternativas::text || coalesce(imagem_alternativas::text, '') as media from questions where paper_id = any($1::text[])`,
+    [list],
+  );
+  const base = publicUrlFor('');
+  const urls = qs.flatMap((q) => [...q.media.matchAll(/"(https?:\/\/[^"\s]+)"/g)].map((m) => m[1]).filter((u) => u.startsWith(base)));
+  const qids = qs.map((q) => q.id);
+  if (qids.length)
+    await sql.exec(
+      `update question_lists set question_ids = array(select x from unnest(question_ids) with ordinality as t(x, o) where not (x = any($1::text[])) order by o), updated_at = now()
+        where question_ids && $1::text[]`,
+      [qids],
+    );
+  const r = await sql.query<{ id: string }>(`delete from exam_papers where id = any($1::text[]) returning id`, [list]);
+  await dropUnused(urls).catch(() => null);
+  return r.length;
+}
+
 export async function refreshPaperCounts(paperId: string) {
   const { have, want } = await knownImages([paperId]);
   // os pedaços recortados das alternativas não contam (são da mesma imagem original)
