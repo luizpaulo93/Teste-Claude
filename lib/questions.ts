@@ -241,7 +241,10 @@ export async function knownImages(paperIds?: string[]) {
 
 /** Encaixa imagens enviadas depois (pelo nome do arquivo) nas questões que já estão no app. */
 export async function attachImages(paperId: string, urls: Record<string, string>) {
-  const rows = await sql.query<Row & { microdados: Record<string, unknown> }>(`select * from questions where paper_id = $1`, [paperId]);
+  const rows = await sql.query<Pick<Row, 'id' | 'blocos' | 'alternativas' | 'imagem_alternativas'>>(
+    `select id, blocos, alternativas, imagem_alternativas from questions where paper_id = $1`,
+    [paperId],
+  );
   if (!rows.length) return 0;
   const replaced: string[] = [];
   // substitui também imagens que já estavam no app (ex.: versão nova da figura)
@@ -252,6 +255,7 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     return { ...i, url: u };
   };
   const changed: string[] = [];
+  const upd: { id: string; b: string; a: string; i: string | null }[] = [];
   for (const r of rows) {
     const before = JSON.stringify([r.blocos, r.alternativas, r.imagem_alternativas]);
     const blocos = r.blocos.map((b) => (b.tipo === 'imagem' ? (fix(b) as QBloco) : b));
@@ -259,13 +263,15 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     const ia = Array.isArray(r.imagem_alternativas) ? r.imagem_alternativas.map((i) => fix(i)) : fix(r.imagem_alternativas as QImg | null);
     if (JSON.stringify([blocos, alternativas, ia]) === before) continue;
     changed.push(r.id);
-    await sql.exec(`update questions set blocos = $2, alternativas = $3, imagem_alternativas = $4, updated_at = now() where id = $1`, [
-      r.id,
-      JSON.stringify(blocos),
-      JSON.stringify(alternativas),
-      ia === null || ia === undefined ? null : JSON.stringify(ia),
-    ]);
+    upd.push({ id: r.id, b: JSON.stringify(blocos), a: JSON.stringify(alternativas), i: ia === null || ia === undefined ? null : JSON.stringify(ia) });
   }
+  // todas as questões do lote numa gravação só
+  if (upd.length)
+    await sql.exec(
+      `update questions q set blocos = x.b::jsonb, alternativas = x.a::jsonb, imagem_alternativas = x.i::jsonb, updated_at = now()
+         from jsonb_to_recordset($1::jsonb) as x(id text, b text, a text, i text) where q.id = x.id`,
+      [JSON.stringify(upd)],
+    );
   // recorta só as questões que receberam imagem agora (as imagens chegam aos poucos, em lotes)
   if (changed.length) {
     await splitAlternatives(paperId, changed).catch(() => 0);
