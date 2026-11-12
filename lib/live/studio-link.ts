@@ -45,6 +45,12 @@ export class StudioLink {
   private flushTimer = 0;
   static VIEWER_DELAY_MS = 1000;
 
+  /** câmera deste aparelho indo para o aparelho que transmite (quando ele pede: "câmera do celular") */
+  private up: MediaStream | null = null;
+  /** quem transmite: chegou (ou caiu) a câmera de outro aparelho */
+  onFeed?: (device: string, s: MediaStream | null) => void;
+  private feeding = new Set<string>();
+
   onStream?: (s: MediaStream | null) => void;
   onMessage?: (m: LinkMsg, from: string) => void;
   /** canal aberto com um aparelho (quem transmite manda o estado completo) */
@@ -70,6 +76,15 @@ export class StudioLink {
     const pc = new RTCPeerConnection({ iceServers: ICE });
     this.vpc = pc;
     pc.addTransceiver('video', { direction: 'recvonly' });
+    // câmera deste aparelho para a live (boa qualidade: é a imagem que vai ao ar)
+    const upTrack = this.up?.getVideoTracks()[0];
+    if (upTrack && this.up) {
+      const sender = pc.addTrack(upTrack, this.up);
+      const params = sender.getParameters();
+      params.encodings = [{ maxBitrate: 2_500_000, maxFramerate: 30 }];
+      params.degradationPreference = 'maintain-framerate';
+      void sender.setParameters(params).catch(() => {});
+    }
     const dc = pc.createDataChannel('ctl');
     this.vdc = dc;
     dc.onmessage = (e) => this.read(e.data, holder);
@@ -92,6 +107,20 @@ export class StudioLink {
     this.vdc = null;
     this.vTarget = '';
     this.onStream?.(null);
+  }
+
+  /** Liga ou desliga o envio da câmera deste aparelho para quem transmite (refaz a ligação com a faixa nova). */
+  setUpstream(stream: MediaStream | null) {
+    if (stream === this.up) return;
+    this.up = stream;
+    const t = this.vTarget;
+    if (this.vpc && t) {
+      this.unwatch();
+      void this.watch(t);
+    }
+  }
+  get upstream() {
+    return this.up;
   }
 
   // ---------------- quem transmite
@@ -124,6 +153,7 @@ export class StudioLink {
     p?.dc?.close();
     p?.pc.close();
     this.peers.delete(device);
+    if (this.feeding.delete(device)) this.onFeed?.(device, null);
   }
 
   private async serve(device: string, sdp: string) {
@@ -131,6 +161,11 @@ export class StudioLink {
     if (!stream) return;
     this.drop(device);
     const pc = new RTCPeerConnection({ iceServers: ICE });
+    // câmera vinda do outro aparelho
+    pc.ontrack = (e) => {
+      this.feeding.add(device);
+      this.onFeed?.(device, e.streams[0] ?? new MediaStream([e.track]));
+    };
     const peer: { pc: RTCPeerConnection; dc?: RTCDataChannel } = { pc };
     this.peers.set(device, peer);
     const track = stream.getVideoTracks()[0];
@@ -145,7 +180,11 @@ export class StudioLink {
       e.channel.onopen = () => this.onOpen?.(device);
     };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') if (this.peers.get(device)?.pc === pc) this.peers.delete(device);
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed')
+        if (this.peers.get(device)?.pc === pc) {
+          this.peers.delete(device);
+          if (this.feeding.delete(device)) this.onFeed?.(device, null);
+        }
     };
     await pc.setRemoteDescription({ type: 'offer', sdp });
     await pc.setLocalDescription(await pc.createAnswer());

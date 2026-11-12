@@ -285,6 +285,19 @@ export function Studio({
   const [canShare, setCanShare] = useState(false);
 
   const camTrack = useRef<MediaStreamTrack | null>(null);
+  /**
+   * Câmera de outro aparelho em uso (ex.: celular): ele só manda a imagem; quem transmite e escreve continua
+   * sendo este aparelho, então trocar de câmera não interrompe a live.
+   */
+  const [feed, setFeed] = useState<{ device: string; id: string } | null>(null);
+  const feedRef = useRef(feed);
+  feedRef.current = feed;
+  const feedStreams = useRef(new Map<string, MediaStream>());
+  /** a câmera em uso vem de outro aparelho (não é para parar a faixa ao trocar) */
+  const camRemote = useRef(false);
+  const feedTimer = useRef(0);
+  /** câmera deste aparelho indo para quem transmite */
+  const feedOut = useRef<MediaStream | null>(null);
   const screenTrack = useRef<MediaStreamTrack | null>(null);
   const micStream = useRef<MediaStream | null>(null);
   const audio = useRef<{
@@ -467,6 +480,7 @@ export function Studio({
     l.onStream = setMirrorStream;
     l.onMessage = (m, from) => onLinkMsg.current(m, from);
     l.onOpen = (d) => onLinkOpen.current(d);
+    l.onFeed = (d, st) => onFeed.current(d, st);
     link.current = l;
     return () => l.close();
   }, [liveId]);
@@ -872,6 +886,22 @@ export function Studio({
   // Câmera escolhida
   useEffect(() => {
     if (!cam) return;
+    if (feed && !light) {
+      // câmera de outro aparelho: solta a daqui e usa a imagem que chega
+      if (!camRemote.current) {
+        camTrack.current?.stop();
+        camTrack.current = null;
+        comp.current?.setCamera(null);
+      }
+      applyFeed();
+      return;
+    }
+    if (camRemote.current) {
+      // voltou para a câmera daqui (a faixa do outro aparelho não é nossa para parar)
+      camRemote.current = false;
+      camTrack.current = null;
+    }
+    window.clearTimeout(feedTimer.current);
     if (cam === 'none' || light) {
       comp.current?.setCamera(null);
       camTrack.current?.stop();
@@ -916,7 +946,7 @@ export function Studio({
     return () => {
       cancelled = true;
     };
-  }, [cam, res, light]);
+  }, [cam, res, light, feed]);
 
   /** Espelhar a tela inteira ou uma janela (o navegador mostra a lista para escolher). */
   async function shareScreen(surface: 'monitor' | 'window') {
@@ -1243,7 +1273,8 @@ export function Studio({
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
   reportRef.current = () => {
     const d = devicesNow();
-    const rep = { label: device.current.label, cams: d.cams.filter((c) => c.id !== 'none'), mics: d.mics.filter((m) => m.id !== 'none'), cam, mic };
+    // "@aparelho|câmera": a câmera em uso vem de outro aparelho
+    const rep = { label: device.current.label, cams: d.cams.filter((c) => c.id !== 'none'), mics: d.mics.filter((m) => m.id !== 'none'), cam: feed ? `@${feed.device}|${feed.id}` : cam, mic };
     const key = JSON.stringify(rep);
     const now = Date.now();
     if (key === reported.current.key && now - reported.current.at < 15_000) return null;
@@ -1272,6 +1303,63 @@ export function Studio({
     setArmed(false);
   }
 
+  /** usa a imagem que chega do outro aparelho como a câmera da live */
+  function applyFeed() {
+    const f = feedRef.current;
+    if (!f || light) return;
+    const track = feedStreams.current.get(f.device)?.getVideoTracks()[0];
+    window.clearTimeout(feedTimer.current);
+    if (track && track.readyState === 'live') {
+      if (camTrack.current !== track) {
+        if (!camRemote.current) camTrack.current?.stop();
+        camTrack.current = track;
+        camRemote.current = true;
+        comp.current?.setCamera(track);
+      }
+      return;
+    }
+    // ainda não chegou (ou caiu): espera um pouco e volta para a câmera daqui, sem derrubar a live
+    feedTimer.current = window.setTimeout(() => {
+      if (feedRef.current?.device !== f.device || feedStreams.current.get(f.device)) return;
+      toast.error('A câmera do outro aparelho não chegou (abra o Estúdio nele). Voltei para a câmera daqui.');
+      setFeed(null);
+    }, 12_000);
+  }
+  const onFeed = useRef<(d: string, st: MediaStream | null) => void>(() => {});
+  onFeed.current = (d, st) => {
+    if (st) feedStreams.current.set(d, st);
+    else feedStreams.current.delete(d);
+    if (feedRef.current?.device !== d) return;
+    if (!st && camRemote.current) {
+      // caiu: mantém o último quadro por instantes; se não voltar, a câmera daqui assume
+      comp.current?.setCamera(null);
+      camTrack.current = null;
+      camRemote.current = false;
+    }
+    applyFeed();
+  };
+  /** Este aparelho manda a câmera para quem transmite ('' = para de mandar). */
+  async function sendCamera(id: string) {
+    feedOut.current?.getTracks().forEach((t) => t.stop());
+    feedOut.current = null;
+    if (!id) return link.current?.setUpstream(null);
+    const want = (deviceId?: string) =>
+      navigator.mediaDevices.getUserMedia({
+        video: { ...(deviceId ? { deviceId: { exact: deviceId } } : {}), width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } },
+      });
+    const st = await want(id).catch(() => want().catch(() => null));
+    if (!st) return toast.error('Não foi possível abrir a câmera deste aparelho.');
+    feedOut.current = st;
+    link.current?.setUpstream(st);
+    toast('Enviando a câmera deste aparelho para a live');
+  }
+  // este aparelho passou a transmitir (ou saiu do estúdio): para de mandar a câmera como "outro aparelho"
+  useEffect(() => {
+    if (!light && feedOut.current) void sendCamera('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [light]);
+  useEffect(() => () => feedOut.current?.getTracks().forEach((t) => t.stop()), []);
+
   // Comandos de outros aparelhos
   const onCmd = useRef<(c: { t: string; id?: string }) => Promise<void>>(async () => {});
   onCmd.current = async (c) => {
@@ -1279,6 +1367,8 @@ export function Studio({
       await refreshDevices(false);
       reported.current.key = '';
     } else if (c.t === 'cam' && caster.current && c.id) setCam(c.id);
+    else if (c.t === 'feed') await sendCamera(light ? (c.id ?? '') : '');
+    else if (c.t === 'usecam' && !light && c.id) await pickAnyCam(c.id);
     else if (c.t === 'mic' && caster.current && c.id) setMic(c.id);
     else if (c.t === 'take') {
       if (liveOn) toast('Assumindo a live…');
@@ -1513,16 +1603,25 @@ export function Studio({
   /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
   async function pickAnyCam(v: string) {
     const [dev, id] = v.split('|');
-    if (dev === device.current.id) {
-      if (onAir || !stageDev || stageDev === device.current.id) setCam(id);
-      else await takeOver(id);
+    const me = device.current.id;
+    if (light) {
+      // quem só controla pede ao aparelho que transmite; a live não muda de aparelho
+      if (stageDev) await studioCommand(liveId, stageDev, { t: 'usecam', id: v });
       return;
     }
-    if (dev === stageDev) await studioCommand(liveId, dev, { t: 'cam', id });
-    else {
-      await studioCommand(liveId, dev, { t: 'take', id });
-      toast(`${liveOn ? 'Passando a live para o' : 'Câmera do'} ${devices.find((d) => d.device === dev)?.label ?? 'outro aparelho'}…`);
+    const stop = feedRef.current;
+    if (dev === me) {
+      // câmera daqui
+      if (stop) void studioCommand(liveId, stop.device, { t: 'feed', id: '' });
+      setFeed(null);
+      setCam(id);
+      return;
     }
+    // câmera de outro aparelho: ele manda a imagem e este continua transmitindo
+    if (stop && stop.device !== dev) void studioCommand(liveId, stop.device, { t: 'feed', id: '' });
+    setFeed({ device: dev, id });
+    await studioCommand(liveId, dev, { t: 'feed', id });
+    toast(`Câmera do ${devices.find((d) => d.device === dev)?.label ?? 'outro aparelho'}…`);
   }
   /** o aparelho principal (outro aparelho): a câmera e o microfone em uso são os dele */
   const holderDev = light ? (devices.find((d) => d.device === stageDev) ?? null) : null;
@@ -1537,7 +1636,13 @@ export function Studio({
       .filter((d) => d.device !== device.current.id && d.cams.length)
       .map((d) => ({ device: d.device, label: `${d.label}${tag(d.device)}`, cams: d.cams })),
   ];
-  const camValue = holderDev ? `${holderDev.device}|${holderDev.cam}` : `${device.current.id}|${cam}`;
+  const camValue = holderDev
+    ? holderDev.cam.startsWith('@')
+      ? holderDev.cam.slice(1)
+      : `${holderDev.device}|${holderDev.cam}`
+    : feed
+      ? `${feed.device}|${feed.id}`
+      : `${device.current.id}|${cam}`;
   async function scanAll() {
     setScanning(true);
     await refreshDevices(false);

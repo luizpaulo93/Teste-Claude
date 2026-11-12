@@ -456,7 +456,7 @@ export interface StudioDevice {
   cam: string;
   mic: string;
 }
-type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan' | 'start'; id?: string };
+type StudioCmd = { t: 'cam' | 'mic' | 'take' | 'scan' | 'start' | 'feed' | 'usecam'; id?: string };
 
 export async function pollStudio(
   id: string,
@@ -576,7 +576,7 @@ export async function rtcSend(id: string, from: string, to: string, kind: 'offer
 /** Comando para outro aparelho do estúdio: trocar câmera/microfone de quem transmite ou assumir a live com uma câmera. */
 export async function studioCommand(id: string, device: string, cmd: StudioCmd) {
   await requireAdminAction();
-  if (!isDocId(id) || !['cam', 'mic', 'take', 'scan', 'start'].includes(cmd?.t)) return { error: 'Inválido.' };
+  if (!isDocId(id) || !['cam', 'mic', 'take', 'scan', 'start', 'feed', 'usecam'].includes(cmd?.t)) return { error: 'Inválido.' };
   await sql.exec(`update live_devices set cmd = $3 where live_id = $1 and device = $2`, [
     id,
     String(device).slice(0, 64),
