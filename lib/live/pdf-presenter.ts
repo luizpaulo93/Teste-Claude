@@ -96,6 +96,11 @@ export class PdfPresenter {
     this.clamp();
     this.onChange?.();
   }
+  /** Volta para uma posição (ex.: desfaz o que a palma da mão mexeu) e avisa os outros aparelhos. */
+  restore(v: PdfPos) {
+    this.setView(v);
+    this.onView?.(this.pos);
+  }
   private moved() {
     this.onView?.(this.pos);
   }

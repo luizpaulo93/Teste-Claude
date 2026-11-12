@@ -5,7 +5,30 @@
  */
 import { getStroke } from 'perfect-freehand';
 
-export type InkTool = 'hand' | 'pen' | 'marker' | 'laser' | 'eraser' | 'select';
+export type InkTool = 'hand' | 'pen' | 'marker' | 'laser' | 'eraser' | 'select' | 'shape';
+export type ShapeKind = 'line' | 'arrow' | 'rect' | 'ellipse';
+
+/** Pontos de uma forma (reta, seta, retângulo, elipse) entre onde o toque começou e onde está. */
+export function shapePoints(kind: ShapeKind, x0: number, y0: number, x1: number, y1: number): number[] {
+  if (kind === 'rect') return [x0, y0, x1, y0, x1, y1, x0, y1, x0, y0];
+  if (kind === 'ellipse') {
+    const cx = (x0 + x1) / 2;
+    const cy = (y0 + y1) / 2;
+    const rx = Math.abs(x1 - x0) / 2;
+    const ry = Math.abs(y1 - y0) / 2;
+    const out: number[] = [];
+    for (let i = 0; i <= 48; i++) out.push(cx + rx * Math.cos((i / 48) * 2 * Math.PI), cy + ry * Math.sin((i / 48) * 2 * Math.PI));
+    return out;
+  }
+  if (kind === 'arrow') {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    const h = Math.min(len * 0.35, Math.max(0.012, len * 0.18));
+    const a = Math.atan2(y1 - y0, x1 - x0);
+    const p = (da: number) => [x1 - h * Math.cos(a + da), y1 - h * Math.sin(a + da)];
+    return [x0, y0, x1, y1, ...p(0.45), x1, y1, ...p(-0.45)];
+  }
+  return [x0, y0, x1, y1];
+}
 
 export interface Stroke {
   id: string;
@@ -17,6 +40,8 @@ export interface Stroke {
   pts: number[];
   /** pressão da caneta em cada ponto (0..1); sem ela, a espessura segue a velocidade */
   pr?: number[];
+  /** forma geométrica (reta, seta, retângulo, elipse): linha reta entre os pontos, espessura fixa */
+  shape?: boolean;
 }
 export interface InkOps {
   add?: Stroke[];
@@ -35,6 +60,8 @@ export interface PackedStroke {
   d: string;
   /** pressão em cada ponto */
   p?: string;
+  /** 1 = forma geométrica */
+  s?: 1;
 }
 export interface PackedOps {
   add?: PackedStroke[];
@@ -93,6 +120,7 @@ function unpackSeq(s: string, step: number, stride: number) {
 export function packStroke(s: Stroke): PackedStroke {
   const p: PackedStroke = { id: s.id, tool: s.tool, color: s.color, size: Math.round(s.size * 1e6) / 1e6, d: packSeq(s.pts, 10000, 2) };
   if (s.pr) p.p = packSeq(s.pr, 50, 1);
+  if (s.shape) p.s = 1;
   return p;
 }
 export function unpackStroke(x: PackedStroke | Stroke): Stroke | null {
@@ -108,6 +136,7 @@ export function unpackStroke(x: PackedStroke | Stroke): Stroke | null {
     const pr = unpackSeq(k.p, 50, 1);
     if (pr.length === pts.length / 2) s.pr = pr;
   }
+  if (k.s === 1) s.shape = true;
   return s;
 }
 export const packOps = (o: InkOps): PackedOps => ({ ...(o.add ? { add: o.add.map(packStroke) } : {}), ...(o.remove ? { remove: o.remove } : {}) });
@@ -190,12 +219,13 @@ function penOutline(s: Stroke, done: boolean): number[] {
   for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? s.pr![i] : 0.5];
   const out = getStroke(input, {
     size: s.size * U,
-    thinning: hasPr ? 0.6 : 0,
-    smoothing: 0.62,
-    streamline: 0.32,
+    // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
+    thinning: hasPr ? 0.52 : 0,
+    smoothing: 0.74,
+    streamline: 0.3,
     simulatePressure: false,
-    start: { cap: true },
-    end: { cap: true },
+    start: { cap: true, taper: s.size * U * 1.2 },
+    end: { cap: true, taper: s.size * U * 2.4 },
     last: done,
   });
   const flat = new Array(out.length * 2);
@@ -306,8 +336,25 @@ export class InkLayer {
 
   /** desenha um traço (também usado pela camada rápida que mostra o traço enquanto escreve) */
   drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live = s === this.current) {
-    if (s.tool === 'pen') this.fillPen(ctx, s, v, live);
+    if (s.shape) this.poly(ctx, s, v);
+    else if (s.tool === 'pen') this.fillPen(ctx, s, v, live);
     else this.path(ctx, s, v);
+  }
+
+  /** forma geométrica: segmentos retos, espessura fixa */
+  private poly(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView) {
+    const p = s.pts;
+    if (p.length < 4) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = Math.max(1, s.size * v.k);
+    ctx.beginPath();
+    ctx.moveTo(v.x + (p[0] - v.cx) * v.k, v.y + (p[1] - v.cy) * v.k);
+    for (let i = 2; i < p.length; i += 2) ctx.lineTo(v.x + (p[i] - v.cx) * v.k, v.y + (p[i + 1] - v.cy) * v.k);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private fillPen(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live: boolean) {
@@ -421,14 +468,21 @@ export class InkLayer {
     this.boxes.delete(c);
     this.liveO = null;
     // guarda a versão enxuta; o desenho aqui continua o do traço completo (não muda ao soltar)
-    const lean = simplify(c);
-    if (c.tool === 'pen') this.outlines.set(lean, penOutline(c, true));
+    const lean = c.shape ? c : simplify(c);
+    if (c.tool === 'pen' && !c.shape) this.outlines.set(lean, penOutline(c, true));
     this.list.push(lean);
     this.ver++;
     return { add: [lean] };
   }
   cancel() {
     this.current = null;
+  }
+  /** forma geométrica: começa num ponto e é refeita a cada movimento */
+  beginShape(color: string, size: number, x: number, y: number) {
+    this.current = { id: newStrokeId(), tool: 'pen', color, size, pts: [r4(x), r4(y), r4(x), r4(y)], shape: true };
+  }
+  setShape(pts: number[]) {
+    if (this.current?.shape) this.current.pts = pts.map(r4);
   }
 
   laser(id: string, color: string, x: number, y: number) {
