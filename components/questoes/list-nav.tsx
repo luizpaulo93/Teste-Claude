@@ -85,7 +85,16 @@ export function ListNav({ items, finishId }: { items: NavItem[]; finishId?: stri
     setBusy(false);
     if (r && 'error' in r && r.error) return toast.error(r.error);
     close();
-    toast('Finalizado! Veja o que você acertou e errou.');
+    const ck = r && 'check' in r ? r.check : null;
+    toast(
+      ck
+        ? ck.passed
+          ? `Verificação: ${ck.ok}/${ck.total}. Assunto aprendido!`
+          : ck.next
+            ? `Verificação: ${ck.ok}/${ck.total}. Revise o assunto: uma nova lista foi criada na Mentoria.`
+            : `Verificação: ${ck.ok}/${ck.total}. Fale com o seu mentor sobre este assunto.`
+        : 'Finalizado! Veja o que você acertou e errou.',
+    );
     window.scrollTo({ top: 0, behavior: 'smooth' });
     router.refresh();
   }

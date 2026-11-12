@@ -4,6 +4,8 @@ import { PlanBuilder } from '@/components/mentoria/plan-builder';
 import { AssuntoPicker } from '@/components/mentoria/assunto-picker';
 import { DayList } from '@/components/mentoria/day-list';
 import { BlocksPanel } from '@/components/mentoria/blocks-panel';
+import { Checks } from '@/components/mentoria/checks';
+import { checksOf } from '@/lib/mentoria-checks';
 import { Card } from '@/components/ui';
 import { blocksOf, blocksOnDay, spacesOfMentoria } from '@/lib/mentoria-blocks';
 import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
@@ -18,7 +20,7 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
   const m = await getMentoria(decodeURIComponent((await params).id));
   if (!m) notFound();
   await ensureFresh(m.id);
-  const [list, data, spaces] = await Promise.all([cards(m.id), dayData(m, (await searchParams).d), spacesOfMentoria(m.id)]);
+  const [list, data, spaces, checks] = await Promise.all([cards(m.id), dayData(m, (await searchParams).d), spacesOfMentoria(m.id), checksOf(m.id)]);
   const blocks = await blocksOf(spaces);
   const end = planEnd(m, todayBR());
   const out = list.filter((c) => c.scheduled_on === null).length;
@@ -31,6 +33,9 @@ export default async function AdminMentoriaPlan({ params, searchParams }: { para
     <div className="space-y-4">
       <Card className="p-4 sm:p-5">
         <BlocksPanel space={`m:${m.id}`} blocks={blocks.filter((b) => b.space === `m:${m.id}`)} today={todayBR()} />
+      </Card>
+      <Card className="p-4 sm:p-5">
+        <Checks checks={checks} mentoriaId={m.id} />
       </Card>
       {m.scope !== 'especifica' && (
         <Card className="p-4 sm:p-5">

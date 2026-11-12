@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
 import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/enem-matriz';
 import { afterScore, shift, todayBR } from '@/lib/mentoria';
+import { checkOptions, createCheck } from '@/lib/mentoria-checks';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
 import { isDocId } from '@/lib/utils';
@@ -191,6 +192,33 @@ export async function removeFromDay(id: string, mentoriaId?: string): Promise<Re
   if (!del)
     await sql.exec(`update mentoria_cards set pinned_on = null, updated_at = now() where id = $1 and mentoria_id = $2 and block_id is null`, [id, a.id]);
   await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true };
+}
+
+/** Mentor: assuntos com questões no banco (para montar a lista de verificação). */
+export async function checkAssuntos() {
+  const viewer = await getViewer();
+  if (!viewer?.isAdmin) return [];
+  return checkOptions();
+}
+
+/** Mentor: cria a lista de verificação (6 questões) do assunto escolhido para o aluno. */
+export async function createCheckList(mentoriaId: string, discipline: string, assunto: string): Promise<Result & { count?: number }> {
+  const a = await access(mentoriaId);
+  if (!a?.mentor) return { error: 'Acesso negado.' };
+  const r = await createCheck({ mentoriaId: a.id, discipline: String(discipline).slice(0, 80), assunto: String(assunto).slice(0, 200), by: a.name });
+  if ('error' in r) return { error: r.error };
+  refresh(a.id);
+  revalidatePath('/questoes');
+  return { ok: true, count: r.count };
+}
+
+/** Mentor: apaga uma lista de verificação (e as respostas do aluno nela). */
+export async function deleteCheckList(mentoriaId: string, checkId: string): Promise<Result> {
+  const a = await access(mentoriaId);
+  if (!a?.mentor) return { error: 'Acesso negado.' };
+  await sql.exec(`delete from question_lists where id = (select list_id from mentoria_checks where id = $1 and mentoria_id = $2)`, [checkId, a.id]);
   refresh(a.id);
   return { ok: true };
 }

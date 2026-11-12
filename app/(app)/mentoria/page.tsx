@@ -1,7 +1,9 @@
 import { CalendarClock, Video } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Checks } from '@/components/mentoria/checks';
 import { DayList } from '@/components/mentoria/day-list';
+import { checksOf } from '@/lib/mentoria-checks';
 import { buttonClass, Card } from '@/components/ui';
 import { emailKey, sql } from '@/lib/db';
 import { blocksOf, blocksOnDay, spacesOfMentoria } from '@/lib/mentoria-blocks';
@@ -16,12 +18,18 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  const [has, blocks] = await Promise.all([
+  const [has, blocks, checks] = await Promise.all([
     sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]),
     spacesOfMentoria(m.id).then(blocksOf),
+    checksOf(m.id),
   ]);
   if (!has && !blocks.length) {
-    return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>;
+    return (
+      <div className="space-y-4">
+        <Checks checks={checks} />
+        <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>
+      </div>
+    );
   }
   await ensureFresh(m.id);
   const [data, meeting] = await Promise.all([dayData(m, (await searchParams).d), nextMeeting(m.id)]);
@@ -46,6 +54,7 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
           )}
         </Card>
       )}
+      <Checks checks={checks} />
       <DayList key={data.day + data.items.map((i) => i.id + i.step).join()} {...data} folder={blocksOnDay(blocks, data.day)} />
     </div>
   );

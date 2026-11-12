@@ -861,3 +861,23 @@ create index if not exists questions_vestibular_idx on questions (vestibular);
 -- Versão 31: problemas achados na importação (fórmula com erro, texto corrompido), por prova.
 -- ============================================================================
 alter table exam_papers add column if not exists problems jsonb not null default '[]'::jsonb;
+
+-- ============================================================================
+-- Versão 32: listas de verificação da mentoria (6 questões por assunto; errou muito, o app cria outra).
+-- ============================================================================
+create table if not exists mentoria_checks (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  discipline text not null,
+  assunto text not null,
+  list_id text not null references question_lists (id) on delete cascade,
+  round int not null default 1,
+  auto boolean not null default false,       -- criada sozinha depois de uma lista com muitos erros
+  status text not null default 'open',       -- open | passed | failed
+  ok int,
+  total int,
+  created_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+create index if not exists mentoria_checks_idx on mentoria_checks (mentoria_id, created_at desc);
+create index if not exists mentoria_checks_list_idx on mentoria_checks (list_id);
