@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh as refreshClient } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
 import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/enem-matriz';
 import { afterScore, shift, todayBR } from '@/lib/mentoria';
@@ -24,10 +24,10 @@ async function access(mentoriaId?: string): Promise<{ id: string; mentor: boolea
   return row ? { id: row.id, mentor: false, name: viewer.profile.full_name || viewer.email } : null;
 }
 
+/** atualiza as telas de quem fez a ação (sem jogar fora o cache de dados do servidor, como o revalidatePath faz) */
 function refresh(id: string) {
-  revalidatePath('/mentoria', 'layout');
-  revalidatePath(`/admin/mentoria/${id}`, 'layout');
-  revalidatePath('/admin/mentoria');
+  void id;
+  refreshClient();
 }
 
 const clampInt = (v: unknown, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)));
@@ -210,7 +210,6 @@ export async function createCheckList(mentoriaId: string, discipline: string, as
   const r = await createCheck({ mentoriaId: a.id, discipline: String(discipline).slice(0, 80), assunto: String(assunto).slice(0, 200), by: a.name });
   if ('error' in r) return { error: r.error };
   refresh(a.id);
-  revalidatePath('/questoes');
   return { ok: true, count: r.count };
 }
 

@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh } from 'next/cache';
 import { sql } from '@/lib/db';
 import { canSeeList, getList } from '@/lib/question-lists';
 import { afterListFinished } from '@/lib/mentoria-checks';
@@ -59,15 +59,14 @@ export async function finishList(listId: string) {
      on conflict (list_id, user_id) do update set open = false`,
     [listId, v.userId, list.question_ids],
   );
-  revalidatePath(`/listas/${listId}`);
-  // lista de verificação da mentoria: com muitos erros, a próxima lista do assunto é criada sozinha
+  refresh();
+// lista de verificação da mentoria: com muitos erros, a próxima lista do assunto é criada sozinha
   if (!v.isAdmin) {
     const f = await sql.one<{ ok: number; total: number }>(`select ok, total from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
     const check = f ? await afterListFinished(listId, f.ok ?? 0, f.total ?? 0).catch(() => null) : null;
     if (check) {
-      revalidatePath('/mentoria', 'layout');
-      revalidatePath('/admin/mentoria', 'layout');
-      return { check };
+      refresh();
+return { check };
     }
   }
   return {};
@@ -93,6 +92,6 @@ export async function restartList(listId: string) {
     [listId, v.userId, list.question_ids],
   );
   await sql.exec(`delete from list_responses where list_id = $1 and user_id = $2`, [listId, v.userId]);
-  revalidatePath(`/listas/${listId}`);
-  return {};
+  refresh();
+return {};
 }

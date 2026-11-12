@@ -12,9 +12,13 @@ export function SignOutButton({ className, label = 'Sair' }: { className?: strin
       onSubmit={async (e) => {
         e.preventDefault();
         const form = e.currentTarget;
-        await clientAuth()
-          .signOut()
-          .catch(() => {});
+        // sai na hora: espera o Firebase limpar a sessão local por no máximo 0,3 s
+        await Promise.race([
+          clientAuth()
+            .signOut()
+            .catch(() => {}),
+          new Promise((r) => setTimeout(r, 300)),
+        ]);
         form.submit();
       }}
     >

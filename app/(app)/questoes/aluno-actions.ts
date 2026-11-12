@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh } from 'next/cache';
 import { newId, sql } from '@/lib/db';
 import { questionHtml } from '@/lib/list-html';
 import { adminFilterOptions, adminSearch, adminSearchIds, getList, itemsOf, randomCount, randomIds, type AdminFilters } from '@/lib/question-lists';
@@ -77,8 +77,8 @@ export async function saveMyList(input: { id?: string; title: string; ids: strin
      on conflict (id) do update set title = excluded.title, question_ids = excluded.question_ids, updated_at = now()`,
     [id, title, ids, v.userId],
   );
-  revalidatePath('/questoes');
-  return { id };
+  refresh();
+return { id };
 }
 
 type RandomInput = { vestibular?: string[]; area?: string[]; disciplina?: string[]; assunto?: string[]; habilidade?: string[]; dificuldade?: string[] };
@@ -122,15 +122,15 @@ export async function createRandomList(input: {
     ids,
     v.userId,
   ]);
-  revalidatePath('/questoes');
-  return { id, count: ids.length };
+  refresh();
+return { id, count: ids.length };
 }
 
 export async function deleteMyList(id: string) {
   const v = await student();
   await sql.exec(`delete from question_lists where id = $1 and owner_id = $2`, [id, v.userId]);
-  revalidatePath('/questoes');
-  return {};
+  refresh();
+return {};
 }
 
 /** Opções do sorteio: vestibular, área, disciplina, assunto e habilidade (as que existem no banco). */

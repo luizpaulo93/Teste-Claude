@@ -92,7 +92,12 @@ function wrap(run: (text: string, params?: unknown[]) => Promise<{ rows: unknown
 /** Consultas simples (cada uma pega uma conexão do pool e devolve na hora). */
 export const sql: Queryable = wrap(async (text, params) => {
   await ensureSchema();
-  return pool().query(text, params as unknown[]);
+  // SQL_LOG=1: mostra cada consulta e o tempo (para achar telas que consultam demais)
+  if (!process.env.SQL_LOG) return pool().query(text, params as unknown[]);
+  const t = performance.now();
+  const r = await pool().query(text, params as unknown[]);
+  console.log(`[sql] ${(performance.now() - t).toFixed(1)}ms ${text.replace(/\s+/g, ' ').slice(0, 90)}`);
+  return r;
 });
 
 /** Transação: tudo ou nada. */

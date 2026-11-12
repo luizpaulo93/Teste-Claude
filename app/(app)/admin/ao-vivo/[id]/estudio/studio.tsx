@@ -149,8 +149,9 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
 
 // Escrita no PDF: cores e espessuras (em larguras de página)
 const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
-const INK_SIZES = { pen: { s: 0.0022, m: 0.004, l: 0.007 }, marker: { s: 0.012, m: 0.02, l: 0.03 } } as const;
-type InkSize = 's' | 'm' | 'l';
+/** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
+const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004 } as const;
+type Sized = keyof typeof INK_UNIT;
 type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number } };
 
 const clock = (s: number) =>
@@ -396,8 +397,24 @@ export function Studio({
     } catch {}
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
-  const [inkSize, setInkSize] = useState<InkSize>('m');
-  const [inkPop, setInkPop] = useState<'pen' | 'marker' | 'shape' | null>(null);
+  // tamanho de cada ferramenta (0,1 a 7), lembrado neste aparelho
+  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4 });
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
+      if (v && typeof v === 'object') setInkW((o) => ({ ...o, ...Object.fromEntries(Object.entries(v).filter(([k, n]) => k in o && typeof n === 'number' && n >= 0.1 && n <= 7)) }));
+    } catch {}
+  }, []);
+  const setSize = (k: Sized, n: number) =>
+    setInkW((o) => {
+      const next = { ...o, [k]: Math.min(7, Math.max(0.1, Math.round(n * 10) / 10)) };
+      try {
+        localStorage.setItem('studio-ink-sizes', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  /** opções recolhidas da barra: cores ou tamanho */
+  const [inkPop, setInkPop] = useState<'color' | 'size' | null>(null);
   const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
   /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
   const [writing, setWriting] = useState(false);
@@ -1294,14 +1311,18 @@ export function Studio({
       cn('relative grid size-10 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black shadow' : 'text-white hover:bg-white/15');
     const sep = <span className="mx-1 h-6 w-px shrink-0 bg-white/20" />;
     const paints = inkTool === 'pen' || inkTool === 'marker' || inkTool === 'shape' || inkTool === 'laser';
+    // ferramenta com tamanho ajustável (as formas usam o da caneta)
+    const sized: Sized | null = inkTool === 'pen' || inkTool === 'shape' ? 'pen' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : null;
     const pick = (t: InkTool) => {
       setInkTool(t);
+      setInkPop(null);
       if (t !== 'select') {
         ink.current.selected.clear();
         setSelBox(null);
       }
     };
     return (
+      <>
       <div
         role="toolbar"
         aria-label="Ferramentas de escrita"
@@ -1330,43 +1351,31 @@ export function Studio({
             ))}
           </>
         )}
+        {(paints || sized) && sep}
         {paints && (
-          <>
-            {sep}
-            {INK_COLORS.map((c) => (
-              <button
-                key={c}
-                type="button"
-                onClick={() => setInkColor(c)}
-                aria-label={`Cor ${c}`}
-                aria-pressed={inkColor === c}
-                className="grid size-8 shrink-0 place-items-center rounded-full"
-              >
-                <span
-                  className={cn('block rounded-full transition-all', inkColor === c ? 'size-6 ring-2 ring-white ring-offset-2 ring-offset-neutral-900' : 'size-5 ring-1 ring-white/30')}
-                  style={{ background: c }}
-                />
-              </button>
-            ))}
-            {inkTool !== 'laser' && (
-              <>
-                {sep}
-                {(['s', 'm', 'l'] as InkSize[]).map((z, i) => (
-                  <button
-                    key={z}
-                    type="button"
-                    onClick={() => setInkSize(z)}
-                    aria-label={['Fina', 'Média', 'Grossa'][i]}
-                    aria-pressed={inkSize === z}
-                    title={['Fina', 'Média', 'Grossa'][i]}
-                    className={cn('grid size-9 shrink-0 place-items-center rounded-full transition', inkSize === z ? 'bg-white/20' : 'hover:bg-white/10')}
-                  >
-                    <span className="rounded-full bg-white" style={{ width: [5, 9, 14][i], height: [5, 9, 14][i] }} />
-                  </button>
-                ))}
-              </>
-            )}
-          </>
+          <button
+            type="button"
+            onClick={() => setInkPop((p) => (p === 'color' ? null : 'color'))}
+            aria-label="Cores"
+            aria-expanded={inkPop === 'color'}
+            title="Cores"
+            className={btn(false)}
+          >
+            <span className="block size-6 rounded-full ring-2 ring-white/80" style={{ background: inkTool === 'laser' ? laserColor : strokeStyle(inkTool === 'marker' ? 'marker' : 'pen').color }} />
+          </button>
+        )}
+        {sized && (
+          <button
+            type="button"
+            onClick={() => setInkPop((p) => (p === 'size' ? null : 'size'))}
+            aria-label="Tamanho"
+            aria-expanded={inkPop === 'size'}
+            title="Tamanho"
+            className={cn(btn(false), 'w-auto gap-1.5 px-2.5 text-xs font-bold tabular-nums')}
+          >
+            <span className="block rounded-full bg-white" style={{ width: 4 + inkW[sized] * 2, height: 4 + inkW[sized] * 2 }} />
+            {inkW[sized].toFixed(1).replace('.', ',')}
+          </button>
         )}
         {sep}
         <button type="button" onClick={undoInk} aria-label="Desfazer" title="Desfazer" className={btn(false)}>
@@ -1387,6 +1396,43 @@ export function Studio({
           <X className="size-[18px]" />
         </button>
       </div>
+      {inkPop === 'color' && paints && (
+        <div className="absolute top-16 left-2 z-40 flex animate-scale-in gap-1.5 rounded-full border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl max-sm:top-28">
+          {INK_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setInkColor(c);
+                setInkPop(null);
+              }}
+              aria-label={`Cor ${c}`}
+              aria-pressed={inkColor === c}
+              className="grid size-9 place-items-center rounded-full"
+            >
+              <span className={cn('block rounded-full transition-all', inkColor === c ? 'size-7 ring-2 ring-white ring-offset-2 ring-offset-neutral-900' : 'size-6 ring-1 ring-white/30')} style={{ background: c }} />
+            </button>
+          ))}
+        </div>
+      )}
+      {inkPop === 'size' && sized && (
+        <div className="absolute top-16 left-2 z-40 flex w-72 max-w-[calc(100%-1rem)] animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl max-sm:top-28">
+          <span className="block size-1.5 shrink-0 rounded-full bg-white" />
+          <input
+            type="range"
+            min={0.1}
+            max={7}
+            step={0.1}
+            value={inkW[sized]}
+            onChange={(e) => setSize(sized, Number(e.target.value))}
+            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : 'Tamanho da caneta'}
+            className="h-8 min-w-0 flex-1 accent-white"
+          />
+          <span className="block size-4 shrink-0 rounded-full bg-white" />
+          <span className="w-8 shrink-0 text-right text-xs font-bold tabular-nums">{inkW[sized].toFixed(1).replace('.', ',')}</span>
+        </div>
+      )}
+      </>
     );
   }
 
@@ -1569,7 +1615,7 @@ export function Studio({
   /** cor e espessura de cada ferramenta */
   const strokeStyle = (tool: 'pen' | 'marker') => ({
     color: tool === 'marker' && inkColor === '#111111' ? '#facc15' : inkColor,
-    size: INK_SIZES[tool][inkSize],
+    size: inkW[tool] * INK_UNIT[tool],
   });
   const laserColor = inkColor === '#111111' ? '#ef4444' : inkColor;
   const laserSent = useRef(0);
@@ -1717,7 +1763,7 @@ export function Studio({
       st.laser = newStrokeId();
       ink.current.laser(st.laser, laserColor, d.x, d.y);
     } else if (tool === 'eraser') {
-      st.erased = ink.current.erase(d.x, d.y, 0.015 * pdf.current.viewWidth);
+      st.erased = ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth);
     } else if (tool === 'select') {
       st.lasso = [d.x, d.y];
       lasso.current = st.lasso;
@@ -1741,7 +1787,7 @@ export function Studio({
       if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined);
       else if (st.tool === 'shape' && st.from) ink.current.setShape(shapePoints(shapeKind, st.from.x, st.from.y, d.x, d.y));
       else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, d.x, d.y);
-      else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, 0.015 * pdf.current.viewWidth));
+      else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth));
       else if (st.tool === 'select' && st.lasso) st.lasso.push(d.x, d.y);
     }
     if (st.tool === 'select' || st.tool === 'shape') fastDraw();

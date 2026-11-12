@@ -609,7 +609,7 @@ const cleanStroke = (x: PackedStroke): PackedStroke | null => {
     id: x.id.slice(0, 24),
     tool: x.tool === 'marker' ? 'marker' : 'pen',
     color: /^#[0-9a-f]{6}$/i.test(x.color) ? x.color : '#111111',
-    size: Math.min(0.2, Math.max(0.0005, Number(x.size) || 0.004)),
+    size: Math.min(0.2, Math.max(0.00005, Number(x.size) || 0.004)),
     d: x.d,
   };
   if (typeof x.p === 'string' && x.p.length <= 12000 && PACKED_RE.test(x.p)) s.p = x.p;

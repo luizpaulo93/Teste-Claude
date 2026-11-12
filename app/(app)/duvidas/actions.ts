@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh } from 'next/cache';
 import { authorOf } from '@/lib/author';
 import { newId, sql, tx } from '@/lib/db';
 import { canUseSpace } from '@/lib/mentoria-space';
@@ -27,9 +27,7 @@ async function viewerFor(doubtId: string) {
 }
 
 function refreshSpace(space?: string | null) {
-  if (!space) return revalidatePath('/duvidas');
-  revalidatePath('/mentoria', 'layout');
-  revalidatePath('/admin/mentoria', 'layout');
+  if (!space) return refresh();
 }
 
 export async function createDoubt(text: string, imageUrl = '', space = '') {

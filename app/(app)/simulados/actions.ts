@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { refresh } from 'next/cache';
 import { sql, tx } from '@/lib/db';
 import { recalibrateIfReleased } from '@/lib/simulado-results';
 import { getViewer } from '@/lib/session';
@@ -69,9 +69,8 @@ export async function saveAnswers(simuladoId: string, answers: string) {
 async function afterDelivery(simuladoId: string) {
   try {
     await recalibrateIfReleased(simuladoId);
-    revalidatePath('/simulados', 'layout');
-    revalidatePath(`/admin/simulados/${simuladoId}`);
-  } catch (e) {
+    refresh();
+} catch (e) {
     console.error('[tri]', e instanceof Error ? e.message : e);
   }
 }

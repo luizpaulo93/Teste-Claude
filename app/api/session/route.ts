@@ -22,25 +22,20 @@ export async function POST(req: NextRequest) {
   const email = String(decoded.email ?? '').toLowerCase();
   if (!email) return NextResponse.json({ error: 'Sua conta não tem e-mail.' }, { status: 400 });
 
+  // o cookie de sessão (ida ao Google) é criado ao mesmo tempo que o perfil é gravado
+  const cookieP = adminAuth().createSessionCookie(idToken, { expiresIn: MAX_AGE * 1000 });
+  cookieP.catch(() => null);
   try {
-    const listed = await sql.one<{ ok: boolean }>(`select exists(select 1 from admins where email = $1) as ok`, [email]);
-    const isListedAdmin = email === BOOTSTRAP_ADMIN || Boolean(listed?.ok);
-    // Cria o perfil no primeiro acesso; depois só ajusta o papel e a foto (se ainda não tiver)
+    // Cria o perfil no primeiro acesso; depois só ajusta o papel e a foto (se ainda não tiver). Uma consulta só.
     await sql.exec(
-      `insert into users (id, email, full_name, avatar_url, role)
-       values ($1, $2, $3, $4, $5)
+      `with adm as (select ($6::boolean or exists(select 1 from admins where email = $2)) as ok)
+       insert into users (id, email, full_name, avatar_url, role)
+       select $1, $2, $3, $4, case when adm.ok then 'admin' else $5 end from adm
        on conflict (id) do update set
          email = excluded.email,
-         role = case when $6 then 'admin' else users.role end,
+         role = case when excluded.role = 'admin' then 'admin' else users.role end,
          avatar_url = case when users.avatar_url = '' then excluded.avatar_url else users.avatar_url end`,
-      [
-        decoded.uid,
-        email,
-        String(decoded.name ?? '') || email.split('@')[0],
-        String(decoded.picture ?? ''),
-        isListedAdmin ? 'admin' : 'student',
-        isListedAdmin,
-      ],
+      [decoded.uid, email, String(decoded.name ?? '') || email.split('@')[0], String(decoded.picture ?? ''), 'student', email === BOOTSTRAP_ADMIN],
     );
     revalidateTag(`viewer-${decoded.uid}`, { expire: 0 }); // perfil novo/atualizado aparece na hora
   } catch (e) {
@@ -48,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Não foi possível acessar o banco de dados. Tente de novo em instantes.' }, { status: 503 });
   }
 
-  const sessionCookie = await adminAuth().createSessionCookie(idToken, { expiresIn: MAX_AGE * 1000 });
+  const sessionCookie = await cookieP;
   (await cookies()).set(SESSION_COOKIE, sessionCookie, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production' && !process.env.FIREBASE_AUTH_EMULATOR_HOST,
