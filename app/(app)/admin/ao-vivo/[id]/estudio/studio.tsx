@@ -152,7 +152,7 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
 // Escrita no PDF: cores e espessuras (em larguras de página)
 const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
 /** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
-const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015 } as const;
+const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015, shape: 0.001 } as const;
 type Sized = keyof typeof INK_UNIT;
 type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number } };
 
@@ -413,7 +413,7 @@ export function Studio({
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
   // tamanho de cada ferramenta (0,1 a 7), lembrado neste aparelho
-  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4, laser: 3 });
+  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4, laser: 3, shape: 3 });
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
@@ -446,6 +446,7 @@ export function Studio({
   const viewSnap = useRef<{ cx: number; cy: number; zoom: number } | null>(null);
   /** quando cada dedo encostou (dois dedos só são gesto se encostarem quase juntos) */
   const downAt = useRef(new Map<number, number>());
+  const viewSnapAt = useRef(0);
   /** até quando um traço cancelado pelo navegador pode ser retomado */
   const resumeUntil = useRef(0);
   /** quando a Pencil levantou pela última vez (movimentos logo depois são resíduo, não escrita) */
@@ -558,8 +559,17 @@ export function Studio({
 
   const knownMics = useRef<Set<string> | null>(null);
   /** Lê a lista de câmeras e microfones. Microfone novo conectado já fica escolhido. */
-  async function refreshDevices(first: boolean) {
-    const list = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+  /**
+   * `ask`: o navegador só mostra as câmeras (nome e identificação) depois que o aparelho autoriza a câmera
+   * uma vez. Quem só controla nunca abriu a câmera, então pede a autorização, fecha em seguida e relê a lista.
+   */
+  async function refreshDevices(first: boolean, ask = false) {
+    let list = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
+    if (ask && !list.some((d) => d.kind === 'videoinput' && d.deviceId && d.label)) {
+      const st = await navigator.mediaDevices.getUserMedia({ video: true }).catch(() => null);
+      st?.getTracks().forEach((t) => t.stop());
+      if (st) list = await navigator.mediaDevices.enumerateDevices().catch(() => list);
+    }
     const c = list.filter((d) => d.kind === 'videoinput');
     const m = list.filter((d) => d.kind === 'audioinput');
     setCams(c);
@@ -811,7 +821,16 @@ export function Studio({
     // escrevendo com a Pencil (caneta, laser…): os dedos só valem em dupla. Com a ferramenta "mão", um dedo move.
     const strict = writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch';
     // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
-    if (!pointers.current.size) viewSnap.current = pdf.current?.pos ?? null;
+    // toque antigo que ficou sem o "soltar" (o navegador perdeu o evento): esquece, senão todo toque novo vira pinça
+    for (const [id, t] of downAt.current)
+      if (performance.now() - t > 20_000) {
+        downAt.current.delete(id);
+        pointers.current.delete(id);
+      }
+    if (!pointers.current.size) {
+      viewSnap.current = pdf.current?.pos ?? null;
+      viewSnapAt.current = performance.now();
+    }
     downAt.current.set(e.pointerId, performance.now());
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -887,25 +906,22 @@ export function Studio({
   useEffect(() => {
     if (!cam) return;
     if (feed && !light) {
-      // câmera de outro aparelho: solta a daqui e usa a imagem que chega
-      if (!camRemote.current) {
-        camTrack.current?.stop();
-        camTrack.current = null;
-        comp.current?.setCamera(null);
-      }
+      // câmera de outro aparelho: a daqui continua no ar até a imagem dele chegar (troca sem buraco)
       applyFeed();
       return;
-    }
-    if (camRemote.current) {
-      // voltou para a câmera daqui (a faixa do outro aparelho não é nossa para parar)
-      camRemote.current = false;
-      camTrack.current = null;
     }
     window.clearTimeout(feedTimer.current);
     if (cam === 'none' || light) {
       comp.current?.setCamera(null);
-      camTrack.current?.stop();
+      // (a faixa do outro aparelho não é nossa para parar)
+      if (!camRemote.current) camTrack.current?.stop();
+      camRemote.current = false;
       camTrack.current = null;
+      return;
+    }
+    // já é esta câmera (ex.: a do outro aparelho não chegou e a daqui nunca saiu do ar)
+    if (!camRemote.current && camTrack.current?.readyState === 'live' && camTrack.current.getSettings().deviceId === cam) {
+      comp.current?.setCamera(camTrack.current);
       return;
     }
     let cancelled = false;
@@ -923,9 +939,12 @@ export function Studio({
         if (cancelled) return s.getTracks().forEach((t) => t.stop());
         const t = s.getVideoTracks()[0];
         const old = camTrack.current;
+        const wasRemote = camRemote.current;
+        camRemote.current = false;
         camTrack.current = t;
+        // a câmera anterior (daqui ou de outro aparelho) ficou no ar até agora: troca sem buraco
         comp.current?.setCamera(t);
-        if (old && old !== t) old.stop();
+        if (old && old !== t && !wasRemote) old.stop();
         // o que a câmera está entregando de verdade (a C922 vai até 1920×1080)
         const read = () => {
           if (cancelled) return;
@@ -1309,21 +1328,34 @@ export function Studio({
     if (!f || light) return;
     const track = feedStreams.current.get(f.device)?.getVideoTracks()[0];
     window.clearTimeout(feedTimer.current);
-    if (track && track.readyState === 'live') {
+    const back = (why: string) => {
+      if (feedRef.current?.device !== f.device) return;
+      toast.error(why);
+      void studioCommand(liveId, f.device, { t: 'feed', id: '' }).catch(() => null);
+      setFeed(null);
+    };
+    if (track && track.readyState === 'live' && !track.muted) {
       if (camTrack.current !== track) {
-        if (!camRemote.current) camTrack.current?.stop();
+        const old = camTrack.current;
+        const oldRemote = camRemote.current;
         camTrack.current = track;
         camRemote.current = true;
         comp.current?.setCamera(track);
+        // só agora a câmera daqui é solta
+        if (old && !oldRemote) old.stop();
+        // travou (tela do outro aparelho apagou, app em segundo plano) ou acabou: a câmera daqui assume
+        track.onmute = () => {
+          window.clearTimeout(feedTimer.current);
+          feedTimer.current = window.setTimeout(() => back('A câmera do outro aparelho parou. Voltei para a câmera daqui.'), 4000);
+        };
+        track.onunmute = () => window.clearTimeout(feedTimer.current);
+        track.onended = () => back('A câmera do outro aparelho parou. Voltei para a câmera daqui.');
       }
       return;
     }
-    // ainda não chegou (ou caiu): espera um pouco e volta para a câmera daqui, sem derrubar a live
-    feedTimer.current = window.setTimeout(() => {
-      if (feedRef.current?.device !== f.device || feedStreams.current.get(f.device)) return;
-      toast.error('A câmera do outro aparelho não chegou (abra o Estúdio nele). Voltei para a câmera daqui.');
-      setFeed(null);
-    }, 12_000);
+    if (track) track.onunmute = () => applyFeed();
+    // ainda não chegou (ou caiu): a câmera daqui continua; se demorar, desiste sem derrubar a live
+    feedTimer.current = window.setTimeout(() => back('A câmera do outro aparelho não chegou (abra o Estúdio nele). Fiquei com a câmera daqui.'), 12_000);
   }
   const onFeed = useRef<(d: string, st: MediaStream | null) => void>(() => {});
   onFeed.current = (d, st) => {
@@ -1331,10 +1363,10 @@ export function Studio({
     else feedStreams.current.delete(d);
     if (feedRef.current?.device !== d) return;
     if (!st && camRemote.current) {
-      // caiu: mantém o último quadro por instantes; se não voltar, a câmera daqui assume
-      comp.current?.setCamera(null);
-      camTrack.current = null;
-      camRemote.current = false;
+      // a ligação caiu: volta para a câmera daqui na hora (o último quadro fica até ela abrir)
+      window.clearTimeout(feedTimer.current);
+      setFeed(null);
+      return;
     }
     applyFeed();
   };
@@ -1364,7 +1396,7 @@ export function Studio({
   const onCmd = useRef<(c: { t: string; id?: string }) => Promise<void>>(async () => {});
   onCmd.current = async (c) => {
     if (c.t === 'scan') {
-      await refreshDevices(false);
+      await refreshDevices(false, true);
       reported.current.key = '';
     } else if (c.t === 'cam' && caster.current && c.id) setCam(c.id);
     else if (c.t === 'feed') await sendCamera(light ? (c.id ?? '') : '');
@@ -1439,8 +1471,8 @@ export function Studio({
     const sep = <span className="my-1 h-px w-6 shrink-0 bg-white/20" />;
     const ToolIcon = tools.find((t) => t.k === inkTool)?.icon ?? PenLine;
     const paints = inkTool === 'pen' || inkTool === 'marker' || inkTool === 'shape' || inkTool === 'laser';
-    // ferramenta com tamanho ajustável (as formas usam o da caneta)
-    const sized: Sized | null = inkTool === 'pen' || inkTool === 'shape' ? 'pen' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : inkTool === 'laser' ? 'laser' : null;
+    // cada ferramenta tem o seu tamanho (um não mexe no outro)
+    const sized: Sized | null = inkTool === 'pen' ? 'pen' : inkTool === 'shape' ? 'shape' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : inkTool === 'laser' ? 'laser' : null;
     const pick = (t: InkTool) => {
       setInkTool(t);
       setInkPop(null);
@@ -1589,7 +1621,7 @@ export function Studio({
               setSize(sized, 0.1 + Math.min(1, Math.max(0, (e.clientX - r.left - 10) / Math.max(1, r.width - 20))) * 6.9);
             }}
             style={{ touchAction: 'none' }}
-            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : 'Tamanho da caneta'}
+            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : sized === 'shape' ? 'Tamanho da forma' : 'Tamanho da caneta'}
             className="h-8 min-w-0 flex-1 accent-white"
           />
           <span className="block size-4 shrink-0 rounded-full bg-white" />
@@ -1611,8 +1643,8 @@ export function Studio({
     }
     const stop = feedRef.current;
     if (dev === me) {
-      // câmera daqui
-      if (stop) void studioCommand(liveId, stop.device, { t: 'feed', id: '' });
+      // câmera daqui: a do outro aparelho só é desligada depois que a daqui abriu (troca sem buraco)
+      if (stop) window.setTimeout(() => void studioCommand(liveId, stop.device, { t: 'feed', id: '' }), 2500);
       setFeed(null);
       setCam(id);
       return;
@@ -1645,7 +1677,7 @@ export function Studio({
       : `${device.current.id}|${cam}`;
   async function scanAll() {
     setScanning(true);
-    await refreshDevices(false);
+    await refreshDevices(false, true);
     reported.current.key = '';
     await studioScan(liveId).catch(() => null);
     window.setTimeout(() => setScanning(false), 2500);
@@ -1908,8 +1940,10 @@ export function Studio({
       pencilSeen.current = true;
       lastPen.current = performance.now();
       // mão que encostou antes da caneta: não é gesto (não impede a escrita, e o que ela mexeu no PDF volta)
-      if (pointers.current.size && viewSnap.current) pdf.current.restore(viewSnap.current);
+      if (pointers.current.size && viewSnap.current && performance.now() - viewSnapAt.current < 1500) pdf.current.restore(viewSnap.current);
+      viewSnap.current = null;
       pointers.current.clear();
+      downAt.current.clear();
       // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
       const old = inkPtr.current;
       if (old) {
@@ -1956,7 +1990,7 @@ export function Studio({
       fastDraw();
     } else if (tool === 'shape') {
       st.from = d;
-      ink.current.beginShape(strokeStyle('pen').color, strokeStyle('pen').size, d.x, d.y, shapeDash);
+      ink.current.beginShape(strokeStyle('pen').color, inkW.shape * INK_UNIT.shape, d.x, d.y, shapeDash);
       if (light && !onAir) comp.current?.setFps(24);
       fastDraw();
     } else if (tool === 'laser') {
@@ -2556,28 +2590,47 @@ export function Studio({
                   </>
                 ) : (
                   <>
-                    <ul className="max-h-48 space-y-1 overflow-y-auto">
-                      {[
-                        ...cams.map((c, i) => ({
-                          id: c.deviceId,
-                          name: camName(c, i, cams),
-                        })),
-                        { id: 'none', name: 'Sem câmera' },
-                      ].map((o) => (
-                        <li key={o.id}>
-                          <button
-                            type="button"
-                            onClick={() => setCam(o.id)}
-                            className={cn(
-                              'w-full truncate rounded-lg px-2.5 py-2 text-left text-xs',
-                              cam === o.id ? 'bg-brand text-white' : 'text-ink hover:bg-surface-2',
-                            )}
-                          >
-                            {o.name}
-                          </button>
-                        </li>
+                    {/* câmeras de todos os aparelhos abertos no estúdio (a de outro aparelho só manda a imagem) */}
+                    <button
+                      type="button"
+                      onClick={scanAll}
+                      disabled={scanning}
+                      className="flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold text-brand"
+                    >
+                      <RefreshCw className={cn('size-3.5', scanning && 'animate-spin')} /> Procurar câmeras (outros aparelhos)
+                    </button>
+                    <div className="max-h-64 space-y-2 overflow-y-auto">
+                      {camGroups.map((g) => (
+                        <div key={g.device}>
+                          {camGroups.length > 1 && <p className="px-2.5 pb-0.5 text-[10px] font-bold tracking-wider text-muted uppercase">{g.label}</p>}
+                          <ul className="space-y-1">
+                            {g.cams.map((o) => {
+                              const v = `${g.device}|${o.id}`;
+                              return (
+                                <li key={v}>
+                                  <button
+                                    type="button"
+                                    onClick={() => void pickAnyCam(v)}
+                                    className={cn('w-full truncate rounded-lg px-2.5 py-2 text-left text-xs', camValue === v ? 'bg-brand text-white' : 'text-ink hover:bg-surface-2')}
+                                  >
+                                    {o.name}
+                                  </button>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </div>
                       ))}
-                    </ul>
+                      {!light && (
+                        <button
+                          type="button"
+                          onClick={() => void pickAnyCam(`${device.current.id}|none`)}
+                          className={cn('w-full truncate rounded-lg px-2.5 py-2 text-left text-xs', !feed && cam === 'none' ? 'bg-brand text-white' : 'text-ink hover:bg-surface-2')}
+                        >
+                          Sem câmera
+                        </button>
+                      )}
+                    </div>
                     <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
                   </>
                 )}
