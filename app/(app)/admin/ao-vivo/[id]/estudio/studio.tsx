@@ -40,7 +40,7 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, getInk, inkOps, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, getInk, inkOps, getInkPrefs, saveInkPrefs, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
 import { InkLayer, newStrokeId, packOps, shapePoints, unpackOps, unpackStroke, type InkOps, type InkTool, type PackedOps, type ShapeKind, type Stroke } from '@/lib/live/ink';
 import { confirmDialog } from '@/components/confirm';
@@ -262,6 +262,9 @@ export function Studio({
   const pdf = useRef<PdfPresenter | null>(null);
   const [pdfId, setPdfId] = useState('');
   const [pdfView, setPdfView] = useState<PdfView | null>(null);
+  /** PDF mexeu: quem não transmite redesenha no próximo quadro da tela (parado fica econômico) */
+  const kick = useRef(() => {});
+  const kickRaf = useRef(0);
   const [pdfBusy, setPdfBusy] = useState(false);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const lastTap = useRef(0);
@@ -390,6 +393,13 @@ export function Studio({
   };
   useEffect(() => {
     if (!onAir) comp.current?.setFps(light ? 4 : 30);
+    kick.current = () => {
+      if (!light || onAir || kickRaf.current) return;
+      kickRaf.current = requestAnimationFrame(() => {
+        kickRaf.current = 0;
+        comp.current?.draw();
+      });
+    };
   }, [light, onAir]);
   /** aparelhos abertos no estúdio (nome, câmeras, microfones) */
   const [devices, setDevices] = useState<StudioDevice[]>([]);
@@ -412,30 +422,61 @@ export function Studio({
     } catch {}
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
-  // tamanho de cada ferramenta (0,1 a 7), lembrado neste aparelho
+  // tamanho de cada ferramenta (0,1 a 7)
   const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 4, marker: 4, eraser: 4, laser: 3, shape: 3 });
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
+  const [shapeDash, setShapeDash] = useState(false);
+  /**
+   * Tamanhos, cor e forma escolhidos ficam guardados na conta do professor: a próxima live (em qualquer
+   * aparelho) abre do mesmo jeito. Este aparelho guarda uma cópia para abrir na hora.
+   */
+  const prefsReady = useRef(false);
+  const applyPrefs = (v: unknown) => {
+    if (!v || typeof v !== 'object') return;
+    const p = v as { sizes?: Record<string, unknown>; color?: unknown; shape?: unknown; dash?: unknown };
+    if (p.sizes && typeof p.sizes === 'object')
+      setInkW((o) => ({ ...o, ...Object.fromEntries(Object.entries(p.sizes!).filter(([k, n]) => k in o && typeof n === 'number' && n >= 0.1 && n <= 7)) }));
+    if (typeof p.color === 'string' && INK_COLORS.includes(p.color)) setInkColor(p.color);
+    if (typeof p.shape === 'string' && ['line', 'arrow', 'rect', 'ellipse'].includes(p.shape)) setShapeKind(p.shape as ShapeKind);
+    if (typeof p.dash === 'boolean') setShapeDash(p.dash);
+  };
   useEffect(() => {
     try {
-      const v = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
-      if (v && typeof v === 'object') setInkW((o) => ({ ...o, ...Object.fromEntries(Object.entries(v).filter(([k, n]) => k in o && typeof n === 'number' && n >= 0.1 && n <= 7)) }));
+      applyPrefs(JSON.parse(localStorage.getItem('studio-ink-prefs') ?? 'null'));
+      const old = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
+      if (old && !localStorage.getItem('studio-ink-prefs')) applyPrefs({ sizes: old });
     } catch {}
+    let off = false;
+    void getInkPrefs()
+      .then((p) => {
+        if (!off && p) applyPrefs(p);
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!off) prefsReady.current = true;
+      });
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const setSize = (k: Sized, n: number) =>
-    setInkW((o) => {
-      const next = { ...o, [k]: Math.min(7, Math.max(0.1, Math.round(n * 10) / 10)) };
-      try {
-        localStorage.setItem('studio-ink-sizes', JSON.stringify(next));
-      } catch {}
-      return next;
-    });
+  const prefsTimer = useRef(0);
+  useEffect(() => {
+    const p = { sizes: inkW, color: inkColor, shape: shapeKind, dash: shapeDash };
+    if (!prefsReady.current) return;
+    try {
+      localStorage.setItem('studio-ink-prefs', JSON.stringify(p));
+    } catch {}
+    window.clearTimeout(prefsTimer.current);
+    prefsTimer.current = window.setTimeout(() => void saveInkPrefs(p).catch(() => null), 1200);
+  }, [inkW, inkColor, shapeKind, shapeDash]);
+  const setSize = (k: Sized, n: number) => setInkW((o) => ({ ...o, [k]: Math.min(7, Math.max(0.1, Math.round(n * 10) / 10)) }));
   /** opções recolhidas da barra: cores ou tamanho */
   const [inkPop, setInkPop] = useState<'color' | 'size' | null>(null);
   /** barras laterais da tela cheia: recolhidas ou abertas */
   const [barOpen, setBarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(true);
   const writingRef = useRef(false);
-  const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
-  const [shapeDash, setShapeDash] = useState(false);
   /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
   const [writing, setWriting] = useState(false);
   const inkPtr = useRef<InkPtr | null>(null);
@@ -519,8 +560,19 @@ export function Studio({
   useEffect(() => {
     if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
     pdf.current = new PdfPresenter();
-    pdf.current.onChange = () => setPdfView(pdf.current!.view);
-    pdf.current.onView = (v) => sendView.current(v);
+    // a tela do estúdio só é refeita quando muda a página (o zoom é lido com atraso): rolar e dar zoom não pesam
+    let zoomT = 0;
+    pdf.current.onChange = () => {
+      const v = pdf.current!.view;
+      setPdfView((o) => (o && o.page === v.page && o.pages === v.pages ? o : v));
+      window.clearTimeout(zoomT);
+      zoomT = window.setTimeout(() => setPdfView((o) => (o && pdf.current && Math.abs(o.zoom - pdf.current.view.zoom) > 1e-3 ? pdf.current.view : o)), 200);
+      kick.current();
+    };
+    pdf.current.onView = (v) => {
+      sendView.current(v);
+      kick.current();
+    };
     pdf.current.ink = ink.current;
     if (comp.current) comp.current.pdf = pdf.current;
     void checkSupport().then(setSupport);
@@ -1761,7 +1813,11 @@ export function Studio({
       const next = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
       const have = new Set(next.map((x) => x.id));
       for (const o of ink.current.strokes) if (!have.has(o.id) && localAdds.current.has(o.id)) next.push(o);
-      ink.current.strokes = next;
+      // já tem tudo (chegou antes pela conexão direta entre os aparelhos): não redesenha o PDF à toa
+      const cur = ink.current.strokes;
+      const curIds = new Set(cur.map((x) => x.id));
+      const same = cur.length === next.length && next.every((x) => curIds.has(x.id)) && !inkQueue.current.add?.length && !inkQueue.current.remove?.length;
+      if (!same) ink.current.strokes = next;
       // o que ainda não foi enviado daqui continua
       ink.current.apply(inkQueue.current);
       ink.current.current = keep;
@@ -1934,67 +1990,6 @@ export function Studio({
     fastClear.current = window.setTimeout(fastDraw, light && !onAir ? 0 : 90);
   };
   useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
-  /**
-   * Camada nítida: no aparelho que escreve, a caneta já escrita é redesenhada na resolução da tela (a prévia
-   * da live tem 720p e deixaria a letra borrada). Só redesenha quando algo muda.
-   */
-  const sharpRef = useRef<HTMLCanvasElement>(null);
-  const sharpOn = writing && scene === 'pdf' && (!viewing || touching);
-  const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
-  useEffect(() => {
-    const c = sharpRef.current;
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    if (!sharpOn) {
-      ctx?.clearRect(0, 0, c.width, c.height);
-      return;
-    }
-    let raf = 0;
-    let key = '';
-    let drawn = 0;
-    let movedAt = 0;
-    let rough = false;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      const el = canvasRef.current;
-      const p = pdf.current;
-      if (!el || !p?.pages || !ctx) return;
-      const f = frameRect(el);
-      const dpr = Math.min(3, window.devicePixelRatio || 1);
-      const W = Math.round(f.r.width * dpr);
-      const H = Math.round(f.r.height * dpr);
-      const k = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}|${ink.current.version}|${pipHole ? `${pipHole.x},${pipHole.y},${pipHole.w},${pipHole.h}` : ''}`;
-      const now = performance.now();
-      const n = ink.current.count;
-      const same = k === key;
-      if (same && n === drawn && !(rough && now - movedAt > 120)) return;
-      if (c.width !== W || c.height !== H) {
-        c.width = W;
-        c.height = H;
-      }
-      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(view.x, view.y, view.w, view.h);
-      // a câmera fica por cima da escrita
-      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
-      ctx.clip('evenodd');
-      if (same && n > drawn && !rough) ink.current.drawPens(ctx, view, true, drawn);
-      else {
-        // movendo/dando zoom: desenho leve a cada quadro; parou: desenho caprichado uma vez
-        if (!same) movedAt = now;
-        rough = !same && key !== '';
-        ctx.clearRect(0, 0, W, H);
-        ink.current.drawPens(ctx, view, !rough);
-      }
-      ctx.restore();
-      key = k;
-      drawn = n;
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharpOn, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
 
   /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
   function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -2416,7 +2411,6 @@ export function Studio({
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
-              <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
               {scene === 'pdf' && inkTool === 'select' && selBox && (

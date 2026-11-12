@@ -659,3 +659,33 @@ export async function inkOps(id: string, pdfId: string, ops: PackedOps) {
   );
   return { ok: true, rev: r?.ink_rev ?? 0 };
 }
+
+// ---------------- preferências da escrita (tamanhos, cor, forma): seguem o professor de uma live para outra
+export type InkPrefs = { sizes?: Record<string, number>; color?: string; shape?: string; dash?: boolean };
+const cleanPrefs = (v: unknown): InkPrefs => {
+  const p = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
+  const out: InkPrefs = {};
+  if (p.sizes && typeof p.sizes === 'object')
+    out.sizes = Object.fromEntries(
+      Object.entries(p.sizes as Record<string, unknown>)
+        .filter(([k, n]) => ['pen', 'marker', 'eraser', 'laser', 'shape'].includes(k) && typeof n === 'number' && n >= 0.1 && n <= 7)
+        .map(([k, n]) => [k, Math.round((n as number) * 10) / 10]),
+    );
+  if (typeof p.color === 'string' && /^#[0-9a-f]{6}$/i.test(p.color)) out.color = p.color;
+  if (typeof p.shape === 'string' && /^[a-z]{1,12}$/.test(p.shape)) out.shape = p.shape;
+  if (typeof p.dash === 'boolean') out.dash = p.dash;
+  return out;
+};
+export async function getInkPrefs(): Promise<InkPrefs | null> {
+  const v = await requireAdminAction();
+  const row = await sql.one<{ data: unknown }>(`select data from settings where id = $1`, [`ink:${v.userId}`]);
+  return row ? cleanPrefs(row.data) : null;
+}
+export async function saveInkPrefs(prefs: InkPrefs) {
+  const v = await requireAdminAction();
+  await sql.exec(
+    `insert into settings (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
+    [`ink:${v.userId}`, JSON.stringify(cleanPrefs(prefs))],
+  );
+  return { ok: true };
+}
