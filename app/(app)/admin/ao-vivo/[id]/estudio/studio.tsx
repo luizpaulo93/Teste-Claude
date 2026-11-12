@@ -1717,7 +1717,7 @@ export function Studio({
       cams: cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })),
     },
     ...devices
-      .filter((d) => d.device !== device.current.id && d.cams.length)
+      .filter((d) => d.device !== device.current.id)
       .map((d) => ({ device: d.device, label: `${d.label}${tag(d.device)}`, cams: d.cams })),
   ];
   const camValue = holderDev
@@ -2483,6 +2483,29 @@ export function Studio({
                       height: `${pipRect.h * 100}%`,
                     }}
                   >
+                    {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
+                    {light && mirrorStream && (
+                      <div className={cn('absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
+                        <video
+                          ref={(v) => {
+                            if (v && v.srcObject !== mirrorStream) {
+                              v.srcObject = mirrorStream;
+                              void v.play().catch(() => {});
+                            }
+                          }}
+                          autoPlay
+                          muted
+                          playsInline
+                          className="absolute max-w-none object-fill"
+                          style={{
+                            width: `${100 / pipRect.w}%`,
+                            height: `${100 / pipRect.h}%`,
+                            left: `${(-pipRect.x / pipRect.w) * 100}%`,
+                            top: `${(-pipRect.y / pipRect.h) * 100}%`,
+                          }}
+                        />
+                      </div>
+                    )}
                     {pipSel && (
                       <div
                         role="button"
@@ -2685,6 +2708,7 @@ export function Studio({
                         <div key={g.device}>
                           {camGroups.length > 1 && <p className="px-2.5 pb-0.5 text-[10px] font-bold tracking-wider text-muted uppercase">{g.label}</p>}
                           <ul className="space-y-1">
+                            {!g.cams.length && <li className="px-2.5 py-1.5 text-[11px] text-muted">Sem câmera liberada — abra a câmera nele e toque em Procurar</li>}
                             {g.cams.map((o) => {
                               const v = `${g.device}|${o.id}`;
                               return (
@@ -3069,6 +3093,11 @@ export function Studio({
           <Select value={camValue} onChange={(e) => void pickAnyCam(e.target.value)} aria-label="Câmera">
             {camGroups.map((g) => (
               <optgroup key={g.device} label={g.label}>
+                {!g.cams.length && (
+                  <option disabled value={`${g.device}|-`}>
+                    Sem câmera liberada (toque em Atualizar)
+                  </option>
+                )}
                 {g.cams.map((c) => (
                   <option key={c.id} value={`${g.device}|${c.id}`}>
                     {c.name}
