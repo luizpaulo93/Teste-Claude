@@ -204,7 +204,7 @@ export function AppShell({
 
       {/* Bottom nav mobile */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg-elev/90 backdrop-blur-xl safe-bottom lg:hidden">
-        <div className="mx-auto grid max-w-lg justify-items-center" style={{ gridTemplateColumns: `repeat(${mobileMain.length + 1}, minmax(0, 1fr))` }}>
+        <div className="mx-auto grid max-w-lg justify-items-center md:max-w-3xl" style={{ gridTemplateColumns: `repeat(${mobileMain.length + 1}, minmax(0, 1fr))` }}>
           {mobileMain.map((item) => (
             <BottomLink key={item.href} item={item} active={isActive(item.href)} />
           ))}
