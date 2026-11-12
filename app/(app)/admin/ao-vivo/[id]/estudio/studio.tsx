@@ -789,9 +789,8 @@ export function Studio({
     }
     if (scene !== 'pdf') return;
     if (inkDown(e)) return;
-    // escrevendo com a Pencil: toque grande é a palma (ignora); o resto só vale em dois dedos
-    const strict = writing && pencilSeen.current && e.pointerType === 'touch';
-    if (strict && (e.width > 46 || e.height > 46)) return;
+    // escrevendo com a Pencil (caneta, laser…): os dedos só valem em dupla. Com a ferramenta "mão", um dedo move.
+    const strict = writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch';
     // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
     if (!pointers.current.size) viewSnap.current = pdf.current?.pos ?? null;
     downAt.current.set(e.pointerId, performance.now());
@@ -817,12 +816,12 @@ export function Studio({
     const r = e.currentTarget.getBoundingClientRect();
     if (ps.size === 1) {
       // escrevendo com a Pencil, um dedo sozinho não move o PDF (palma e toques sem querer): use dois dedos
-      if (!(writing && pencilSeen.current && e.pointerType === 'touch')) pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
+      if (!(writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch')) pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
     } else if (ps.size === 2) {
       const [oid, other] = [...ps.entries()].find(([id]) => id !== e.pointerId)!;
       // escrevendo com a Pencil: gesto de dois dedos só vale se os dois encostaram quase juntos
       // (palma apoiada e depois outro contato não é pinça)
-      if (writing && pencilSeen.current && e.pointerType === 'touch' && Math.abs((downAt.current.get(oid) ?? 0) - (downAt.current.get(e.pointerId) ?? 0)) > 350) {
+      if (writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch' && Math.abs((downAt.current.get(oid) ?? 0) - (downAt.current.get(e.pointerId) ?? 0)) > 600) {
         ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
         return;
       }
