@@ -613,7 +613,7 @@ const cleanStroke = (x: PackedStroke): PackedStroke | null => {
     d: x.d,
   };
   if (typeof x.p === 'string' && x.p.length <= 12000 && PACKED_RE.test(x.p)) s.p = x.p;
-  if (x.s === 1) s.s = 1;
+  if (x.s === 1 || x.s === 2) s.s = x.s;
   return s;
 };
 /** até quantos traços por PDF */

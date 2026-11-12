@@ -42,6 +42,8 @@ export interface Stroke {
   pr?: number[];
   /** forma geométrica (reta, seta, retângulo, elipse): linha reta entre os pontos, espessura fixa */
   shape?: boolean;
+  /** forma com linha tracejada */
+  dash?: boolean;
 }
 export interface InkOps {
   add?: Stroke[];
@@ -60,8 +62,8 @@ export interface PackedStroke {
   d: string;
   /** pressão em cada ponto */
   p?: string;
-  /** 1 = forma geométrica */
-  s?: 1;
+  /** 1 = forma geométrica; 2 = forma tracejada */
+  s?: 1 | 2;
 }
 export interface PackedOps {
   add?: PackedStroke[];
@@ -120,7 +122,7 @@ function unpackSeq(s: string, step: number, stride: number) {
 export function packStroke(s: Stroke): PackedStroke {
   const p: PackedStroke = { id: s.id, tool: s.tool, color: s.color, size: Math.round(s.size * 1e6) / 1e6, d: packSeq(s.pts, 10000, 2) };
   if (s.pr) p.p = packSeq(s.pr, 50, 1);
-  if (s.shape) p.s = 1;
+  if (s.shape) p.s = s.dash ? 2 : 1;
   return p;
 }
 export function unpackStroke(x: PackedStroke | Stroke): Stroke | null {
@@ -136,7 +138,8 @@ export function unpackStroke(x: PackedStroke | Stroke): Stroke | null {
     const pr = unpackSeq(k.p, 50, 1);
     if (pr.length === pts.length / 2) s.pr = pr;
   }
-  if (k.s === 1) s.shape = true;
+  if (k.s === 1 || k.s === 2) s.shape = true;
+  if (k.s === 2) s.dash = true;
   return s;
 }
 export const packOps = (o: InkOps): PackedOps => ({ ...(o.add ? { add: o.add.map(packStroke) } : {}), ...(o.remove ? { remove: o.remove } : {}) });
@@ -152,7 +155,8 @@ export const unpackOps = (o: PackedOps | InkOps): InkOps => ({
 function simplify(s: Stroke): Stroke {
   const n = s.pts.length / 2;
   if (n < 3) return s;
-  const eps = s.size * 0.06;
+  // tolerância pequena: mantém bastante ponto para a curva não mostrar falhas
+  const eps = Math.min(s.size * 0.03, 0.00015);
   const P = s.pts;
   const keep = new Uint8Array(n);
   keep[0] = keep[n - 1] = 1;
@@ -234,10 +238,11 @@ function penOutline(s: Stroke, done: boolean, plain = false): number[] {
     return dot((s.pts[0] + s.pts[s.pts.length - 2]) / 2, (s.pts[1] + s.pts[s.pts.length - 1]) / 2, s.size * (0.5 + 0.35 * pr));
   }
   // pontas afinando só quando o traço é comprido o bastante (senão letras pequenas somem)
-  const taper = plain ? 0 : Math.min(1, Math.max(0, (len - s.size * 4) / (s.size * 10)));
+  void plain;
   const hasPr = Boolean(s.pr && s.pr.length === n);
   const input: number[][] = new Array(n);
-  for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? s.pr![i] : 0.5];
+  // pressão mínima: ao levantar a Pencil a pressão cai a zero e o final ficava fino demais
+  for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? Math.max(0.42, s.pr![i]) : 0.5];
   const out = getStroke(input, {
     size: s.size * U,
     // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
@@ -246,8 +251,9 @@ function penOutline(s: Stroke, done: boolean, plain = false): number[] {
     streamline: 0.3,
     simulatePressure: false,
     // começo redondo e final só levemente afinado (ponta boleada, como esferográfica)
+    // pontas redondas, sem afinar
     start: { cap: true, taper: 0 },
-    end: { cap: true, taper: s.size * U * 0.5 * taper },
+    end: { cap: true, taper: 0 },
     last: done,
   });
   const flat = new Array(out.length * 2);
@@ -372,6 +378,7 @@ export class InkLayer {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = s.color;
     ctx.lineWidth = Math.max(1, s.size * v.k);
+    if (s.dash) ctx.setLineDash([Math.max(4, s.size * v.k * 3.5), Math.max(4, s.size * v.k * 3)]);
     ctx.beginPath();
     ctx.moveTo(v.x + (p[0] - v.cx) * v.k, v.y + (p[1] - v.cy) * v.k);
     for (let i = 2; i < p.length; i += 2) ctx.lineTo(v.x + (p[i] - v.cx) * v.k, v.y + (p[i + 1] - v.cy) * v.k);
@@ -471,7 +478,7 @@ export class InkLayer {
     if (!c) return;
     const n = c.pts.length;
     // ignora pontos quase iguais (menos dados; a curva continua lisa)
-    if (Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]) < c.size * 0.1) {
+    if (Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]) < Math.min(c.size * 0.05, 0.0004)) {
       // mesma posição, pressão maior: guarda a maior (ponto que "engorda" ao apertar)
       if (c.pr && pressure !== undefined && pressure > c.pr[c.pr.length - 1]) c.pr[c.pr.length - 1] = r2(pressure);
       return;
@@ -498,8 +505,8 @@ export class InkLayer {
     this.current = null;
   }
   /** forma geométrica: começa num ponto e é refeita a cada movimento */
-  beginShape(color: string, size: number, x: number, y: number) {
-    this.current = { id: newStrokeId(), tool: 'pen', color, size, pts: [r4(x), r4(y), r4(x), r4(y)], shape: true };
+  beginShape(color: string, size: number, x: number, y: number, dash = false) {
+    this.current = { id: newStrokeId(), tool: 'pen', color, size, pts: [r4(x), r4(y), r4(x), r4(y)], shape: true, ...(dash ? { dash: true } : {}) };
   }
   setShape(pts: number[]) {
     if (this.current?.shape) this.current.pts = pts.map(r4);

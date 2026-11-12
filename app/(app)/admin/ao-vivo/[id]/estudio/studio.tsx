@@ -422,6 +422,7 @@ export function Studio({
   const [menuOpen, setMenuOpen] = useState(true);
   const writingRef = useRef(false);
   const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
+  const [shapeDash, setShapeDash] = useState(false);
   /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
   const [writing, setWriting] = useState(false);
   const inkPtr = useRef<InkPtr | null>(null);
@@ -1394,6 +1395,16 @@ export function Studio({
                 <k.icon className="size-4" />
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => setShapeDash((v) => !v)}
+              aria-label={shapeDash ? 'Linha tracejada' : 'Linha cheia'}
+              aria-pressed={shapeDash}
+              title={shapeDash ? 'Tracejada (toque para linha cheia)' : 'Cheia (toque para tracejada)'}
+              className={cn('grid size-9 shrink-0 place-items-center rounded-full text-white transition', shapeDash ? 'bg-brand' : 'hover:bg-white/15')}
+            >
+              <span className={cn('block w-5 border-t-2 border-white', shapeDash && 'border-dashed')} />
+            </button>
           </>
         )}
         {(paints || sized) && sep}
@@ -1444,7 +1455,7 @@ export function Studio({
         </button>
       </div>
       {inkPop === 'color' && paints && (
-        <div className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
+        <div data-scroll className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
           {INK_COLORS.map((c) => (
             <button
               key={c}
@@ -1463,7 +1474,7 @@ export function Studio({
         </div>
       )}
       {inkPop === 'size' && sized && (
-        <div className="absolute top-1/2 left-16 z-40 flex w-72 max-w-[calc(100%-5rem)] -translate-y-1/2 animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
+        <div data-scroll className="absolute top-1/2 left-16 z-40 flex w-72 max-w-[calc(100%-5rem)] -translate-y-1/2 animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
           <span className="block size-1.5 shrink-0 rounded-full bg-white" />
           <input
             type="range"
@@ -1472,6 +1483,14 @@ export function Studio({
             step={0.1}
             value={inkW[sized]}
             onChange={(e) => setSize(sized, Number(e.target.value))}
+            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerMove={(e) => {
+              if (!e.buttons && e.pointerType === 'mouse') return;
+              if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              setSize(sized, 0.1 + Math.min(1, Math.max(0, (e.clientX - r.left - 10) / Math.max(1, r.width - 20))) * 6.9);
+            }}
+            style={{ touchAction: 'none' }}
             aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : 'Tamanho da caneta'}
             className="h-8 min-w-0 flex-1 accent-white"
           />
@@ -1632,12 +1651,14 @@ export function Studio({
       const onCanvas = e.target === canvasRef.current;
       if (!e.cancelable) return;
       if (onCanvas && scene === 'pdf') e.preventDefault();
-      else if (pencilSeen.current && penBusy() && [...e.changedTouches].some(finger)) e.preventDefault();
+      else if (pencilSeen.current && penBusy() && [...e.changedTouches].some(finger) && !(e.target as Element | null)?.closest?.('[data-scroll]')) e.preventDefault();
     };
     // o clique vem depois do toque: lembra se foi a mão (a Pencil continua apertando botões)
     let palmDown = false;
     const onDown = (e: PointerEvent) => {
-      palmDown = e.pointerType === 'touch' && pencilSeen.current && penBusy();
+      // barras, régua e chat respondem ao dedo sempre (a proteção contra a palma vale para o resto da tela)
+      const control = Boolean((e.target as Element | null)?.closest?.('[data-scroll]'));
+      palmDown = !control && e.pointerType === 'touch' && pencilSeen.current && penBusy();
       if (palmDown && e.target !== canvasRef.current) e.stopPropagation();
     };
     const onClick = (e: MouseEvent) => {
@@ -1654,7 +1675,7 @@ export function Studio({
     root.overscrollBehavior = 'none';
     document.body.style.overflow = 'hidden';
     const onTouchMove = (e: TouchEvent) => {
-      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll]')) e.preventDefault();
+      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
     };
     document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     document.addEventListener('touchstart', onTouch, { capture: true, passive: false });
@@ -1698,7 +1719,7 @@ export function Studio({
     return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, ox: (r.width - w) / 2, oy: (r.height - h) / 2, r };
   };
   /** pressão da Apple Pencil → espessura (o toque leve ainda deixa tinta) */
-  const penPressure = (e: PointerEvent | React.PointerEvent) => (e.pointerType === 'pen' && e.pressure > 0 ? Math.min(1, 0.1 + 0.9 * Math.pow(e.pressure, 0.75)) : undefined);
+  const penPressure = (e: PointerEvent | React.PointerEvent) => (e.pointerType === 'pen' && e.pressure > 0 ? Math.min(1, 0.3 + 0.7 * Math.pow(e.pressure, 0.75)) : undefined);
   function drawFast() {
     fastRaf.current = 0;
     const c = fastRef.current;
@@ -1818,7 +1839,7 @@ export function Studio({
       fastDraw();
     } else if (tool === 'shape') {
       st.from = d;
-      ink.current.beginShape(strokeStyle('pen').color, strokeStyle('pen').size, d.x, d.y);
+      ink.current.beginShape(strokeStyle('pen').color, strokeStyle('pen').size, d.x, d.y, shapeDash);
       if (light && !onAir) comp.current?.setFps(24);
       fastDraw();
     } else if (tool === 'laser') {
@@ -1840,6 +1861,11 @@ export function Studio({
   }
   function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerType === 'pen') lastPen.current = performance.now();
+    // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
+    if (!inkPtr.current && writing && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf') {
+      inkDown(e);
+      return true;
+    }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId || !pdf.current) return Boolean(st && e.pointerType === 'touch' && st.type === 'pen');
     const r = frameRect(e.currentTarget);
