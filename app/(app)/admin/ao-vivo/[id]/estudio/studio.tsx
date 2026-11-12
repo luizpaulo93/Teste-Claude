@@ -435,6 +435,8 @@ export function Studio({
   const downAt = useRef(new Map<number, number>());
   /** até quando um traço cancelado pelo navegador pode ser retomado */
   const resumeUntil = useRef(0);
+  /** quando a Pencil levantou pela última vez (movimentos logo depois são resíduo, não escrita) */
+  const penUpAt = useRef(0);
   const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
   const undoStack = useRef<InkOps[]>([]);
   const inkQueue = useRef<InkOps>({});
@@ -797,7 +799,11 @@ export function Studio({
     // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
     if (!pointers.current.size) viewSnap.current = pdf.current?.pos ?? null;
     downAt.current.set(e.pointerId, performance.now());
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* o navegador recusou a captura: o traço segue mesmo assim */
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1 && !strict) {
       const now = Date.now();
@@ -1831,7 +1837,11 @@ export function Studio({
     if (pointers.current.size) return false;
     const r = frameRect(e.currentTarget);
     const d = pdf.current.toDoc((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* o navegador recusou a captura: o traço segue mesmo assim */
+    }
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
@@ -1864,7 +1874,15 @@ export function Studio({
   function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerType === 'pen') lastPen.current = performance.now();
     // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
-    if (!inkPtr.current && writing && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf' && performance.now() < resumeUntil.current) {
+    // (ou o navegador nem avisou que a Pencil encostou: ela está pressionando há mais de 0,12 s sem traço aberto)
+    if (
+      !inkPtr.current &&
+      writing &&
+      e.pointerType === 'pen' &&
+      e.pressure > 0 &&
+      scene === 'pdf' &&
+      (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && performance.now() - penUpAt.current > 120))
+    ) {
       resumeUntil.current = 0;
       inkDown(e);
       return true;
@@ -1906,6 +1924,7 @@ export function Studio({
       lastPen.current = performance.now();
       // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
       resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
+      penUpAt.current = performance.now();
     }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;

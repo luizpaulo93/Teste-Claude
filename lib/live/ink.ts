@@ -243,13 +243,26 @@ function penOutline(s: Stroke, done: boolean, plain = false): number[] {
   const input: number[][] = new Array(n);
   // pressão mínima: ao levantar a Pencil a pressão cai a zero e o final ficava fino demais
   for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? Math.max(0.42, s.pr![i]) : 0.5];
+  // tira o tremido: cada ponto do meio é puxado para a média com os vizinhos (duas passadas); as pontas ficam
+  for (let pass = 0; pass < 2 && n > 4; pass++) {
+    let px = input[0][0];
+    let py = input[0][1];
+    for (let i = 1; i < n - 1; i++) {
+      const x = input[i][0];
+      const y = input[i][1];
+      input[i][0] = px * 0.25 + x * 0.5 + input[i + 1][0] * 0.25;
+      input[i][1] = py * 0.25 + y * 0.5 + input[i + 1][1] * 0.25;
+      px = x;
+      py = y;
+    }
+  }
   const out = getStroke(input, {
     size: s.size * U,
     // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
     thinning: hasPr ? 0.38 : 0,
     smoothing: 0.8,
     // estabilização: tira o tremido sem mudar a forma da letra
-    streamline: 0.4,
+    streamline: 0.5,
     simulatePressure: false,
     // começo redondo e final só levemente afinado (ponta boleada, como esferográfica)
     // pontas redondas, sem afinar
@@ -322,7 +335,7 @@ export class InkLayer {
 
   // ---------------- desenho
   /** traços terminados de um tipo que aparecem na parte visível */
-  private drawDone(ctx: CanvasRenderingContext2D, v: InkView, tool: 'pen' | 'marker') {
+  private drawDone(ctx: CanvasRenderingContext2D, v: InkView, tool: 'pen' | 'marker', exact = true) {
     const vx0 = v.cx;
     const vy0 = v.cy;
     const vx1 = v.cx + v.w / v.k;
@@ -332,7 +345,7 @@ export class InkLayer {
       if (s.tool !== tool) continue;
       const b = this.box(s);
       if (b.x1 < vx0 || b.x0 > vx1 || b.y1 < vy0 || b.y0 > vy1) continue;
-      this.drawStroke(ctx, s, v, false);
+      this.drawStroke(ctx, s, v, false, exact);
       any = true;
     }
     return any;
@@ -342,15 +355,23 @@ export class InkLayer {
   get version() {
     return this.ver;
   }
+  /** quantos traços há (traços novos entram no fim sem mudar a versão) */
+  get count() {
+    return this.list.length;
+  }
+  /** desenha só os traços a partir de `from` (acrescenta à imagem pronta, sem redesenhar a página) */
+  drawTail(ctx: CanvasRenderingContext2D, v: InkView, from: number) {
+    for (let i = from; i < this.list.length; i++) this.drawStroke(ctx, this.list[i], v, false);
+  }
   /** há algo se mexendo (traço sendo escrito ou laser sumindo): desenhado a cada quadro */
   get busy() {
     return Boolean(this.current || this.lasers.size);
   }
 
   /** escrita terminada: marca-texto por baixo da caneta (a letra fica por cima do destaque) */
-  drawDoneAll(ctx: CanvasRenderingContext2D, v: InkView) {
+  drawDoneAll(ctx: CanvasRenderingContext2D, v: InkView, exact = true) {
     if (!this.list.length) return;
-    this.drawDone(ctx, v, 'marker');
+    this.drawDone(ctx, v, 'marker', exact);
     this.drawDone(ctx, v, 'pen');
   }
   /** o que muda a cada quadro: traço em andamento e laser */
@@ -364,10 +385,33 @@ export class InkLayer {
   }
 
   /** desenha um traço (também usado pela camada rápida que mostra o traço enquanto escreve) */
-  drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live = s === this.current) {
+  drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live = s === this.current, exact = true) {
     if (s.shape) this.poly(ctx, s, v);
     else if (s.tool === 'pen') this.fillPen(ctx, s, v, live);
-    else this.path(ctx, s, v);
+    else if (exact) this.path(ctx, s, v);
+    else this.quickPath(ctx, s, v);
+  }
+
+  /** marca-texto num traço só (leve): usado enquanto o PDF está em movimento (zoom/rolagem) */
+  private quickPath(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView) {
+    const p = s.pts;
+    if (p.length < 2) return;
+    const X = (i: number) => v.x + (p[i] - v.cx) * v.k;
+    const Y = (i: number) => v.y + (p[i + 1] - v.cy) * v.k;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = Math.max(1, s.size * v.k);
+    ctx.globalAlpha = 0.38;
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.beginPath();
+    ctx.moveTo(X(0), Y(0));
+    if (p.length === 2) ctx.lineTo(X(0) + 0.01, Y(0));
+    for (let i = 2; i < p.length - 2; i += 2) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 2)) / 2, (Y(i) + Y(i + 2)) / 2);
+    if (p.length > 2) ctx.lineTo(X(p.length - 2), Y(p.length - 2));
+    ctx.stroke();
+    ctx.restore();
   }
 
   /** forma geométrica: segmentos retos, espessura fixa */
@@ -417,27 +461,81 @@ export class InkLayer {
     ctx.fill();
   }
 
+  /** camada de rascunho do marca-texto (reaproveitada) */
+  private scratch: HTMLCanvasElement | null = null;
+
+  /**
+   * Marca-texto (e traço simples). O traço é desenhado opaco, pedaço a pedaço, numa camada à parte e só
+   * depois entra transparente na página: onde ele passa por cima de si mesmo fica coberto por igual, sem
+   * os "buracos" que o navegador deixa quando um traço grosso cruza o próprio caminho.
+   */
   private path(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView) {
     const p = s.pts;
     if (p.length < 2) return;
+    const lw = Math.max(1, s.size * v.k);
+    const W = ctx.canvas.width;
+    const H = ctx.canvas.height;
+    // área do traço na tela (com folga da espessura)
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < p.length; i += 2) {
+      const x = v.x + (p[i] - v.cx) * v.k;
+      const y = v.y + (p[i + 1] - v.cy) * v.k;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+    x0 = Math.max(0, Math.floor(x0 - lw));
+    y0 = Math.max(0, Math.floor(y0 - lw));
+    x1 = Math.min(W, Math.ceil(x1 + lw));
+    y1 = Math.min(H, Math.ceil(y1 + lw));
+    if (x1 <= x0 || y1 <= y0) return;
+    const layer = typeof document !== 'undefined' ? (this.scratch ??= document.createElement('canvas')) : null;
+    if (!layer) return;
+    if (layer.width < W || layer.height < H) {
+      layer.width = Math.max(layer.width, W);
+      layer.height = Math.max(layer.height, H);
+    }
+    const g = layer.getContext('2d')!;
+    g.clearRect(x0, y0, x1 - x0, y1 - y0);
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    g.strokeStyle = s.color;
+    g.lineWidth = lw;
     const X = (i: number) => v.x + (p[i] - v.cx) * v.k;
     const Y = (i: number) => v.y + (p[i + 1] - v.cy) * v.k;
+    const n = p.length;
+    if (n === 2) {
+      g.beginPath();
+      g.moveTo(X(0), Y(0));
+      g.lineTo(X(0) + 0.01, Y(0));
+      g.stroke();
+    } else {
+      // curva suave pelos pontos médios, um pedaço de cada vez (os pedaços se somam, nunca se anulam)
+      let px = X(0);
+      let py = Y(0);
+      for (let i = 2; i < n; i += 2) {
+        const last = i >= n - 2;
+        const ex = last ? X(i) : (X(i) + X(i + 2)) / 2;
+        const ey = last ? Y(i) : (Y(i) + Y(i + 2)) / 2;
+        g.beginPath();
+        g.moveTo(px, py);
+        if (last) g.lineTo(ex, ey);
+        else g.quadraticCurveTo(X(i), Y(i), ex, ey);
+        g.stroke();
+        px = ex;
+        py = ey;
+      }
+    }
     ctx.save();
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = s.color;
-    ctx.lineWidth = Math.max(1, s.size * v.k);
     if (s.tool === 'marker') {
       ctx.globalAlpha = 0.38;
       ctx.globalCompositeOperation = 'multiply';
     }
-    ctx.beginPath();
-    ctx.moveTo(X(0), Y(0));
-    if (p.length === 2) ctx.lineTo(X(0) + 0.01, Y(0));
-    // curva suave passando pelos pontos médios (letra sem "quinas")
-    for (let i = 2; i < p.length - 2; i += 2) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 2)) / 2, (Y(i) + Y(i + 2)) / 2);
-    if (p.length > 2) ctx.lineTo(X(p.length - 2), Y(p.length - 2));
-    ctx.stroke();
+    ctx.drawImage(layer, x0, y0, x1 - x0, y1 - y0, x0, y0, x1 - x0, y1 - y0);
     ctx.restore();
   }
 
@@ -514,7 +612,6 @@ export class InkLayer {
     const lean = c.shape ? c : simplify(c);
     if (c.tool === 'pen' && !c.shape) this.outlines.set(lean, penOutline(c, true));
     this.list.push(lean);
-    this.ver++;
     return { add: [lean] };
   }
   cancel() {

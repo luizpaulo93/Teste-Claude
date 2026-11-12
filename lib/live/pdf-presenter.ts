@@ -43,7 +43,7 @@ export class PdfPresenter {
    * Quadro pronto (páginas + escrita terminada). Com o PDF parado, cada quadro da live só copia esta
    * imagem (o mesmo custo de mostrar o PDF sem escrita); refaz quando algo muda.
    */
-  private still: { canvas: HTMLCanvasElement; key: string } | null = null;
+  private still: { canvas: HTMLCanvasElement; key: string; drawn: number } | null = null;
   private lastKey = '';
   private queue = new Set<number>();
   private busy = false;
@@ -303,13 +303,19 @@ export class PdfPresenter {
         const g = c.getContext('2d', { alpha: false })!;
         this.drawPages(g, 0, 0, w, h, k);
         this.ink?.drawDoneAll(g, { ...v, x: 0, y: 0 });
-        this.still = { canvas: c, key };
+        this.still = { canvas: c, key, drawn: this.ink?.count ?? 0 };
       } else this.requestVisible();
+      // traço que acabou de ser escrito: só ele é acrescentado à imagem pronta (soltar a caneta não trava a tela)
+      const n = this.ink?.count ?? 0;
+      if (this.ink && n > this.still.drawn) {
+        this.ink.drawTail(this.still.canvas.getContext('2d', { alpha: false })!, { ...v, x: 0, y: 0 }, this.still.drawn);
+        this.still.drawn = n;
+      } else if (n < this.still.drawn) this.still.drawn = n;
       ctx.drawImage(this.still.canvas, x, y);
     } else {
       this.drawPages(ctx, x, y, w, h, k);
-      // escrita por cima, na resolução do quadro (nítida em qualquer zoom)
-      this.ink?.drawDoneAll(ctx, v);
+      // escrita por cima, na resolução do quadro (nítida em qualquer zoom); em movimento, o marca-texto vai no modo leve
+      this.ink?.drawDoneAll(ctx, v, false);
     }
     this.ink?.drawLive(ctx, v);
   }
