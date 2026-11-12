@@ -3,8 +3,6 @@
  * Os traços ficam guardados nas coordenadas do documento (largura da página = 1), então acompanham
  * o zoom, a rolagem e a troca de página, e são redesenhados na resolução da live (sem pixelar).
  */
-import { getStroke } from 'perfect-freehand';
-
 export type InkTool = 'hand' | 'pen' | 'marker' | 'laser' | 'eraser' | 'select' | 'shape';
 export type ShapeKind = 'line' | 'arrow' | 'rect' | 'ellipse';
 
@@ -216,67 +214,6 @@ const U = 1000;
  * Contorno da caneta (tinta que desliza): espessura pela pressão da Apple Pencil (ou pela velocidade),
  * curva suavizada e pontas arredondadas. Devolve x,y,x,y… em coordenadas do documento.
  */
-/** comprimento do traço (em larguras de página) */
-function lengthOf(pts: number[]) {
-  let l = 0;
-  for (let i = 2; i < pts.length; i += 2) l += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
-  return l;
-}
-/** círculo (pingo do "i", ponto final): x,y,x,y… */
-function dot(x: number, y: number, r: number) {
-  const o: number[] = [];
-  for (let i = 0; i < 16; i++) o.push(x + r * Math.cos((i / 16) * 2 * Math.PI), y + r * Math.sin((i / 16) * 2 * Math.PI));
-  return o;
-}
-
-function penOutline(s: Stroke, done: boolean, plain = false): number[] {
-  const n = s.pts.length / 2;
-  const len = lengthOf(s.pts);
-  // toque curto (pingo, ponto): um ponto cheio do tamanho da caneta, um pouco maior com mais pressão
-  if (len < s.size * 1.2) {
-    const pr = s.pr?.length ? Math.max(...s.pr) : 0.5;
-    return dot((s.pts[0] + s.pts[s.pts.length - 2]) / 2, (s.pts[1] + s.pts[s.pts.length - 1]) / 2, s.size * (0.5 + 0.35 * pr));
-  }
-  // pontas afinando só quando o traço é comprido o bastante (senão letras pequenas somem)
-  void plain;
-  const hasPr = Boolean(s.pr && s.pr.length === n);
-  const input: number[][] = new Array(n);
-  // pressão mínima: ao levantar a Pencil a pressão cai a zero e o final ficava fino demais
-  for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? Math.max(0.42, s.pr![i]) : 0.5];
-  // tira o tremido: cada ponto do meio é puxado para a média com os vizinhos (duas passadas); as pontas ficam
-  for (let pass = 0; pass < 2 && n > 4; pass++) {
-    let px = input[0][0];
-    let py = input[0][1];
-    for (let i = 1; i < n - 1; i++) {
-      const x = input[i][0];
-      const y = input[i][1];
-      input[i][0] = px * 0.25 + x * 0.5 + input[i + 1][0] * 0.25;
-      input[i][1] = py * 0.25 + y * 0.5 + input[i + 1][1] * 0.25;
-      px = x;
-      py = y;
-    }
-  }
-  const out = getStroke(input, {
-    size: s.size * U,
-    // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
-    thinning: hasPr ? 0.38 : 0,
-    smoothing: 0.8,
-    // estabilização: tira o tremido sem mudar a forma da letra
-    streamline: 0.5,
-    simulatePressure: false,
-    // começo redondo e final só levemente afinado (ponta boleada, como esferográfica)
-    // pontas redondas, sem afinar
-    start: { cap: true, taper: 0 },
-    end: { cap: true, taper: 0 },
-    last: done,
-  });
-  const flat = new Array(out.length * 2);
-  for (let i = 0; i < out.length; i++) {
-    flat[2 * i] = out[i][0] / U;
-    flat[2 * i + 1] = out[i][1] / U;
-  }
-  return flat;
-}
 export const newStrokeId = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
 
 type Box = { x0: number; y0: number; x1: number; y1: number };
@@ -313,16 +250,12 @@ export class InkLayer {
     this.list = v;
     this.ver++;
   }
-  /** contorno do traço em andamento (a live e a camada rápida usam o mesmo, sem recalcular) */
-  private liveO: { s: Stroke; n: number; p: number; o: number[] } | null = null;
   /** traço sendo desenhado agora */
   current: Stroke | null = null;
   /** lasers: escritos como a caneta (mesmo traço liso); somem sozinhos depois de soltar (`end`) */
   lasers = new Map<string, { color: string; size: number; pts: number[]; end: number | null }>();
   selected = new Set<string>();
   private boxes = new WeakMap<Stroke, Box>();
-  /** contorno pronto de cada traço terminado (não recalcula a cada quadro) */
-  private outlines = new WeakMap<Stroke, number[]>();
 
   private box(s: Stroke) {
     let b = this.boxes.get(s);
@@ -387,7 +320,7 @@ export class InkLayer {
   /** desenha um traço (também usado pela camada rápida que mostra o traço enquanto escreve) */
   drawStroke(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live = s === this.current, exact = true) {
     if (s.shape) this.poly(ctx, s, v);
-    else if (s.tool === 'pen') this.fillPen(ctx, s, v, live);
+    else if (s.tool === 'pen') this.fillPen(ctx, s, v, exact);
     else if (exact) this.path(ctx, s, v);
     else this.quickPath(ctx, s, v);
   }
@@ -431,34 +364,53 @@ export class InkLayer {
     ctx.restore();
   }
 
-  private fillPen(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, live: boolean) {
-    let o: number[];
-    if (!live) {
-      o = this.outlines.get(s) ?? penOutline(s, true);
-      this.outlines.set(s, o);
-    } else {
-      // traço em andamento: só recalcula quando chega ponto novo
-      const n = s.pts.length;
-      const p = s.pr ? s.pr[s.pr.length - 1] : 0;
-      const c = this.liveO;
-      if (c && c.s === s && c.n === n && c.p === p) o = c.o;
-      else {
-        o = penOutline(s, false);
-        // a cópia com os pontos previstos (camada rápida) não ocupa o lugar do traço de verdade
-        if (s === this.current) this.liveO = { s, n, p, o };
-      }
+  /**
+   * Caneta: linha de espessura constante com pontas redondas (esferográfica), passando exatamente pelos
+   * pontos por onde a Pencil passou. Fiel à mão: sem contorno calculado, sem "arredondar" a letra.
+   */
+  private fillPen(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, exact: boolean) {
+    ctx.save();
+    ctx.strokeStyle = s.color;
+    this.strokeCurve(ctx, s.pts, v, Math.max(0.6, s.size * v.k), exact);
+    ctx.restore();
+  }
+
+  /**
+   * Curva suave que passa por todos os pontos (Catmull-Rom). `exact`: um pedaço de cada vez — os pedaços se
+   * somam e o traço nunca fica com falhas onde cruza o próprio caminho; senão, um caminho só (mais leve,
+   * usado com o PDF em movimento).
+   */
+  private strokeCurve(ctx: CanvasRenderingContext2D, p: number[], v: InkView, lw: number, exact: boolean) {
+    const n = p.length / 2;
+    if (n < 1) return;
+    const X = (i: number) => v.x + (p[2 * Math.min(n - 1, Math.max(0, i))] - v.cx) * v.k;
+    const Y = (i: number) => v.y + (p[2 * Math.min(n - 1, Math.max(0, i)) + 1] - v.cy) * v.k;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = lw;
+    if (n === 1 || (n === 2 && Math.hypot(X(1) - X(0), Y(1) - Y(0)) < 0.5)) {
+      // toque curto (pingo do "i", ponto final)
+      ctx.beginPath();
+      ctx.moveTo(X(0), Y(0));
+      ctx.lineTo(X(0) + 0.01, Y(0));
+      ctx.stroke();
+      return;
     }
-    const m = o.length / 2;
-    if (m < 3) return;
-    const X = (i: number) => v.x + (o[2 * (i % m)] - v.cx) * v.k;
-    const Y = (i: number) => v.y + (o[2 * (i % m) + 1] - v.cy) * v.k;
-    ctx.fillStyle = s.color;
-    ctx.beginPath();
-    ctx.moveTo((X(0) + X(1)) / 2, (Y(0) + Y(1)) / 2);
-    // contorno liso: curva pelos pontos médios
-    for (let i = 1; i <= m; i++) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
-    ctx.closePath();
-    ctx.fill();
+    if (!exact) ctx.beginPath();
+    if (!exact) ctx.moveTo(X(0), Y(0));
+    for (let i = 0; i < n - 1; i++) {
+      const c1x = X(i) + (X(i + 1) - X(i - 1)) / 6;
+      const c1y = Y(i) + (Y(i + 1) - Y(i - 1)) / 6;
+      const c2x = X(i + 1) - (X(i + 2) - X(i)) / 6;
+      const c2y = Y(i + 1) - (Y(i + 2) - Y(i)) / 6;
+      if (exact) {
+        ctx.beginPath();
+        ctx.moveTo(X(i), Y(i));
+      }
+      ctx.bezierCurveTo(c1x, c1y, c2x, c2y, X(i + 1), Y(i + 1));
+      if (exact) ctx.stroke();
+    }
+    if (!exact) ctx.stroke();
   }
 
   /** camada de rascunho do marca-texto (reaproveitada) */
@@ -547,58 +499,30 @@ export class InkLayer {
         this.lasers.delete(id);
         continue;
       }
-      const o = penOutline({ id, tool: 'pen', color: l.color, size: l.size, pts: l.pts }, l.end !== null, true);
-      const m = o.length / 2;
-      if (m < 3) continue;
-      const X = (i: number) => v.x + (o[2 * (i % m)] - v.cx) * v.k;
-      const Y = (i: number) => v.y + (o[2 * (i % m) + 1] - v.cy) * v.k;
       ctx.save();
       ctx.globalAlpha = age < LASER_HOLD ? 1 : Math.max(0, 1 - (age - LASER_HOLD) / LASER_FADE);
       ctx.shadowColor = l.color;
       ctx.shadowBlur = Math.max(6, l.size * v.k * 1.5);
-      ctx.fillStyle = l.color;
-      ctx.beginPath();
-      ctx.moveTo((X(0) + X(1)) / 2, (Y(0) + Y(1)) / 2);
-      for (let i = 1; i <= m; i++) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
-      ctx.closePath();
-      ctx.fill();
+      ctx.strokeStyle = l.color;
+      // um caminho só: com brilho, pedaços separados somariam a sombra
+      this.strokeCurve(ctx, l.pts, v, Math.max(1.5, l.size * v.k), false);
       ctx.restore();
     }
   }
 
   // ---------------- traços
   /** pressure: só da caneta (Apple Pencil); dedo e mouse ficam sem e a espessura segue a velocidade */
-  /** momento e "pressão suavizada" do último ponto (para a espessura não oscilar ponto a ponto) */
-  private lastT = 0;
-  private lastP = 0.6;
-  /**
-   * pressure: da caneta (Apple Pencil); dedo e mouse ficam sem. A espessura de cada ponto junta a pressão
-   * com a velocidade (traço rápido afina um pouco) e é suavizada, para o traço sair contínuo, sem caroços.
-   */
-  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number, t = 0) {
+  /** começa um traço (caneta: espessura constante; a pressão não entra) */
+  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number) {
     this.current = { id: newStrokeId(), tool, color, size, pts: [r4(x), r4(y)] };
-    this.lastT = t;
-    this.lastP = pressure ?? 0.6;
-    if (tool === 'pen') this.current.pr = [r2(this.lastP)];
   }
-  extend(x: number, y: number, pressure?: number, t = 0) {
+  extend(x: number, y: number) {
     const c = this.current;
     if (!c) return;
     const n = c.pts.length;
-    const dist = Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]);
-    // ignora pontos quase iguais (tremor da mão e ruído do sensor; a curva continua lisa)
-    if (dist < Math.min(c.size * 0.12, 0.0006)) return;
+    // ignora pontos quase iguais (ruído do sensor); o resto entra como veio, para o traço ser fiel à mão
+    if (Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]) < Math.min(c.size * 0.1, 0.0005)) return;
     c.pts.push(r4(x), r4(y));
-    if (c.pr) {
-      // velocidade em larguras de página por milissegundo: rápido → até 30% mais fino
-      const dt = t && this.lastT ? Math.max(1, t - this.lastT) : 8;
-      const fast = Math.min(1, dist / dt / 0.0035);
-      const want = (pressure ?? 0.6) * (1 - 0.3 * fast);
-      // suaviza: cada ponto puxa só 18% para o valor novo
-      this.lastP = this.lastP * 0.82 + want * 0.18;
-      c.pr.push(r2(this.lastP));
-    }
-    this.lastT = t;
   }
   /** termina o traço; devolve o que mudou (para os outros aparelhos e para desfazer) */
   end(): InkOps | null {
@@ -607,10 +531,8 @@ export class InkLayer {
     if (!c) return null;
     // a caixa guardada durante o desenho só tinha o começo do traço
     this.boxes.delete(c);
-    this.liveO = null;
     // guarda a versão enxuta; o desenho aqui continua o do traço completo (não muda ao soltar)
     const lean = c.shape ? c : simplify(c);
-    if (c.tool === 'pen' && !c.shape) this.outlines.set(lean, penOutline(c, true));
     this.list.push(lean);
     return { add: [lean] };
   }

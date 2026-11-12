@@ -1863,8 +1863,6 @@ export function Studio({
     const h = el.height * s;
     return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, ox: (r.width - w) / 2, oy: (r.height - h) / 2, r };
   };
-  /** pressão da Apple Pencil → espessura (o toque leve ainda deixa tinta) */
-  const penPressure = (e: PointerEvent | React.PointerEvent) => (e.pointerType === 'pen' && e.pressure > 0 ? Math.min(1, 0.3 + 0.7 * Math.pow(e.pressure, 0.75)) : undefined);
   function drawFast() {
     fastRaf.current = 0;
     const c = fastRef.current;
@@ -1908,7 +1906,7 @@ export function Studio({
     const cur = ink.current.current;
     // marca-texto é transparente: desenhado duas vezes ficaria mais escuro, então fica só na prévia normal
     if (!cur || cur.tool !== 'pen') return;
-    const s = predicted.current.length ? { ...cur, pts: cur.pts.concat(predicted.current), pr: cur.pr && cur.pr.concat(predicted.current.filter((_, i) => i % 2 === 0).map(() => cur.pr![cur.pr!.length - 1])) } : cur;
+    const s = predicted.current.length ? { ...cur, pts: cur.pts.concat(predicted.current) } : cur;
     const k = (f.width * dpr) / p.viewWidth;
     ink.current.drawStroke(ctx, s, { x: f.ox * dpr, y: f.oy * dpr, k, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr }, true);
   }
@@ -1984,7 +1982,7 @@ export function Studio({
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
-      ink.current.begin(tool, k.color, k.size, d.x, d.y, tool === 'pen' ? penPressure(e) : undefined, e.timeStamp);
+      ink.current.begin(tool, k.color, k.size, d.x, d.y);
       // quem só controla: prévia rápida enquanto escreve (mesmo com a ferramenta "mover" e a Pencil)
       if (light && !onAir) comp.current?.setFps(24);
       fastDraw();
@@ -2033,7 +2031,7 @@ export function Studio({
     const evs = (e.nativeEvent.getCoalescedEvents?.() ?? []).length ? e.nativeEvent.getCoalescedEvents() : [e.nativeEvent];
     for (const ev of evs) {
       const d = pdf.current.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
-      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined, ev.timeStamp);
+      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y);
       else if (st.tool === 'shape' && st.from) ink.current.setShape(shapePoints(shapeKind, st.from.x, st.from.y, d.x, d.y));
       else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
       else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth));
