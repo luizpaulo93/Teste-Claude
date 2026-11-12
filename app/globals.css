@@ -353,3 +353,6 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 /* área que rola sem mostrar a barra (ex.: ferramentas de escrita do estúdio) */
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Estúdio em tela inteira (modo escrita): os menus do app saem da frente */
+html.studio-full [data-chrome] { display: none !important; }

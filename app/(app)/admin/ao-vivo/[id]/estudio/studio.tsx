@@ -22,6 +22,8 @@ import {
   Minimize2,
   Camera,
   ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight,
   ChevronRight,
   CircleStop,
   FileText,
@@ -150,7 +152,7 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
 // Escrita no PDF: cores e espessuras (em larguras de página)
 const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
 /** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
-const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004 } as const;
+const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015 } as const;
 type Sized = keyof typeof INK_UNIT;
 type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number } };
 
@@ -398,7 +400,7 @@ export function Studio({
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
   // tamanho de cada ferramenta (0,1 a 7), lembrado neste aparelho
-  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4 });
+  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4, laser: 3 });
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
@@ -415,6 +417,10 @@ export function Studio({
     });
   /** opções recolhidas da barra: cores ou tamanho */
   const [inkPop, setInkPop] = useState<'color' | 'size' | null>(null);
+  /** barras laterais da tela cheia: recolhidas ou abertas */
+  const [barOpen, setBarOpen] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(true);
+  const writingRef = useRef(false);
   const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
   /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
   const [writing, setWriting] = useState(false);
@@ -424,6 +430,8 @@ export function Studio({
   const lastPen = useRef(0);
   /** posição do PDF quando um gesto de dedos começou */
   const viewSnap = useRef<{ cx: number; cy: number; zoom: number } | null>(null);
+  /** quando cada dedo encostou (dois dedos só são gesto se encostarem quase juntos) */
+  const downAt = useRef(new Map<number, number>());
   const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
   const undoStack = useRef<InkOps[]>([]);
   const inkQueue = useRef<InkOps>({});
@@ -707,7 +715,7 @@ export function Studio({
     );
     const t = window.setInterval(() => setCamPortrait(Boolean(comp.current?.cameraPortrait)), 800);
     const onFs = () => {
-      if (!document.fullscreenElement) setFull(false);
+      if (!document.fullscreenElement && !writingRef.current) setFull(false);
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => {
@@ -786,6 +794,7 @@ export function Studio({
     if (strict && (e.width > 46 || e.height > 46)) return;
     // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
     if (!pointers.current.size) viewSnap.current = pdf.current?.pos ?? null;
+    downAt.current.set(e.pointerId, performance.now());
     e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.current.size === 1 && !strict) {
@@ -810,7 +819,13 @@ export function Studio({
       // escrevendo com a Pencil, um dedo sozinho não move o PDF (palma e toques sem querer): use dois dedos
       if (!(writing && pencilSeen.current && e.pointerType === 'touch')) pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
     } else if (ps.size === 2) {
-      const other = [...ps.entries()].find(([id]) => id !== e.pointerId)![1];
+      const [oid, other] = [...ps.entries()].find(([id]) => id !== e.pointerId)!;
+      // escrevendo com a Pencil: gesto de dois dedos só vale se os dois encostaram quase juntos
+      // (palma apoiada e depois outro contato não é pinça)
+      if (writing && pencilSeen.current && e.pointerType === 'touch' && Math.abs((downAt.current.get(oid) ?? 0) - (downAt.current.get(e.pointerId) ?? 0)) > 350) {
+        ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        return;
+      }
       const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
       const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
       const mx = ((e.clientX + other.x) / 2 - r.left) / r.width;
@@ -824,6 +839,7 @@ export function Studio({
   const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (inkUp(e)) return;
     pointers.current.delete(e.pointerId);
+    downAt.current.delete(e.pointerId);
   };
 
   // Rolagem (mouse/trackpad): rola o PDF e passa de página no fim; Ctrl + rolagem (ou pinça no trackpad) dá zoom
@@ -1165,7 +1181,7 @@ export function Studio({
     else if (m.t === 'pdfv' && pdf.current) pdf.current.setView(m.v as PdfPos);
     else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
     else if (m.t === 'ink' && m.pdfId === pdfId) ink.current.apply(unpackOps(m.ops as PackedOps));
-    else if (m.t === 'laser') ink.current.laserFrom(String(m.id), String(m.color), m.pts as number[]);
+    else if (m.t === 'laser') ink.current.laserFrom(String(m.id), String(m.color), m.pts as number[], Number(m.size) || undefined);
     else if (m.t === 'cam' && caster.current) setCam(String(m.id));
     else if (m.t === 'mic' && caster.current) setMic(String(m.id));
   };
@@ -1266,10 +1282,17 @@ export function Studio({
   async function openWriting() {
     setInkTool('pen');
     setInkPop(null);
+    writingRef.current = true;
     setWriting(true);
-    if (!full) await enterFull();
+    setBarOpen(true);
+    // sem a tela cheia do navegador: no iPad ela fecha ao puxar a tela para baixo. O modo escrita ocupa a
+    // página inteira e só fecha no X.
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    setPop(null);
+    setFull(true);
   }
   function closeWriting() {
+    writingRef.current = false;
     setWriting(false);
     setInkTool('hand');
     setInkPop(null);
@@ -1277,9 +1300,15 @@ export function Studio({
     setSelBox(null);
     void exitFull();
   }
+  // tela inteira sem a tela cheia do navegador: os menus do app saem da frente
+  useEffect(() => {
+    document.documentElement.classList.toggle('studio-full', full);
+    return () => document.documentElement.classList.remove('studio-full');
+  }, [full]);
   // saiu da tela cheia (gesto do sistema, Esc): o modo escrita fecha junto
   useEffect(() => {
     if (!full && writing) {
+      writingRef.current = false;
       setWriting(false);
       setInkTool('hand');
       setInkPop(null);
@@ -1309,10 +1338,11 @@ export function Studio({
     ];
     const btn = (on: boolean) =>
       cn('relative grid size-10 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black shadow' : 'text-white hover:bg-white/15');
-    const sep = <span className="mx-1 h-6 w-px shrink-0 bg-white/20" />;
+    const sep = <span className="my-1 h-px w-6 shrink-0 bg-white/20" />;
+    const ToolIcon = tools.find((t) => t.k === inkTool)?.icon ?? PenLine;
     const paints = inkTool === 'pen' || inkTool === 'marker' || inkTool === 'shape' || inkTool === 'laser';
     // ferramenta com tamanho ajustável (as formas usam o da caneta)
-    const sized: Sized | null = inkTool === 'pen' || inkTool === 'shape' ? 'pen' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : null;
+    const sized: Sized | null = inkTool === 'pen' || inkTool === 'shape' ? 'pen' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : inkTool === 'laser' ? 'laser' : null;
     const pick = (t: InkTool) => {
       setInkTool(t);
       setInkPop(null);
@@ -1326,8 +1356,24 @@ export function Studio({
       <div
         role="toolbar"
         aria-label="Ferramentas de escrita"
-        className="no-scrollbar absolute top-2 left-2 z-30 flex max-w-[calc(100%-13.5rem)] items-center gap-0.5 overflow-x-auto rounded-full border border-white/10 bg-neutral-900/85 p-1 shadow-2xl backdrop-blur-xl max-sm:top-14 max-sm:max-w-[calc(100%-1rem)]"
+        data-scroll
+        className="no-scrollbar absolute top-1/2 left-2 z-30 flex max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col items-center gap-0.5 overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/85 p-1 shadow-2xl backdrop-blur-xl"
       >
+        <button
+          type="button"
+          onClick={() => {
+            setBarOpen((v) => !v);
+            setInkPop(null);
+          }}
+          aria-label={barOpen ? 'Recolher ferramentas' : 'Mostrar ferramentas'}
+          aria-expanded={barOpen}
+          title={barOpen ? 'Recolher' : 'Ferramentas'}
+          className={btn(false)}
+        >
+          {barOpen ? <ChevronsLeft className="size-[18px]" /> : tools.find((t) => t.k === inkTool) ? <ToolIcon className="size-[18px]" /> : <ChevronsRight className="size-[18px]" />}
+        </button>
+        {barOpen && (
+          <>
         {tools.map((t) => (
           <button key={t.k} type="button" onClick={() => pick(t.k)} aria-label={t.label} aria-pressed={inkTool === t.k} title={t.label} className={btn(inkTool === t.k)}>
             <t.icon className="size-[18px]" />
@@ -1371,9 +1417,9 @@ export function Studio({
             aria-label="Tamanho"
             aria-expanded={inkPop === 'size'}
             title="Tamanho"
-            className={cn(btn(false), 'w-auto gap-1.5 px-2.5 text-xs font-bold tabular-nums')}
+            className={cn(btn(false), 'h-auto flex-col gap-0.5 py-1.5 text-[10px] font-bold tabular-nums')}
           >
-            <span className="block rounded-full bg-white" style={{ width: 4 + inkW[sized] * 2, height: 4 + inkW[sized] * 2 }} />
+            <span className="block rounded-full bg-white" style={{ width: 4 + inkW[sized] * 1.6, height: 4 + inkW[sized] * 1.6 }} />
             {inkW[sized].toFixed(1).replace('.', ',')}
           </button>
         )}
@@ -1392,12 +1438,14 @@ export function Studio({
         >
           <Trash2 className="size-[18px]" />
         </button>
+          </>
+        )}
         <button type="button" onClick={closeWriting} aria-label="Fechar escrita" title="Fechar escrita" className={cn(btn(false), 'bg-white/10')}>
           <X className="size-[18px]" />
         </button>
       </div>
       {inkPop === 'color' && paints && (
-        <div className="absolute top-16 left-2 z-40 flex animate-scale-in gap-1.5 rounded-full border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl max-sm:top-28">
+        <div className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
           {INK_COLORS.map((c) => (
             <button
               key={c}
@@ -1416,7 +1464,7 @@ export function Studio({
         </div>
       )}
       {inkPop === 'size' && sized && (
-        <div className="absolute top-16 left-2 z-40 flex w-72 max-w-[calc(100%-1rem)] animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl max-sm:top-28">
+        <div className="absolute top-1/2 left-16 z-40 flex w-72 max-w-[calc(100%-5rem)] -translate-y-1/2 animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
           <span className="block size-1.5 shrink-0 rounded-full bg-white" />
           <input
             type="range"
@@ -1425,7 +1473,7 @@ export function Studio({
             step={0.1}
             value={inkW[sized]}
             onChange={(e) => setSize(sized, Number(e.target.value))}
-            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : 'Tamanho da caneta'}
+            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : 'Tamanho da caneta'}
             className="h-8 min-w-0 flex-1 accent-white"
           />
           <span className="block size-4 shrink-0 rounded-full bg-white" />
@@ -1600,11 +1648,23 @@ export function Studio({
         e.stopPropagation();
       }
     };
+    // a página não rola nem "puxa para atualizar" enquanto escreve (só as barras e o chat rolam)
+    const root = document.documentElement.style;
+    const lock = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
+    root.overflow = 'hidden';
+    root.overscrollBehavior = 'none';
+    document.body.style.overflow = 'hidden';
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll]')) e.preventDefault();
+    };
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
     document.addEventListener('touchstart', onTouch, { capture: true, passive: false });
     document.addEventListener('pointerdown', onDown, true);
     document.addEventListener('click', onClick, true);
     return () => {
       [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout] = prev;
+      [root.overflow, root.overscrollBehavior, document.body.style.overflow] = lock;
+      document.removeEventListener('touchmove', onTouchMove, { capture: true });
       document.removeEventListener('touchstart', onTouch, { capture: true });
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('click', onClick, true);
@@ -1618,6 +1678,7 @@ export function Studio({
     size: inkW[tool] * INK_UNIT[tool],
   });
   const laserColor = inkColor === '#111111' ? '#ef4444' : inkColor;
+  const laserSize = inkW.laser * INK_UNIT.laser;
   const laserSent = useRef(0);
 
   /**
@@ -1677,6 +1738,8 @@ export function Studio({
       ctx.stroke();
       ctx.restore();
     }
+    // laser sendo escrito: aparece na hora, como a caneta
+    if (inkPtr.current?.laser) ink.current.drawLasers(ctx, { ...view, w: f.width * dpr, h: f.height * dpr });
     const cur = ink.current.current;
     // marca-texto é transparente: desenhado duas vezes ficaria mais escuro, então fica só na prévia normal
     if (!cur || cur.tool !== 'pen') return;
@@ -1761,7 +1824,8 @@ export function Studio({
       fastDraw();
     } else if (tool === 'laser') {
       st.laser = newStrokeId();
-      ink.current.laser(st.laser, laserColor, d.x, d.y);
+      ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
+      fastDraw();
     } else if (tool === 'eraser') {
       st.erased = ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth);
     } else if (tool === 'select') {
@@ -1786,11 +1850,11 @@ export function Studio({
       const d = pdf.current.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
       if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined);
       else if (st.tool === 'shape' && st.from) ink.current.setShape(shapePoints(shapeKind, st.from.x, st.from.y, d.x, d.y));
-      else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, d.x, d.y);
+      else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
       else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth));
       else if (st.tool === 'select' && st.lasso) st.lasso.push(d.x, d.y);
     }
-    if (st.tool === 'select' || st.tool === 'shape') fastDraw();
+    if (st.tool === 'select' || st.tool === 'shape' || st.tool === 'laser') fastDraw();
     if (st.tool === 'pen') {
       // onde a caneta vai estar no próximo quadro (Chrome/Android); o Safari não prevê
       const pr = e.nativeEvent.getPredictedEvents?.() ?? [];
@@ -1804,7 +1868,7 @@ export function Studio({
     if (st.tool === 'laser' && st.laser && performance.now() - laserSent.current > 120) {
       laserSent.current = performance.now();
       const l = ink.current.lasers.get(st.laser);
-      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, pts: l.pts.flatMap((q) => [q.x, q.y]) });
+      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
     }
     if (viewing) touched();
     return true;
@@ -1832,8 +1896,10 @@ export function Studio({
       lasso.current = null;
       fastDraw();
     } else if (st.tool === 'laser' && st.laser) {
+      ink.current.laserEnd(st.laser);
+      fastDone();
       const l = ink.current.lasers.get(st.laser);
-      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, pts: l.pts.flatMap((q) => [q.x, q.y]) });
+      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
     }
     return true;
   }
@@ -2193,7 +2259,32 @@ export function Studio({
                 {remote.holder.fresh ? `AO VIVO · ${remote.holder.label}` : `${remote.holder.label} sem sinal`}
               </span>
             )}
-            <div className={cn('absolute right-2 flex items-center gap-1.5', status?.state === 'reconnecting' ? 'top-10' : 'top-2')}>
+            <div
+              data-scroll
+              className={cn(
+                'absolute right-2 z-30 flex items-center gap-1.5',
+                full
+                  ? 'no-scrollbar top-1/2 max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/70 p-1 backdrop-blur-xl'
+                  : status?.state === 'reconnecting'
+                    ? 'top-10'
+                    : 'top-2',
+                full && !menuOpen && '[&>*:not(:first-child)]:hidden',
+              )}
+            >
+              {full && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen((v) => !v);
+                    setPop(null);
+                  }}
+                  aria-label={menuOpen ? 'Recolher menu' : 'Mostrar menu'}
+                  aria-expanded={menuOpen}
+                  className="grid size-9 shrink-0 place-items-center rounded-full text-white hover:bg-white/15"
+                >
+                  {menuOpen ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+                </button>
+              )}
               {scene === 'pdf' && materials.length > 1 && (
                 <button
                   type="button"
@@ -2254,7 +2345,11 @@ export function Studio({
             {pop && (
               <div
                 data-popup={pop}
-                className="absolute top-12 right-2 z-10 max-h-[calc(100%-3.5rem)] w-64 max-w-[calc(100%-1rem)] space-y-2 overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur"
+                data-scroll
+                className={cn(
+                  'absolute z-40 w-64 space-y-2 overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur',
+                  full ? 'top-1/2 right-16 max-h-[calc(100%-1rem)] max-w-[calc(100%-5rem)] -translate-y-1/2' : 'top-12 right-2 max-h-[calc(100%-3.5rem)] max-w-[calc(100%-1rem)]',
+                )}
               >
                 {pop === 'mic' ? (
                   <>
@@ -2460,7 +2555,8 @@ export function Studio({
           {full && chat && chatOpen && (
             <aside
               aria-label="Chat da live"
-              className="absolute top-14 right-2 bottom-2 z-40 w-[min(340px,calc(100%-1rem))] animate-scale-in overflow-hidden rounded-2xl border border-white/15 bg-surface shadow-2xl"
+              data-scroll
+              className="absolute top-2 right-16 bottom-2 z-40 w-[min(340px,calc(100%-5rem))] animate-scale-in overflow-hidden rounded-2xl border border-white/15 bg-surface shadow-2xl"
             >
               <LiveChat
                 liveId={liveId}

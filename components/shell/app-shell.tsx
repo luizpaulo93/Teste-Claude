@@ -121,7 +121,7 @@ export function AppShell({
   return (
     <div className="min-h-dvh">
       {/* Sidebar desktop */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-bg-elev/80 backdrop-blur-xl lg:flex">
+      <aside data-chrome className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-bg-elev/80 backdrop-blur-xl lg:flex">
         <Link href="/" className="flex h-16 items-center gap-3 px-6">
           <Logo className="size-8 text-ink" />
           <span className="truncate text-sm font-extrabold tracking-wide text-ink">{brand}</span>
@@ -163,7 +163,7 @@ export function AppShell({
       </aside>
 
       {/* Topbar mobile/tablet */}
-      <header className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-bg/80 px-4 backdrop-blur-xl lg:hidden">
+      <header data-chrome className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-bg/80 px-4 backdrop-blur-xl lg:hidden">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <Logo className="size-7 text-ink" />
           <span className="truncate text-sm font-extrabold tracking-wide text-ink">{brand}</span>
@@ -203,7 +203,7 @@ export function AppShell({
       </main>
 
       {/* Bottom nav mobile */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg-elev/90 backdrop-blur-xl safe-bottom lg:hidden">
+      <nav data-chrome className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-bg-elev/90 backdrop-blur-xl safe-bottom lg:hidden">
         <div className="mx-auto grid max-w-lg justify-items-center md:max-w-3xl" style={{ gridTemplateColumns: `repeat(${mobileMain.length + 1}, minmax(0, 1fr))` }}>
           {mobileMain.map((item) => (
             <BottomLink key={item.href} item={item} active={isActive(item.href)} />

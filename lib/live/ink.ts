@@ -200,8 +200,8 @@ export interface InkView {
   h: number;
 }
 
-const LASER_HOLD = 900; // ms parado antes de começar a sumir
-const LASER_FADE = 900; // ms sumindo
+const LASER_HOLD = 1200; // ms depois de soltar antes de começar a sumir
+const LASER_FADE = 800; // ms sumindo
 
 const r4 = (n: number) => Math.round(n * 10000) / 10000;
 const r2 = (n: number) => Math.round(n * 50) / 50;
@@ -212,20 +212,42 @@ const U = 1000;
  * Contorno da caneta (tinta que desliza): espessura pela pressão da Apple Pencil (ou pela velocidade),
  * curva suavizada e pontas arredondadas. Devolve x,y,x,y… em coordenadas do documento.
  */
-function penOutline(s: Stroke, done: boolean): number[] {
+/** comprimento do traço (em larguras de página) */
+function lengthOf(pts: number[]) {
+  let l = 0;
+  for (let i = 2; i < pts.length; i += 2) l += Math.hypot(pts[i] - pts[i - 2], pts[i + 1] - pts[i - 1]);
+  return l;
+}
+/** círculo (pingo do "i", ponto final): x,y,x,y… */
+function dot(x: number, y: number, r: number) {
+  const o: number[] = [];
+  for (let i = 0; i < 16; i++) o.push(x + r * Math.cos((i / 16) * 2 * Math.PI), y + r * Math.sin((i / 16) * 2 * Math.PI));
+  return o;
+}
+
+function penOutline(s: Stroke, done: boolean, plain = false): number[] {
   const n = s.pts.length / 2;
+  const len = lengthOf(s.pts);
+  // toque curto (pingo, ponto): um ponto cheio do tamanho da caneta, um pouco maior com mais pressão
+  if (len < s.size * 1.2) {
+    const pr = s.pr?.length ? Math.max(...s.pr) : 0.5;
+    return dot((s.pts[0] + s.pts[s.pts.length - 2]) / 2, (s.pts[1] + s.pts[s.pts.length - 1]) / 2, s.size * (0.5 + 0.35 * pr));
+  }
+  // pontas afinando só quando o traço é comprido o bastante (senão letras pequenas somem)
+  const taper = plain ? 0 : Math.min(1, Math.max(0, (len - s.size * 4) / (s.size * 10)));
   const hasPr = Boolean(s.pr && s.pr.length === n);
   const input: number[][] = new Array(n);
   for (let i = 0; i < n; i++) input[i] = [s.pts[2 * i] * U, s.pts[2 * i + 1] * U, hasPr ? s.pr![i] : 0.5];
   const out = getStroke(input, {
     size: s.size * U,
     // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
-    thinning: hasPr ? 0.52 : 0,
+    thinning: hasPr ? 0.32 : 0,
     smoothing: 0.74,
     streamline: 0.3,
     simulatePressure: false,
-    start: { cap: true, taper: s.size * U * 1.2 },
-    end: { cap: true, taper: s.size * U * 2.4 },
+    // começo redondo e final só levemente afinado (ponta boleada, como esferográfica)
+    start: { cap: true, taper: 0 },
+    end: { cap: true, taper: s.size * U * 0.5 * taper },
     last: done,
   });
   const flat = new Array(out.length * 2);
@@ -275,8 +297,8 @@ export class InkLayer {
   private liveO: { s: Stroke; n: number; p: number; o: number[] } | null = null;
   /** traço sendo desenhado agora */
   current: Stroke | null = null;
-  /** lasers: pontos com o momento em que foram feitos (somem sozinhos) */
-  lasers = new Map<string, { color: string; pts: { x: number; y: number; t: number }[] }>();
+  /** lasers: escritos como a caneta (mesmo traço liso); somem sozinhos depois de soltar (`end`) */
+  lasers = new Map<string, { color: string; size: number; pts: number[]; end: number | null }>();
   selected = new Set<string>();
   private boxes = new WeakMap<Stroke, Box>();
   /** contorno pronto de cada traço terminado (não recalcula a cada quadro) */
@@ -411,31 +433,29 @@ export class InkLayer {
     ctx.restore();
   }
 
-  private drawLasers(ctx: CanvasRenderingContext2D, v: InkView) {
+  drawLasers(ctx: CanvasRenderingContext2D, v: InkView) {
     const now = performance.now();
     for (const [id, l] of this.lasers) {
-      l.pts = l.pts.filter((q) => now - q.t < LASER_HOLD + LASER_FADE);
-      if (!l.pts.length) {
+      const age = l.end === null ? 0 : now - l.end;
+      if (age > LASER_HOLD + LASER_FADE) {
         this.lasers.delete(id);
         continue;
       }
+      const o = penOutline({ id, tool: 'pen', color: l.color, size: l.size, pts: l.pts }, l.end !== null, true);
+      const m = o.length / 2;
+      if (m < 3) continue;
+      const X = (i: number) => v.x + (o[2 * (i % m)] - v.cx) * v.k;
+      const Y = (i: number) => v.y + (o[2 * (i % m) + 1] - v.cy) * v.k;
       ctx.save();
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
+      ctx.globalAlpha = age < LASER_HOLD ? 1 : Math.max(0, 1 - (age - LASER_HOLD) / LASER_FADE);
       ctx.shadowColor = l.color;
-      ctx.shadowBlur = Math.max(6, v.k * 0.012);
-      for (let i = 1; i < l.pts.length; i++) {
-        const a = l.pts[i - 1];
-        const b = l.pts[i];
-        const age = now - b.t;
-        ctx.globalAlpha = age < LASER_HOLD ? 1 : Math.max(0, 1 - (age - LASER_HOLD) / LASER_FADE);
-        ctx.strokeStyle = l.color;
-        ctx.lineWidth = Math.max(3, v.k * 0.006);
-        ctx.beginPath();
-        ctx.moveTo(v.x + (a.x - v.cx) * v.k, v.y + (a.y - v.cy) * v.k);
-        ctx.lineTo(v.x + (b.x - v.cx) * v.k, v.y + (b.y - v.cy) * v.k);
-        ctx.stroke();
-      }
+      ctx.shadowBlur = Math.max(6, l.size * v.k * 1.5);
+      ctx.fillStyle = l.color;
+      ctx.beginPath();
+      ctx.moveTo((X(0) + X(1)) / 2, (Y(0) + Y(1)) / 2);
+      for (let i = 1; i <= m; i++) ctx.quadraticCurveTo(X(i), Y(i), (X(i) + X(i + 1)) / 2, (Y(i) + Y(i + 1)) / 2);
+      ctx.closePath();
+      ctx.fill();
       ctx.restore();
     }
   }
@@ -485,17 +505,22 @@ export class InkLayer {
     if (this.current?.shape) this.current.pts = pts.map(r4);
   }
 
-  laser(id: string, color: string, x: number, y: number) {
-    const l = this.lasers.get(id) ?? { color, pts: [] };
-    l.pts.push({ x, y, t: performance.now() });
+  laser(id: string, color: string, size: number, x: number, y: number) {
+    const l = this.lasers.get(id) ?? { color, size, pts: [], end: null };
+    const n = l.pts.length;
+    if (n && Math.hypot(x - l.pts[n - 2], y - l.pts[n - 1]) < size * 0.1) return;
+    l.pts.push(x, y);
+    l.end = null;
     this.lasers.set(id, l);
   }
-  /** laser vindo de outro aparelho: todos os pontos "agora" (somem juntos depois) */
-  laserFrom(id: string, color: string, pts: number[]) {
-    const t = performance.now();
-    const l = { color, pts: [] as { x: number; y: number; t: number }[] };
-    for (let i = 0; i < pts.length; i += 2) l.pts.push({ x: pts[i], y: pts[i + 1], t });
-    this.lasers.set(id, l);
+  /** soltou: o laser começa a contar para sumir */
+  laserEnd(id: string) {
+    const l = this.lasers.get(id);
+    if (l) l.end = performance.now();
+  }
+  /** laser vindo de outro aparelho: o traço até agora (some depois da última atualização) */
+  laserFrom(id: string, color: string, pts: number[], size = 0.004) {
+    this.lasers.set(id, { color, size, pts: [...pts], end: performance.now() });
   }
 
   /** borracha: apaga os traços tocados */

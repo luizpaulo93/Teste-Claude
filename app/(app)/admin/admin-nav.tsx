@@ -26,7 +26,7 @@ export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
   if (!/^\/(admin|desempenho|calendario)(\/|$)/.test(pathname)) return null;
   return (
     // fica preso no topo ao rolar (abaixo da barra do celular)
-    <div className="rail sticky top-14 z-30 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line bg-bg/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
+    <div data-chrome className="rail sticky top-14 z-30 -mx-4 mb-6 flex gap-1 overflow-x-auto border-b border-line bg-bg/95 px-4 backdrop-blur-xl sm:-mx-6 sm:px-6 lg:top-0 lg:-mx-10 lg:px-10">
       {TABS.map((t) => {
         const active = t.href === '/admin' ? pathname === '/admin' : pathname.startsWith(t.href);
         return (
