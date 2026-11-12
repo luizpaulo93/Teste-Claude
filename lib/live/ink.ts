@@ -156,7 +156,7 @@ function simplify(s: Stroke): Stroke {
   const n = s.pts.length / 2;
   if (n < 3) return s;
   // tolerância pequena: mantém bastante ponto para a curva não mostrar falhas
-  const eps = Math.min(s.size * 0.03, 0.00015);
+  const eps = Math.min(s.size * 0.04, 0.0002);
   const P = s.pts;
   const keep = new Uint8Array(n);
   keep[0] = keep[n - 1] = 1;
@@ -246,9 +246,10 @@ function penOutline(s: Stroke, done: boolean, plain = false): number[] {
   const out = getStroke(input, {
     size: s.size * U,
     // letra bonita: curva bem suavizada, variação moderada com a pressão e pontas afinando (entrada curta, saída mais longa)
-    thinning: hasPr ? 0.32 : 0,
-    smoothing: 0.74,
-    streamline: 0.3,
+    thinning: hasPr ? 0.38 : 0,
+    smoothing: 0.8,
+    // estabilização: tira o tremido sem mudar a forma da letra
+    streamline: 0.4,
     simulatePressure: false,
     // começo redondo e final só levemente afinado (ponta boleada, como esferográfica)
     // pontas redondas, sem afinar
@@ -469,22 +470,37 @@ export class InkLayer {
 
   // ---------------- traços
   /** pressure: só da caneta (Apple Pencil); dedo e mouse ficam sem e a espessura segue a velocidade */
-  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number) {
+  /** momento e "pressão suavizada" do último ponto (para a espessura não oscilar ponto a ponto) */
+  private lastT = 0;
+  private lastP = 0.6;
+  /**
+   * pressure: da caneta (Apple Pencil); dedo e mouse ficam sem. A espessura de cada ponto junta a pressão
+   * com a velocidade (traço rápido afina um pouco) e é suavizada, para o traço sair contínuo, sem caroços.
+   */
+  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number, t = 0) {
     this.current = { id: newStrokeId(), tool, color, size, pts: [r4(x), r4(y)] };
-    if (tool === 'pen' && pressure !== undefined) this.current.pr = [r2(pressure)];
+    this.lastT = t;
+    this.lastP = pressure ?? 0.6;
+    if (tool === 'pen') this.current.pr = [r2(this.lastP)];
   }
-  extend(x: number, y: number, pressure?: number) {
+  extend(x: number, y: number, pressure?: number, t = 0) {
     const c = this.current;
     if (!c) return;
     const n = c.pts.length;
-    // ignora pontos quase iguais (menos dados; a curva continua lisa)
-    if (Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]) < Math.min(c.size * 0.05, 0.0004)) {
-      // mesma posição, pressão maior: guarda a maior (ponto que "engorda" ao apertar)
-      if (c.pr && pressure !== undefined && pressure > c.pr[c.pr.length - 1]) c.pr[c.pr.length - 1] = r2(pressure);
-      return;
-    }
+    const dist = Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]);
+    // ignora pontos quase iguais (tremor da mão e ruído do sensor; a curva continua lisa)
+    if (dist < Math.min(c.size * 0.12, 0.0006)) return;
     c.pts.push(r4(x), r4(y));
-    if (c.pr) c.pr.push(r2(pressure ?? c.pr[c.pr.length - 1]));
+    if (c.pr) {
+      // velocidade em larguras de página por milissegundo: rápido → até 30% mais fino
+      const dt = t && this.lastT ? Math.max(1, t - this.lastT) : 8;
+      const fast = Math.min(1, dist / dt / 0.0035);
+      const want = (pressure ?? 0.6) * (1 - 0.3 * fast);
+      // suaviza: cada ponto puxa só 18% para o valor novo
+      this.lastP = this.lastP * 0.82 + want * 0.18;
+      c.pr.push(r2(this.lastP));
+    }
+    this.lastT = t;
   }
   /** termina o traço; devolve o que mudou (para os outros aparelhos e para desfazer) */
   end(): InkOps | null {

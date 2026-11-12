@@ -433,6 +433,8 @@ export function Studio({
   const viewSnap = useRef<{ cx: number; cy: number; zoom: number } | null>(null);
   /** quando cada dedo encostou (dois dedos só são gesto se encostarem quase juntos) */
   const downAt = useRef(new Map<number, number>());
+  /** até quando um traço cancelado pelo navegador pode ser retomado */
+  const resumeUntil = useRef(0);
   const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
   const undoStack = useRef<InkOps[]>([]);
   const inkQueue = useRef<InkOps>({});
@@ -1833,7 +1835,7 @@ export function Studio({
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
-      ink.current.begin(tool, k.color, k.size, d.x, d.y, tool === 'pen' ? penPressure(e) : undefined);
+      ink.current.begin(tool, k.color, k.size, d.x, d.y, tool === 'pen' ? penPressure(e) : undefined, e.timeStamp);
       // quem só controla: prévia rápida enquanto escreve (mesmo com a ferramenta "mover" e a Pencil)
       if (light && !onAir) comp.current?.setFps(24);
       fastDraw();
@@ -1862,7 +1864,8 @@ export function Studio({
   function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
     if (e.pointerType === 'pen') lastPen.current = performance.now();
     // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
-    if (!inkPtr.current && writing && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf') {
+    if (!inkPtr.current && writing && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf' && performance.now() < resumeUntil.current) {
+      resumeUntil.current = 0;
       inkDown(e);
       return true;
     }
@@ -1873,7 +1876,7 @@ export function Studio({
     const evs = (e.nativeEvent.getCoalescedEvents?.() ?? []).length ? e.nativeEvent.getCoalescedEvents() : [e.nativeEvent];
     for (const ev of evs) {
       const d = pdf.current.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
-      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined);
+      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, st.tool === 'pen' ? penPressure(ev) : undefined, ev.timeStamp);
       else if (st.tool === 'shape' && st.from) ink.current.setShape(shapePoints(shapeKind, st.from.x, st.from.y, d.x, d.y));
       else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
       else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth));
@@ -1899,7 +1902,11 @@ export function Studio({
     return true;
   }
   function inkUp(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (e.pointerType === 'pen') lastPen.current = performance.now();
+    if (e.pointerType === 'pen') {
+      lastPen.current = performance.now();
+      // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
+      resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
+    }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
     inkPtr.current = null;
