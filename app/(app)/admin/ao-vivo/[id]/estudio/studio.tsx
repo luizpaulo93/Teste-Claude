@@ -154,7 +154,7 @@ const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4
 /** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
 const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015, shape: 0.001 } as const;
 type Sized = keyof typeof INK_UNIT;
-type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number } };
+type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number }; held?: number };
 
 const clock = (s: number) =>
   `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -413,7 +413,7 @@ export function Studio({
   }, []);
   const [inkColor, setInkColor] = useState('#111111');
   // tamanho de cada ferramenta (0,1 a 7), lembrado neste aparelho
-  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 3, marker: 4, eraser: 4, laser: 3, shape: 3 });
+  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 4, marker: 4, eraser: 4, laser: 3, shape: 3 });
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
@@ -808,7 +808,7 @@ export function Studio({
     // tocar na tela fecha o popup de microfone/câmera
     if (pop) {
       setPop(null);
-      return;
+      if (!(writing && e.pointerType === 'pen')) return;
     }
     if (scene === 'camera') {
       // câmera: arrastar escolhe a parte da imagem que aparece no recorte
@@ -1705,6 +1705,7 @@ export function Studio({
   /** mudança feita aqui: guarda para desfazer, manda para os outros aparelhos */
   function commitInk(ops: InkOps | null, before: Stroke[]) {
     if (!ops || (!ops.add?.length && !ops.remove?.length)) return;
+    for (const a of ops.add ?? []) localAdds.current.set(a.id, performance.now());
     undoStack.current.push(ink.current.invert(ops, before));
     if (undoStack.current.length > 60) undoStack.current.shift();
     // quem transmite manda na hora para quem controla (o servidor guarda logo depois)
@@ -1745,6 +1746,8 @@ export function Studio({
     };
   }, [pdfId, liveId]);
   // escrita feita em outro aparelho (pelo servidor)
+  /** traços feitos aqui há pouco: uma busca no servidor que ainda não os tem não pode apagá-los da tela */
+  const localAdds = useRef(new Map<string, number>());
   const inkRefetch = useRef<(rev: number) => void>(() => {});
   inkRefetch.current = (rev) => {
     if (!pdfId || rev === inkRevSeen.current) return;
@@ -1753,7 +1756,12 @@ export function Studio({
     if (first) return;
     void getInk(liveId, pdfId).then((r) => {
       const keep = ink.current.current;
-      ink.current.strokes = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
+      const now = performance.now();
+      for (const [id, t] of localAdds.current) if (now - t > 30_000) localAdds.current.delete(id);
+      const next = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
+      const have = new Set(next.map((x) => x.id));
+      for (const o of ink.current.strokes) if (!have.has(o.id) && localAdds.current.has(o.id)) next.push(o);
+      ink.current.strokes = next;
       // o que ainda não foi enviado daqui continua
       ink.current.apply(inkQueue.current);
       ink.current.current = keep;
@@ -1926,6 +1934,67 @@ export function Studio({
     fastClear.current = window.setTimeout(fastDraw, light && !onAir ? 0 : 90);
   };
   useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
+  /**
+   * Camada nítida: no aparelho que escreve, a caneta já escrita é redesenhada na resolução da tela (a prévia
+   * da live tem 720p e deixaria a letra borrada). Só redesenha quando algo muda.
+   */
+  const sharpRef = useRef<HTMLCanvasElement>(null);
+  const sharpOn = writing && scene === 'pdf' && (!viewing || touching);
+  const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
+  useEffect(() => {
+    const c = sharpRef.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!sharpOn) {
+      ctx?.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    let raf = 0;
+    let key = '';
+    let drawn = 0;
+    let movedAt = 0;
+    let rough = false;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = canvasRef.current;
+      const p = pdf.current;
+      if (!el || !p?.pages || !ctx) return;
+      const f = frameRect(el);
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const W = Math.round(f.r.width * dpr);
+      const H = Math.round(f.r.height * dpr);
+      const k = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}|${ink.current.version}|${pipHole ? `${pipHole.x},${pipHole.y},${pipHole.w},${pipHole.h}` : ''}`;
+      const now = performance.now();
+      const n = ink.current.count;
+      const same = k === key;
+      if (same && n === drawn && !(rough && now - movedAt > 120)) return;
+      if (c.width !== W || c.height !== H) {
+        c.width = W;
+        c.height = H;
+      }
+      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      // a câmera fica por cima da escrita
+      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
+      ctx.clip('evenodd');
+      if (same && n > drawn && !rough) ink.current.drawPens(ctx, view, true, drawn);
+      else {
+        // movendo/dando zoom: desenho leve a cada quadro; parou: desenho caprichado uma vez
+        if (!same) movedAt = now;
+        rough = !same && key !== '';
+        ctx.clearRect(0, 0, W, H);
+        ink.current.drawPens(ctx, view, !rough);
+      }
+      ctx.restore();
+      key = k;
+      drawn = n;
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharpOn, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
 
   /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
   function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -1945,6 +2014,7 @@ export function Studio({
       // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
       const old = inkPtr.current;
       if (old) {
+        window.clearTimeout(old.held);
         inkPtr.current = null;
         if (old.type !== 'pen') {
           // estava "escrevendo" com a mão encostada antes da Pencil: era a palma, descarta
@@ -2025,7 +2095,14 @@ export function Studio({
       return true;
     }
     const st = inkPtr.current;
+    if (st && st.type === 'pen' && e.pointerType === 'pen' && st.id !== e.pointerId && e.pressure > 0) st.id = e.pointerId;
     if (!st || st.id !== e.pointerId || !pdf.current) return Boolean(st && e.pointerType === 'touch' && st.type === 'pen');
+    if (st.held) {
+      // toque cancelado pelo navegador e a Pencil continua na tela: o mesmo traço segue, sem buraco
+      if (!(e.pressure > 0)) return true;
+      window.clearTimeout(st.held);
+      st.held = 0;
+    }
     const r = frameRect(e.currentTarget);
     // a caneta manda vários pontos por quadro: usa todos (traço liso)
     const evs = (e.nativeEvent.getCoalescedEvents?.() ?? []).length ? e.nativeEvent.getCoalescedEvents() : [e.nativeEvent];
@@ -2065,6 +2142,17 @@ export function Studio({
     }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
+    if (e.type === 'pointercancel' && st.type === 'pen' && (st.tool === 'pen' || st.tool === 'marker') && !st.held) {
+      // o navegador cancelou o toque no meio da letra: espera um instante; se a Pencil seguir, o traço continua
+      st.held = window.setTimeout(() => {
+        if (inkPtr.current !== st) return;
+        inkPtr.current = null;
+        commitInk(ink.current.end(), st.before ?? []);
+        fastDone();
+      }, 300);
+      return true;
+    }
+    window.clearTimeout(st.held);
     inkPtr.current = null;
     if (st.tool === 'shape') {
       // toque sem arrastar não vira forma
@@ -2328,6 +2416,7 @@ export function Studio({
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
+              <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
               {scene === 'pdf' && inkTool === 'select' && selBox && (

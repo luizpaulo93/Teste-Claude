@@ -292,6 +292,18 @@ export class InkLayer {
   get count() {
     return this.list.length;
   }
+  /** só a caneta e as formas (camada nítida, na resolução da tela, do aparelho que escreve) */
+  drawPens(ctx: CanvasRenderingContext2D, v: InkView, exact: boolean, from = 0) {
+    const vx1 = v.cx + v.w / v.k;
+    const vy1 = v.cy + v.h / v.k;
+    for (let i = from; i < this.list.length; i++) {
+      const s = this.list[i];
+      if (s.tool !== 'pen') continue;
+      const b = this.box(s);
+      if (b.x1 < v.cx || b.x0 > vx1 || b.y1 < v.cy || b.y0 > vy1) continue;
+      this.drawStroke(ctx, s, v, false, exact);
+    }
+  }
   /** desenha só os traços a partir de `from` (acrescenta à imagem pronta, sem redesenhar a página) */
   drawTail(ctx: CanvasRenderingContext2D, v: InkView, from: number) {
     for (let i = from; i < this.list.length; i++) this.drawStroke(ctx, this.list[i], v, false);
@@ -371,7 +383,7 @@ export class InkLayer {
   private fillPen(ctx: CanvasRenderingContext2D, s: Stroke, v: InkView, exact: boolean) {
     ctx.save();
     ctx.strokeStyle = s.color;
-    this.strokeCurve(ctx, s.pts, v, Math.max(0.6, s.size * v.k), exact);
+    this.strokeCurve(ctx, s.pts, v, Math.max(0.6, s.size * v.k), exact, s.pr && s.pr.length === s.pts.length / 2 ? s.pr : undefined);
     ctx.restore();
   }
 
@@ -380,7 +392,9 @@ export class InkLayer {
    * somam e o traço nunca fica com falhas onde cruza o próprio caminho; senão, um caminho só (mais leve,
    * usado com o PDF em movimento).
    */
-  private strokeCurve(ctx: CanvasRenderingContext2D, p: number[], v: InkView, lw: number, exact: boolean) {
+  private strokeCurve(ctx: CanvasRenderingContext2D, p: number[], v: InkView, lw: number, exact: boolean, pr?: number[]) {
+    // pressão → espessura entre 80% e 125% (variação leve, como caneta de verdade)
+    const W = (i: number) => (pr ? lw * (0.8 + 0.45 * Math.min(1, Math.max(0, pr[i] * 1.15 + 0.2))) : lw);
     const n = p.length / 2;
     if (n < 1) return;
     const X = (i: number) => v.x + (p[2 * Math.min(n - 1, Math.max(0, i))] - v.cx) * v.k;
@@ -390,6 +404,7 @@ export class InkLayer {
     ctx.lineWidth = lw;
     if (n === 1 || (n === 2 && Math.hypot(X(1) - X(0), Y(1) - Y(0)) < 0.5)) {
       // toque curto (pingo do "i", ponto final)
+      ctx.lineWidth = W(0);
       ctx.beginPath();
       ctx.moveTo(X(0), Y(0));
       ctx.lineTo(X(0) + 0.01, Y(0));
@@ -404,6 +419,7 @@ export class InkLayer {
       const c2x = X(i + 1) - (X(i + 2) - X(i)) / 6;
       const c2y = Y(i + 1) - (Y(i + 2) - Y(i)) / 6;
       if (exact) {
+        if (pr) ctx.lineWidth = (W(i) + W(i + 1)) / 2;
         ctx.beginPath();
         ctx.moveTo(X(i), Y(i));
       }
@@ -512,17 +528,40 @@ export class InkLayer {
 
   // ---------------- traços
   /** pressure: só da caneta (Apple Pencil); dedo e mouse ficam sem e a espessura segue a velocidade */
-  /** começa um traço (caneta: espessura constante; a pressão não entra) */
-  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number) {
+  /** último ponto bruto e pressão suavizada (estabilização do traço em andamento) */
+  private sx = 0;
+  private sy = 0;
+  private sp = 0.5;
+  private rx = 0;
+  private ry = 0;
+  /**
+   * Começa um traço. `pressure` (Apple Pencil): a espessura varia de leve com ela (±25%), suavizada para
+   * não oscilar; dedo e mouse ficam com espessura fixa.
+   */
+  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number) {
     this.current = { id: newStrokeId(), tool, color, size, pts: [r4(x), r4(y)] };
+    this.sx = this.rx = x;
+    this.sy = this.ry = y;
+    if (tool === 'pen' && pressure !== undefined) {
+      this.sp = pressure;
+      this.current.pr = [r2(pressure)];
+    }
   }
-  extend(x: number, y: number) {
+  extend(x: number, y: number, pressure?: number) {
     const c = this.current;
     if (!c) return;
+    // estabilização: o traço segue a ponta, mas cada ponto novo é puxado só 65% (tira o micro-tremor da mão
+    // sem mudar a forma da letra)
+    this.rx = x;
+    this.ry = y;
+    this.sx += (x - this.sx) * 0.65;
+    this.sy += (y - this.sy) * 0.65;
+    if (c.pr && pressure !== undefined) this.sp += (pressure - this.sp) * 0.25;
     const n = c.pts.length;
-    // ignora pontos quase iguais (ruído do sensor); o resto entra como veio, para o traço ser fiel à mão
-    if (Math.hypot(x - c.pts[n - 2], y - c.pts[n - 1]) < Math.min(c.size * 0.1, 0.0005)) return;
-    c.pts.push(r4(x), r4(y));
+    // ignora pontos quase iguais (ruído do sensor)
+    if (Math.hypot(this.sx - c.pts[n - 2], this.sy - c.pts[n - 1]) < Math.min(c.size * 0.1, 0.0005)) return;
+    c.pts.push(r4(this.sx), r4(this.sy));
+    if (c.pr) c.pr.push(r2(this.sp));
   }
   /** termina o traço; devolve o que mudou (para os outros aparelhos e para desfazer) */
   end(): InkOps | null {
@@ -531,6 +570,14 @@ export class InkLayer {
     if (!c) return null;
     // a caixa guardada durante o desenho só tinha o começo do traço
     this.boxes.delete(c);
+    // a estabilização deixa o fim um pouco atrás da ponta: termina exatamente onde a caneta parou
+    if (!c.shape && c.pts.length >= 4) {
+      const n = c.pts.length;
+      if (Math.hypot(this.rx - c.pts[n - 2], this.ry - c.pts[n - 1]) > 0.00005) {
+        c.pts.push(r4(this.rx), r4(this.ry));
+        if (c.pr) c.pr.push(r2(this.sp));
+      }
+    }
     // guarda a versão enxuta; o desenho aqui continua o do traço completo (não muda ao soltar)
     const lean = c.shape ? c : simplify(c);
     this.list.push(lean);
