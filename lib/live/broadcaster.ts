@@ -279,10 +279,20 @@ export class Broadcaster {
   }
 
   /** Troca a taxa só no quadro-chave (começo de segmento): sem falhas na imagem. */
+  private lastConfigAt = 0;
   private applyRate() {
-    if ((!this.pendingRate && !this.pendingFps) || !this.cfg || !this.venc) return;
+    // o ritmo de quadros não precisa reconfigurar o codificador (ele segue o tempo de cada quadro)
+    this.pendingFps = 0;
+    if (!this.pendingRate || !this.cfg || !this.venc) return;
+    // Reconfigurar o codificador é caro (no iPad ele é recriado e a tela inteira engasga, inclusive a caneta):
+    // só quando a taxa muda de verdade (20% ou mais) e no máximo a cada 10 s; para baixo (internet apertada), a cada 4 s.
+    const now = performance.now();
+    const cur = this.cfg.bitrate ?? this.rate;
+    const down = this.pendingRate < cur;
+    if (Math.abs(this.pendingRate - cur) < cur * 0.2 || now - this.lastConfigAt < (down ? 4000 : 10_000)) return;
+    this.lastConfigAt = now;
     try {
-      this.cfg = { ...this.cfg, bitrate: this.pendingRate || this.cfg.bitrate, framerate: this.pendingFps || this.cfg.framerate };
+      this.cfg = { ...this.cfg, bitrate: this.pendingRate };
       this.venc.configure(this.cfg);
       if (this.pendingRate) this.rate = this.pendingRate;
       this.status.rate = Math.round(this.rate / 1000);

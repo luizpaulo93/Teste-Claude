@@ -1190,7 +1190,8 @@ export function Studio({
       const isStage = caster.current || (r.status === 'live' && r.holder?.fresh ? r.holder.device : r.stage?.present ? r.stage.device : '') === device.current.id;
       if (isStage && r.previewWanted) pendingPreview.current = snapshot();
       setRemote(r);
-      setDevices(r.devices);
+      // (a lista só muda quando um aparelho entra/sai ou troca de câmera: a tela não é refeita à toa)
+      setDevices((o) => (JSON.stringify(o) === JSON.stringify(r.devices) ? o : r.devices));
       inkRefetch.current(r.inkRev);
       if (r.cmd) void onCmd.current(r.cmd);
       const l = link.current;
@@ -1934,6 +1935,13 @@ export function Studio({
     const lock = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
     root.overflow = 'hidden';
     root.overscrollBehavior = 'none';
+    // nenhum gesto do navegador (zoom da página, arrastar para voltar) começa pela mão apoiada: quando um
+    // gesto desses começa, o navegador para de entregar a caneta por alguns instantes
+    const prevTouch = root.touchAction;
+    root.touchAction = 'none';
+    const noGesture = (e: Event) => e.preventDefault();
+    document.addEventListener('gesturestart', noGesture, { capture: true, passive: false });
+    document.addEventListener('gesturechange', noGesture, { capture: true, passive: false });
     document.body.style.overflow = 'hidden';
     const onTouchMove = (e: TouchEvent) => {
       if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
@@ -1945,6 +1953,9 @@ export function Studio({
     return () => {
       [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout] = prev;
       [root.overflow, root.overscrollBehavior, document.body.style.overflow] = lock;
+      root.touchAction = prevTouch;
+      document.removeEventListener('gesturestart', noGesture, { capture: true });
+      document.removeEventListener('gesturechange', noGesture, { capture: true });
       document.removeEventListener('touchmove', onTouchMove, { capture: true });
       document.removeEventListener('touchstart', onTouch, { capture: true });
       document.removeEventListener('pointerdown', onDown, true);
