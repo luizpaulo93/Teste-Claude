@@ -1177,6 +1177,9 @@ export function Studio({
 
   // Situação da live em todos os aparelhos (a cada 1,5 s): quem transmite e qual a cena
   const applyRef = useRef<(r: NonNullable<StudioPoll>) => Promise<void>>(async () => {});
+  /** esta sessão viu a live no ar / já está saindo do estúdio */
+  const sawLive = useRef(false);
+  const leaving = useRef(false);
   useEffect(() => {
     let alive = true;
     const tick = async () => {
@@ -1217,6 +1220,12 @@ export function Studio({
           l.unwatch();
           l.setSource(null);
         }
+      }
+      // a live que estava no ar foi encerrada (aqui ou em outro aparelho): os aparelhos saem do estúdio
+      if (r.status === 'live') sawLive.current = true;
+      else if (r.status === 'ended' && sawLive.current && !leaving.current) {
+        leaving.current = true;
+        window.setTimeout(() => router.push('/admin/ao-vivo'), caster.current ? 1500 : 300);
       }
       // live encerrada em outro aparelho: este para na hora
       if (r.status !== 'live' && caster.current) {
@@ -2467,9 +2476,15 @@ export function Studio({
       caster.current = null;
       setStatus(null);
       const r = await stopStudio(liveId);
-      if (r.error) toast.error(r.error);
-      else toast('Transmissão encerrada');
-      router.refresh();
+      if (r.error) {
+        toast.error(r.error);
+        router.refresh();
+      } else {
+        // encerrou: sai do estúdio e volta para a lista das transmissões
+        toast('Transmissão encerrada');
+        leaving.current = true;
+        router.push('/admin/ao-vivo');
+      }
     } finally {
       setBusy(false);
     }
