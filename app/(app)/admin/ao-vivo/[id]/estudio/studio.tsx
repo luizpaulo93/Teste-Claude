@@ -492,6 +492,8 @@ export function Studio({
   const resumeUntil = useRef(0);
   /** quando a Pencil levantou pela última vez (movimentos logo depois são resíduo, não escrita) */
   const penUpAt = useRef(0);
+  /** toque da Pencil que acabou de terminar (movimentos atrasados dele não viram traço novo) */
+  const lastPenId = useRef(-1);
   const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
   const undoStack = useRef<InkOps[]>([]);
   const inkQueue = useRef<InkOps>({});
@@ -1749,9 +1751,15 @@ export function Studio({
         const send = inkQueue.current;
         inkQueue.current = {};
         if (!pdfId || (!send.add?.length && !send.remove?.length)) return;
-        const r = await inkOps(liveId, pdfId, packOps(send)).catch(() => null);
-        // a versão nova é a nossa: não precisa buscar de volta
-        if (r && 'rev' in r && r.rev && r.rev === inkRevSeen.current + 1) inkRevSeen.current = r.rev;
+        const job = inkOps(liveId, pdfId, packOps(send)).catch(() => null);
+        inkFlight.current = job;
+        const r = await job;
+        if (inkFlight.current === job) inkFlight.current = null;
+        // versões gravadas daqui: não precisa buscar de volta
+        if (r && 'rev' in r && r.rev) {
+          ownRevs.current.add(r.rev);
+          if (r.rev === inkRevSeen.current + 1) inkRevSeen.current = r.rev;
+        }
       }, caster.current ? 800 : 500);
   }
   /** mudança feita aqui: guarda para desfazer, manda para os outros aparelhos */
@@ -1800,12 +1808,25 @@ export function Studio({
   // escrita feita em outro aparelho (pelo servidor)
   /** traços feitos aqui há pouco: uma busca no servidor que ainda não os tem não pode apagá-los da tela */
   const localAdds = useRef(new Map<string, number>());
-  const inkRefetch = useRef<(rev: number) => void>(() => {});
-  inkRefetch.current = (rev) => {
-    if (!pdfId || rev === inkRevSeen.current) return;
-    const first = inkRevSeen.current < 0;
+  /** gravação em andamento e versões que este aparelho gravou (não precisam ser buscadas de volta) */
+  const inkFlight = useRef<Promise<unknown> | null>(null);
+  const ownRevs = useRef(new Set<number>());
+  const inkRefetch = useRef<(rev: number) => void | Promise<void>>(() => {});
+  inkRefetch.current = async (rev) => {
+    if (!pdfId || rev <= inkRevSeen.current) return;
+    if (inkRevSeen.current < 0) {
+      inkRevSeen.current = rev;
+      return;
+    }
+    // espera a gravação daqui terminar: se todas as versões novas são nossas, não há o que buscar
+    // (recarregar tudo a cada traço travava a escrita conforme a aula enchia)
+    if (inkFlight.current) await inkFlight.current;
+    if (rev <= inkRevSeen.current) return;
+    let mine = true;
+    for (let k = inkRevSeen.current + 1; k <= rev; k++) if (!ownRevs.current.has(k)) mine = false;
+    for (const k of ownRevs.current) if (k <= rev) ownRevs.current.delete(k);
     inkRevSeen.current = rev;
-    if (first) return;
+    if (mine) return;
     void getInk(liveId, pdfId).then((r) => {
       const keep = ink.current.current;
       const now = performance.now();
@@ -1990,6 +2011,78 @@ export function Studio({
     fastClear.current = window.setTimeout(fastDraw, light && !onAir ? 0 : 90);
   };
   useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
+  /**
+   * Letra nítida: com o PDF parado, a caneta é redesenhada na resolução da tela (a imagem da live tem 720p
+   * e, ampliada no iPad, deixa a letra borrada). Enquanto o PDF rola ou dá zoom esta camada fica vazia
+   * (nada é desenhado por quadro: a rolagem não pesa) e volta assim que para.
+   */
+  const sharpRef = useRef<HTMLCanvasElement>(null);
+  const sharpOn = writing && scene === 'pdf' && (!viewing || touching);
+  const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
+  useEffect(() => {
+    const c = sharpRef.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    if (!sharpOn) {
+      ctx.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    let raf = 0;
+    let viewKey = '';
+    let ver = -1;
+    let drawn = 0;
+    let movedAt = 0;
+    let empty = true;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = canvasRef.current;
+      const p = pdf.current;
+      if (!el || !p?.pages) return;
+      const f = frameRect(el);
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const W = Math.round(f.r.width * dpr);
+      const H = Math.round(f.r.height * dpr);
+      const vk = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}`;
+      const now = performance.now();
+      if (vk !== viewKey) {
+        // mexendo: some na hora (a imagem da live, que anda junto com o PDF, fica à mostra)
+        viewKey = vk;
+        movedAt = now;
+        ver = -1;
+        if (!empty) {
+          ctx.clearRect(0, 0, c.width, c.height);
+          empty = true;
+        }
+        return;
+      }
+      if (now - movedAt < 140) return;
+      const n = ink.current.count;
+      const full = ver !== ink.current.version || n < drawn;
+      if (!full && n === drawn) return;
+      if (c.width !== W || c.height !== H) {
+        c.width = W;
+        c.height = H;
+      }
+      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      // a câmera fica por cima da escrita
+      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
+      ctx.clip('evenodd');
+      if (full) {
+        ctx.clearRect(0, 0, W, H);
+        ink.current.drawPens(ctx, view, true);
+      } else ink.current.drawPens(ctx, view, true, drawn);
+      ctx.restore();
+      ver = ink.current.version;
+      drawn = n;
+      empty = false;
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharpOn, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
 
   /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
   function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
@@ -2083,7 +2176,7 @@ export function Studio({
       e.pointerType === 'pen' &&
       e.pressure > 0 &&
       scene === 'pdf' &&
-      (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && performance.now() - penUpAt.current > 120))
+      (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && (e.pointerId !== lastPenId.current || performance.now() - penUpAt.current > 120)))
     ) {
       resumeUntil.current = 0;
       inkDown(e);
@@ -2134,6 +2227,7 @@ export function Studio({
       // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
       resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
       penUpAt.current = performance.now();
+      lastPenId.current = e.pointerId;
     }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
@@ -2411,6 +2505,7 @@ export function Studio({
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
+              <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
               {scene === 'pdf' && inkTool === 'select' && selBox && (
