@@ -540,23 +540,23 @@ export class InkLayer {
 
   // ---------------- traços
   /** pressure: só da caneta (Apple Pencil); dedo e mouse ficam sem e a espessura segue a velocidade */
-  /** último ponto bruto e pressão suavizada (estabilização do traço em andamento) */
-  private sx = 0;
-  private sy = 0;
+  /** pontos como vieram da caneta (o traço guardado é a versão alisada deles) e pressão suavizada */
+  private raw: number[] = [];
   private sp = 0.5;
   private rx = 0;
   private ry = 0;
-  /**
-   * Começa um traço. `pressure` (Apple Pencil): a espessura varia de leve com ela (±25%), suavizada para
-   * não oscilar; dedo e mouse ficam com espessura fixa.
-   */
   /** tamanho de um ponto da tela em medidas do PDF, no zoom em que o traço é escrito (0 = desconhecido) */
   private unit = 0;
+  /**
+   * Começa um traço. `pressure` (Apple Pencil): a espessura varia de leve com ela, suavizada para não
+   * oscilar; dedo e mouse ficam com espessura fixa.
+   */
   begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number, unit = 0) {
     this.unit = unit;
     this.current = { id: newStrokeId(), tool, color, size, pts: [r4(x), r4(y)] };
-    this.sx = this.rx = x;
-    this.sy = this.ry = y;
+    this.raw = [x, y];
+    this.rx = x;
+    this.ry = y;
     if (tool === 'pen' && pressure !== undefined) {
       this.sp = pressure;
       this.current.pr = [r2(pressure)];
@@ -565,19 +565,38 @@ export class InkLayer {
   extend(x: number, y: number, pressure?: number) {
     const c = this.current;
     if (!c) return;
-    // estabilização: o traço segue a ponta, mas cada ponto novo é puxado só 65% (tira o micro-tremor da mão
-    // sem mudar a forma da letra)
     this.rx = x;
     this.ry = y;
-    this.sx += (x - this.sx) * 0.65;
-    this.sy += (y - this.sy) * 0.65;
     if (c.pr && pressure !== undefined) this.sp += (pressure - this.sp) * 0.25;
-    const n = c.pts.length;
+    const R = this.raw;
+    const n = R.length;
     // ignora pontos quase iguais (ruído do sensor)
     const min = Math.min(c.size * 0.1, 0.0005);
-    if (Math.hypot(this.sx - c.pts[n - 2], this.sy - c.pts[n - 1]) < (this.unit ? Math.min(min, this.unit * 0.8) : min)) return;
-    c.pts.push(r4(this.sx), r4(this.sy));
+    if (Math.hypot(x - R[n - 2], y - R[n - 1]) < (this.unit ? Math.min(min, this.unit * 0.8) : min)) return;
+    this.add(c, x, y);
+  }
+  /**
+   * Ponto novo. Cada ponto do traço é a média dele com os dois vizinhos de cada lado (pesos 1-4-6-4-1): as
+   * curvas saem redondas, sem os "cantos" do tremor da mão e do sensor, e a ponta não atrasa (a média é para
+   * os dois lados; só os dois últimos pontos se ajustam quando chegam os seguintes). Onde a caneta corre (pontos
+   * longe um do outro) quase não alisa: a forma da letra não muda. O começo e o fim ficam exatos.
+   */
+  private add(c: Stroke, x: number, y: number) {
+    const R = this.raw;
+    R.push(x, y);
+    c.pts.push(r4(x), r4(y));
     if (c.pr) c.pr.push(r2(this.sp));
+    const m = R.length / 2;
+    const u = this.unit || c.size * 0.33;
+    const at = (i: number) => 2 * Math.min(m - 1, Math.max(0, i));
+    for (let i = Math.max(1, m - 3); i <= m - 2; i++) {
+      const d = (Math.hypot(R[2 * i] - R[2 * i - 2], R[2 * i + 1] - R[2 * i - 1]) + Math.hypot(R[2 * i + 2] - R[2 * i], R[2 * i + 3] - R[2 * i + 1])) / 2;
+      const a = Math.min(1, Math.max(0, 1 - d / (8 * u)));
+      for (let k = 0; k < 2; k++) {
+        const v = (R[at(i - 2) + k] + 4 * R[at(i - 1) + k] + 6 * R[2 * i + k] + 4 * R[at(i + 1) + k] + R[at(i + 2) + k]) / 16;
+        c.pts[2 * i + k] = r4(R[2 * i + k] + a * (v - R[2 * i + k]));
+      }
+    }
   }
   /** termina o traço; devolve o que mudou (para os outros aparelhos e para desfazer) */
   end(): InkOps | null {
@@ -586,22 +605,13 @@ export class InkLayer {
     if (!c) return null;
     // a caixa guardada durante o desenho só tinha o começo do traço
     this.boxes.delete(c);
-    // a estabilização deixa o fim um pouco atrás da ponta: termina exatamente onde a caneta parou
-    if (!c.shape && c.pts.length >= 4) {
-      const n = c.pts.length;
-      if (Math.hypot(this.rx - c.pts[n - 2], this.ry - c.pts[n - 1]) > 0.00005) {
-        c.pts.push(r4(this.rx), r4(this.ry));
-        if (c.pr) c.pr.push(r2(this.sp));
-      }
+    // termina exatamente onde a caneta parou
+    if (!c.shape && this.raw.length >= 2) {
+      const n = this.raw.length;
+      if (Math.hypot(this.rx - this.raw[n - 2], this.ry - this.raw[n - 1]) > 0.00002) this.add(c, this.rx, this.ry);
     }
-    // guarda a versão enxuta; o desenho aqui continua o do traço completo (não muda ao soltar)
-    // alisa de leve (média com os vizinhos): tira o serrilhado que sobra do sensor sem mudar a letra
-    if (!c.shape && c.pts.length >= 10) {
-      const P = c.pts;
-      const out = P.slice();
-      for (let i = 2; i < P.length - 2; i++) out[i] = r4((P[i - 2] + 2 * P[i] + P[i + 2]) / 4);
-      c.pts = out;
-    }
+    this.raw = [];
+    // guarda a versão enxuta (o desenho não muda ao soltar)
     const lean = c.shape ? c : simplify(c, this.unit);
     this.list.push(lean);
     return { add: [lean] };
