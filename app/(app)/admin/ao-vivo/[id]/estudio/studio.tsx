@@ -1440,7 +1440,7 @@ export function Studio({
     }
     if (track) track.onunmute = () => applyFeed();
     // ainda não chegou (ou caiu): a câmera daqui continua; se demorar, desiste sem derrubar a live
-    feedTimer.current = window.setTimeout(() => back('A câmera do outro aparelho não chegou (abra o Estúdio nele). Fiquei com a câmera daqui.'), 12_000);
+    feedTimer.current = window.setTimeout(() => back('A câmera do outro aparelho não chegou (abra o Estúdio nele). Fiquei com a câmera daqui.'), 25_000);
   }
   const onFeed = useRef<(d: string, st: MediaStream | null) => void>(() => {});
   onFeed.current = (d, st) => {

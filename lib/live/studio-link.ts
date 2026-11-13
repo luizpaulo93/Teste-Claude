@@ -19,7 +19,7 @@ const ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun
 function gathered(pc: RTCPeerConnection) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise<void>((r) => {
-    const t = window.setTimeout(r, 2500);
+    const t = window.setTimeout(r, 1500);
     pc.addEventListener('icegatheringstatechange', () => {
       if (pc.iceGatheringState === 'complete') {
         window.clearTimeout(t);
@@ -50,6 +50,9 @@ export class StudioLink {
   /** quem transmite: chegou (ou caiu) a câmera de outro aparelho */
   onFeed?: (device: string, s: MediaStream | null) => void;
   private feeding = new Set<string>();
+  /** aparelhos de quem já chegou imagem de câmera (para avisar quando a ligação cai) */
+  private fed = new Set<string>();
+  private upSender: RTCRtpSender | null = null;
 
   onStream?: (s: MediaStream | null) => void;
   onMessage?: (m: LinkMsg, from: string) => void;
@@ -76,14 +79,18 @@ export class StudioLink {
     const pc = new RTCPeerConnection({ iceServers: ICE });
     this.vpc = pc;
     pc.addTransceiver('video', { direction: 'recvonly' });
-    // câmera deste aparelho para a live (boa qualidade: é a imagem que vai ao ar)
-    const upTrack = this.up?.getVideoTracks()[0];
-    if (upTrack && this.up) {
-      const sender = pc.addTrack(upTrack, this.up);
-      const params = sender.getParameters();
-      params.encodings = [{ maxBitrate: 1_800_000, maxFramerate: 30 }];
-      params.degradationPreference = 'maintain-framerate';
-      void sender.setParameters(params).catch(() => {});
+    // caminho da câmera deste aparelho para a live: já fica combinado (vazio) na ligação. Ligar ou trocar a
+    // câmera depois é só colocar a imagem nele — na hora, sem refazer a ligação (que levava vários segundos
+    // e às vezes não chegava a tempo).
+    const upTrack = this.up?.getVideoTracks()[0] ?? null;
+    try {
+      this.upSender = pc.addTransceiver(upTrack ?? 'video', {
+        direction: 'sendonly',
+        streams: this.up ? [this.up] : [],
+        sendEncodings: [{ maxBitrate: 1_800_000, maxFramerate: 30 }],
+      }).sender;
+    } catch {
+      this.upSender = pc.addTransceiver(upTrack ?? 'video', { direction: 'sendonly' }).sender;
     }
     const dc = pc.createDataChannel('ctl');
     this.vdc = dc;
@@ -105,6 +112,7 @@ export class StudioLink {
     this.vpc.close();
     this.vpc = null;
     this.vdc = null;
+    this.upSender = null;
     this.vTarget = '';
     this.onStream?.(null);
   }
@@ -113,11 +121,8 @@ export class StudioLink {
   setUpstream(stream: MediaStream | null) {
     if (stream === this.up) return;
     this.up = stream;
-    const t = this.vTarget;
-    if (this.vpc && t) {
-      this.unwatch();
-      void this.watch(t);
-    }
+    // a imagem entra (ou sai) no caminho já combinado: sem refazer a ligação
+    if (this.vpc && this.upSender) void this.upSender.replaceTrack(stream?.getVideoTracks()[0] ?? null).catch(() => {});
   }
   get upstream() {
     return this.up;
@@ -160,7 +165,8 @@ export class StudioLink {
     p?.dc?.close();
     p?.pc.close();
     this.peers.delete(device);
-    if (this.feeding.delete(device)) this.onFeed?.(device, null);
+    this.feeding.delete(device);
+    if (this.fed.delete(device)) this.onFeed?.(device, null);
   }
 
   private async serve(device: string, sdp: string) {
@@ -169,10 +175,32 @@ export class StudioLink {
     this.drop(device);
     const pc = new RTCPeerConnection({ iceServers: ICE });
     // câmera vinda do outro aparelho
+    // (o caminho existe sempre; a câmera só conta quando a imagem chega de verdade)
     pc.ontrack = (e) => {
-      this.feeding.add(device);
-      for (const sd of pc.getSenders()) if (sd.track) this.tune(sd, device);
-      this.onFeed?.(device, e.streams[0] ?? new MediaStream([e.track]));
+      const st = e.streams[0] ?? new MediaStream([e.track]);
+      let off = 0;
+      const retune = () => {
+        for (const sd of pc.getSenders()) if (sd.track) this.tune(sd, device);
+      };
+      const on = () => {
+        window.clearTimeout(off);
+        if (this.peers.get(device)?.pc !== pc) return;
+        this.fed.add(device);
+        if (!this.feeding.has(device)) {
+          this.feeding.add(device);
+          retune();
+        }
+        this.onFeed?.(device, st);
+      };
+      e.track.addEventListener('unmute', on);
+      e.track.addEventListener('mute', () => {
+        window.clearTimeout(off);
+        // parou de mandar: o espelho dele volta ao normal
+        off = window.setTimeout(() => {
+          if (this.peers.get(device)?.pc === pc && this.feeding.delete(device)) retune();
+        }, 5000);
+      });
+      if (!e.track.muted) on();
     };
     const peer: { pc: RTCPeerConnection; dc?: RTCDataChannel } = { pc };
     this.peers.set(device, peer);
@@ -191,7 +219,8 @@ export class StudioLink {
       if (pc.connectionState === 'failed' || pc.connectionState === 'closed')
         if (this.peers.get(device)?.pc === pc) {
           this.peers.delete(device);
-          if (this.feeding.delete(device)) this.onFeed?.(device, null);
+          this.feeding.delete(device);
+          if (this.fed.delete(device)) this.onFeed?.(device, null);
         }
     };
     await pc.setRemoteDescription({ type: 'offer', sdp });
