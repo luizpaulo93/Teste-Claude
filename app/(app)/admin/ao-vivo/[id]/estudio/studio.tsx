@@ -2118,6 +2118,8 @@ export function Studio({
   /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
   function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!writing || scene !== 'pdf' || !pdf.current?.pages) return false;
+    // mãozinha: nada escreve. A Pencil e o dedo movem a folha; dois dedos dão zoom.
+    if (inkTool === 'hand') return false;
     if (e.pointerType === 'pen') {
       if (!pencilSeen.current)
         try {
@@ -2149,9 +2151,7 @@ export function Studio({
       // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
       return penBusy();
     }
-    // com a Apple Pencil: a caneta escreve e os dedos movem/dão zoom
-    const tool: InkTool = e.pointerType === 'pen' && inkTool === 'hand' ? 'pen' : inkTool;
-    if (tool === 'hand') return false;
+    const tool: InkTool = inkTool;
     if (inkPtr.current) {
       // segundo dedo: deixa de escrever e vira pinça/rolagem
       if (inkPtr.current.type === 'pen') return true; // palma da mão encostando: ignora
@@ -2198,12 +2198,13 @@ export function Studio({
     return true;
   }
   function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (e.pointerType === 'pen') lastPen.current = performance.now();
+    if (e.pointerType === 'pen' && inkTool !== 'hand') lastPen.current = performance.now();
     // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
     // (ou o navegador nem avisou que a Pencil encostou: ela está pressionando há mais de 0,12 s sem traço aberto)
     if (
       !inkPtr.current &&
       writing &&
+      inkTool !== 'hand' &&
       e.pointerType === 'pen' &&
       e.pressure > 0 &&
       scene === 'pdf' &&
@@ -2253,7 +2254,7 @@ export function Studio({
     return true;
   }
   function inkUp(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (e.pointerType === 'pen') {
+    if (e.pointerType === 'pen' && inkTool !== 'hand') {
       lastPen.current = performance.now();
       // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
       resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
