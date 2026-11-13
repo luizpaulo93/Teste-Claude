@@ -62,6 +62,8 @@ export interface PackedStroke {
   p?: string;
   /** 1 = forma geométrica; 2 = forma tracejada */
   s?: 1 | 2;
+  /** 1 = pontos com precisão fina (centésimo de milésimo da página): letra lisa mesmo com muito zoom */
+  q?: 1;
 }
 export interface PackedOps {
   add?: PackedStroke[];
@@ -118,7 +120,7 @@ function unpackSeq(s: string, step: number, stride: number) {
   });
 }
 export function packStroke(s: Stroke): PackedStroke {
-  const p: PackedStroke = { id: s.id, tool: s.tool, color: s.color, size: Math.round(s.size * 1e6) / 1e6, d: packSeq(s.pts, 10000, 2) };
+  const p: PackedStroke = { id: s.id, tool: s.tool, color: s.color, size: Math.round(s.size * 1e6) / 1e6, d: packSeq(s.pts, 100000, 2), q: 1 };
   if (s.pr) p.p = packSeq(s.pr, 50, 1);
   if (s.shape) p.s = s.dash ? 2 : 1;
   return p;
@@ -128,7 +130,7 @@ export function unpackStroke(x: PackedStroke | Stroke): Stroke | null {
   if ('pts' in x && Array.isArray(x.pts)) return x;
   const k = x as PackedStroke;
   if (typeof k.d !== 'string') return null;
-  const pts = unpackSeq(k.d, 10000, 2);
+  const pts = unpackSeq(k.d, k.q === 1 ? 100000 : 10000, 2);
   if (pts.length < 2) return null;
   if (pts.length % 2) pts.pop();
   const s: Stroke = { id: k.id, tool: k.tool === 'marker' ? 'marker' : 'pen', color: k.color, size: k.size, pts };
@@ -150,11 +152,12 @@ export const unpackOps = (o: PackedOps | InkOps): InkOps => ({
  * Tira pontos que não mudam o desenho (desvio menor que uma fração da espessura): menos dados para
  * guardar e mandar. Mantém os pontos onde a pressão muda.
  */
-function simplify(s: Stroke): Stroke {
+function simplify(s: Stroke, unit = 0): Stroke {
   const n = s.pts.length / 2;
   if (n < 3) return s;
   // tolerância pequena: mantém bastante ponto para a curva não mostrar falhas
-  const eps = Math.min(s.size * 0.04, 0.0002);
+  // (com zoom, a tolerância acompanha a tela: um sexto de ponto da tela, senão a curva fica quebrada de perto)
+  const eps = unit ? Math.min(s.size * 0.04, 0.0002, unit * 0.16) : Math.min(s.size * 0.04, 0.0002);
   const P = s.pts;
   const keep = new Uint8Array(n);
   keep[0] = keep[n - 1] = 1;
@@ -205,7 +208,7 @@ export interface InkView {
 const LASER_HOLD = 1200; // ms depois de soltar antes de começar a sumir
 const LASER_FADE = 800; // ms sumindo
 
-const r4 = (n: number) => Math.round(n * 10000) / 10000;
+const r4 = (n: number) => Math.round(n * 100000) / 100000;
 const r2 = (n: number) => Math.round(n * 50) / 50;
 /** o contorno é calculado com a página = 1000 unidades (as medidas internas da biblioteca são em "pixels") */
 const U = 1000;
@@ -411,9 +414,18 @@ export class InkLayer {
       ctx.stroke();
       return;
     }
+    // espessura fixa: desenha em blocos de 24 pedaços (dezenas de vezes mais leve que pedaço a pedaço, e o
+    // traço que cruza o próprio caminho continua sem buracos)
+    const chunk = exact && !pr;
+    if (chunk) exact = false;
     if (!exact) ctx.beginPath();
     if (!exact) ctx.moveTo(X(0), Y(0));
     for (let i = 0; i < n - 1; i++) {
+      if (chunk && i && i % 24 === 0) {
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(X(i), Y(i));
+      }
       const c1x = X(i) + (X(i + 1) - X(i - 1)) / 6;
       const c1y = Y(i) + (Y(i + 1) - Y(i - 1)) / 6;
       const c2x = X(i + 1) - (X(i + 2) - X(i)) / 6;
@@ -538,7 +550,10 @@ export class InkLayer {
    * Começa um traço. `pressure` (Apple Pencil): a espessura varia de leve com ela (±25%), suavizada para
    * não oscilar; dedo e mouse ficam com espessura fixa.
    */
-  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number) {
+  /** tamanho de um ponto da tela em medidas do PDF, no zoom em que o traço é escrito (0 = desconhecido) */
+  private unit = 0;
+  begin(tool: 'pen' | 'marker', color: string, size: number, x: number, y: number, pressure?: number, unit = 0) {
+    this.unit = unit;
     this.current = { id: newStrokeId(), tool, color, size, pts: [r4(x), r4(y)] };
     this.sx = this.rx = x;
     this.sy = this.ry = y;
@@ -559,7 +574,8 @@ export class InkLayer {
     if (c.pr && pressure !== undefined) this.sp += (pressure - this.sp) * 0.25;
     const n = c.pts.length;
     // ignora pontos quase iguais (ruído do sensor)
-    if (Math.hypot(this.sx - c.pts[n - 2], this.sy - c.pts[n - 1]) < Math.min(c.size * 0.1, 0.0005)) return;
+    const min = Math.min(c.size * 0.1, 0.0005);
+    if (Math.hypot(this.sx - c.pts[n - 2], this.sy - c.pts[n - 1]) < (this.unit ? Math.min(min, this.unit * 0.8) : min)) return;
     c.pts.push(r4(this.sx), r4(this.sy));
     if (c.pr) c.pr.push(r2(this.sp));
   }
@@ -579,7 +595,14 @@ export class InkLayer {
       }
     }
     // guarda a versão enxuta; o desenho aqui continua o do traço completo (não muda ao soltar)
-    const lean = c.shape ? c : simplify(c);
+    // alisa de leve (média com os vizinhos): tira o serrilhado que sobra do sensor sem mudar a letra
+    if (!c.shape && c.pts.length >= 10) {
+      const P = c.pts;
+      const out = P.slice();
+      for (let i = 2; i < P.length - 2; i++) out[i] = r4((P[i - 2] + 2 * P[i] + P[i + 2]) / 4);
+      c.pts = out;
+    }
+    const lean = c.shape ? c : simplify(c, this.unit);
     this.list.push(lean);
     return { add: [lean] };
   }

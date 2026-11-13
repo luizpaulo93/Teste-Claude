@@ -81,7 +81,7 @@ export class StudioLink {
     if (upTrack && this.up) {
       const sender = pc.addTrack(upTrack, this.up);
       const params = sender.getParameters();
-      params.encodings = [{ maxBitrate: 2_500_000, maxFramerate: 30 }];
+      params.encodings = [{ maxBitrate: 1_800_000, maxFramerate: 30 }];
       params.degradationPreference = 'maintain-framerate';
       void sender.setParameters(params).catch(() => {});
     }
@@ -132,11 +132,18 @@ export class StudioLink {
   }
 
   /** Espelho: ~640 px, 15 quadros e 0,8 Mbps; no modo mínimo, 6 quadros e 0,3 Mbps. */
-  private tune(sender: RTCRtpSender) {
+  private tune(sender: RTCRtpSender, device = '') {
     const w = sender.track?.getSettings().width ?? 1280;
     const params = sender.getParameters();
     const low = this.level === 'low';
-    params.encodings = [{ maxBitrate: low ? 300_000 : 800_000, maxFramerate: low ? 6 : 15, scaleResolutionDownBy: Math.max(1, w / 640) }];
+    // aparelho que está servindo de câmera: ninguém olha a tela dele, o espelho vai no mínimo
+    // (sobra processador e internet para a transmissão)
+    const cam = this.feeding.has(device);
+    params.encodings = [
+      cam
+        ? { maxBitrate: 120_000, maxFramerate: 2, scaleResolutionDownBy: Math.max(1, w / 320) }
+        : { maxBitrate: low ? 300_000 : 800_000, maxFramerate: low ? 6 : 15, scaleResolutionDownBy: Math.max(1, w / 640) },
+    ];
     params.degradationPreference = 'maintain-resolution';
     void sender.setParameters(params).catch(() => {});
   }
@@ -145,7 +152,7 @@ export class StudioLink {
   setLevel(level: 'normal' | 'low') {
     if (level === this.level) return;
     this.level = level;
-    for (const p of this.peers.values()) for (const sd of p.pc.getSenders()) if (sd.track) this.tune(sd);
+    for (const [d, p] of this.peers) for (const sd of p.pc.getSenders()) if (sd.track) this.tune(sd, d);
   }
 
   private drop(device: string) {
@@ -164,6 +171,7 @@ export class StudioLink {
     // câmera vinda do outro aparelho
     pc.ontrack = (e) => {
       this.feeding.add(device);
+      for (const sd of pc.getSenders()) if (sd.track) this.tune(sd, device);
       this.onFeed?.(device, e.streams[0] ?? new MediaStream([e.track]));
     };
     const peer: { pc: RTCPeerConnection; dc?: RTCDataChannel } = { pc };
@@ -172,7 +180,7 @@ export class StudioLink {
     if (track) {
       const sender = pc.addTrack(track, stream);
       // espelho leve: não pesa no aparelho que transmite
-      this.tune(sender);
+      this.tune(sender, device);
     }
     pc.ondatachannel = (e) => {
       peer.dc = e.channel;

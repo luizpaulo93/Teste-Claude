@@ -604,7 +604,7 @@ export async function setStage(id: string, device: { id: string; label: string }
 // ---------------------------------------------------------------- escrita por cima do PDF
 /** traço compacto vindo do estúdio: confere tudo antes de guardar */
 const cleanStroke = (x: PackedStroke): PackedStroke | null => {
-  if (!x || typeof x.id !== 'string' || !x.id || typeof x.d !== 'string' || !x.d || x.d.length > 24000 || !PACKED_RE.test(x.d)) return null;
+  if (!x || typeof x.id !== 'string' || !x.id || typeof x.d !== 'string' || !x.d || x.d.length > 40000 || !PACKED_RE.test(x.d)) return null;
   const s: PackedStroke = {
     id: x.id.slice(0, 24),
     tool: x.tool === 'marker' ? 'marker' : 'pen',
@@ -614,6 +614,7 @@ const cleanStroke = (x: PackedStroke): PackedStroke | null => {
   };
   if (typeof x.p === 'string' && x.p.length <= 12000 && PACKED_RE.test(x.p)) s.p = x.p;
   if (x.s === 1 || x.s === 2) s.s = x.s;
+  if (x.q === 1) s.q = 1;
   return s;
 };
 /** até quantos traços por PDF */

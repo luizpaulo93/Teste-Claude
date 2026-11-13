@@ -708,7 +708,14 @@ export function Studio({
   // Quadradinho da câmera: arrastar move para qualquer lugar; tocar mostra a alça de tamanho; pinça também muda o tamanho
   const pipDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size') => {
     e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* o navegador recusou a captura: o arrasto segue mesmo assim */
+    }
+    // toque antigo que ficou sem o "soltar": esquece (senão o arrasto vira pinça e a câmera não anda)
+    if (!pipDrag.current || performance.now() - pipAt.current > 1500) pipTouches.current.clear();
+    pipAt.current = performance.now();
     pipTouches.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     pipDrag.current = {
       mode,
@@ -719,10 +726,26 @@ export function Studio({
       t: Date.now(),
     };
   };
+  /** último toque no quadradinho (posições que chegam de outros aparelhos não desfazem o arrasto) */
+  const pipAt = useRef(0);
+  /** arrasto: uma atualização por quadro da tela (cada movimento refazendo a tela travava o arrasto) */
+  const pipNext = useRef<{ x: number; y: number; w: number } | null>(null);
+  const pipRaf = useRef(0);
+  const pipSet = (b: { x: number; y: number; w: number }) => {
+    pipNext.current = b;
+    if (!pipRaf.current)
+      pipRaf.current = requestAnimationFrame(() => {
+        pipRaf.current = 0;
+        const n = pipNext.current;
+        pipNext.current = null;
+        if (n) setPipBox(n);
+      });
+  };
   const pipMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = pipDrag.current;
     const stageEl = pipArea.current;
     if (!d || !stageEl) return;
+    pipAt.current = performance.now();
     const r = stageEl.getBoundingClientRect();
     const ts = pipTouches.current;
     const prev = ts.get(e.pointerId);
@@ -743,11 +766,18 @@ export function Studio({
     const dx = (e.clientX - d.sx) / r.width;
     const dy = (e.clientY - d.sy) / r.height;
     if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 4) d.moved = true;
-    if (d.mode === 'move') setPipBox({ ...d.box, x: d.box.x + dx, y: d.box.y + dy });
-    else setPipBox({ ...d.box, w: Math.min(0.6, Math.max(0.12, d.box.w + dx)) });
+    if (d.mode === 'move') pipSet({ ...d.box, x: d.box.x + dx, y: d.box.y + dy });
+    else pipSet({ ...d.box, w: Math.min(0.6, Math.max(0.12, d.box.w + dx)) });
   };
   const pipUp = (e: React.PointerEvent<HTMLDivElement>) => {
     pipTouches.current.delete(e.pointerId);
+    pipAt.current = performance.now();
+    // última posição do arrasto ainda na fila
+    cancelAnimationFrame(pipRaf.current);
+    pipRaf.current = 0;
+    const last = pipNext.current;
+    pipNext.current = null;
+    if (last) setPipBox(last);
     const d = pipDrag.current;
     if (!d) return;
     if (!d.moved && d.mode === 'move' && Date.now() - d.t < 400) setPipSel((v) => !v);
@@ -1244,7 +1274,8 @@ export function Studio({
       if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
       if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
       if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
-      if (st.pipBox && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
+      // arrastando a câmera aqui: a posição que chega de fora (atrasada) não puxa o quadradinho de volta
+      if (st.pipBox && !pipDrag.current && performance.now() - pipAt.current > 2500 && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
       if (st.pdfPos && pdf.current?.pages) pdf.current.setView(st.pdfPos);
       if (st.pipAspect && comp.current && !camTrack.current) {
         comp.current.camAspect = st.pipAspect;
@@ -2140,7 +2171,7 @@ export function Studio({
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
-      ink.current.begin(tool, k.color, k.size, d.x, d.y);
+      ink.current.begin(tool, k.color, k.size, d.x, d.y, undefined, pdf.current.viewWidth / r.width);
       // quem só controla: prévia rápida enquanto escreve (mesmo com a ferramenta "mover" e a Pencil)
       if (light && !onAir) comp.current?.setFps(24);
       fastDraw();
@@ -2372,9 +2403,10 @@ export function Studio({
         lease,
         resume,
         res,
-        // quadros adaptativos: de 22 a 54 por segundo, conforme o aparelho e a internet aguentam
+        // quadros adaptativos: de 22 a 30 por segundo (ritmo estável: buscar mais que 30 fazia o aparelho
+        // oscilar entre subir e perder quadros, e a live engasgava)
         minFps: 22,
-        maxFps: 54,
+        maxFps: 30,
         onFps: (f) => {
           comp.current?.setFps(f);
           // aparelho apertado: o espelho para os outros aparelhos fica no mínimo
@@ -2580,7 +2612,7 @@ export function Studio({
                   >
                     {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
                     {light && mirrorStream && (
-                      <div className={cn('absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
+                      <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
                         <video
                           ref={(v) => {
                             if (v && v.srcObject !== mirrorStream) {
