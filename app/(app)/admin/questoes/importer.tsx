@@ -14,7 +14,7 @@ type Check = Awaited<ReturnType<typeof checkImport>>;
 const RES_KEYS = ['resolucao', 'resolução', 'solucao', 'solução', 'comentario', 'comentário', 'explicacao', 'explicação', 'gabaritoComentado'];
 /** questões da prova sem texto de resolução */
 const noRes = (p: ProvaIn) =>
-  p.questoes.filter((q) => !RES_KEYS.some((k) => {
+  p.questoes.filter((q) => !q.resolucaoBlocos?.length && !RES_KEYS.some((k) => {
     const v = (q as unknown as Record<string, unknown>)[k];
     return (typeof v === 'string' && v.trim()) || (v && typeof v === 'object' && typeof (v as { texto?: unknown }).texto === 'string');
   })).length;

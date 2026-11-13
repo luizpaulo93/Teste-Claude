@@ -319,6 +319,15 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 .q-rich .katex-display { margin: 0.5em 0; overflow-x: auto; overflow-y: hidden; padding: 0.1em 0; }
 .q-rich .katex .katex-base.q-wide, .q-rich .katex .base.q-wide { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }
 
+/* Resolução em blocos: textos, equações e imagens na ordem em que aparecem */
+.q-res > * + * { margin-top: 0.75em; }
+.q-res .t.titulo { font-weight: 700; color: var(--color-ink); }
+.q-res .t.fonte { font-size: 11px; text-align: right; color: var(--color-muted); }
+.q-res .q-res-eq, .q-res .q-res-table { overflow-x: auto; overflow-y: hidden; text-align: center; }
+.q-res .fig { text-align: center; }
+.q-res .q-res-img { display: block; margin: 0 auto; height: auto; max-width: 100%; border-radius: 0.5rem; background: #fff; padding: 0.25rem; }
+.q-res .q-res-missing { border: 1px dashed rgb(234 179 8 / 0.5); border-radius: 0.75rem; padding: 0.6em 0.8em; font-size: 12px; color: rgb(202 138 4); }
+
 /* Prévia da questão no montador de listas (mesmo HTML do PDF) */
 .qprev { line-height: 1.6; font-size: 14px; color: var(--color-ink-2); overflow-wrap: anywhere; }
 .qprev h3 { font-weight: 700; color: var(--color-ink); margin: 0 0 0.5em; }

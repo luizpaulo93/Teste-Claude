@@ -1,7 +1,8 @@
 'use server';
 
 import { sql } from '@/lib/db';
-import { rich } from '@/lib/rich';
+import { resolutionHtml } from '@/lib/resolution';
+import type { QBloco } from '@/lib/question-types';
 import { getViewer } from '@/lib/session';
 
 /**
@@ -11,9 +12,12 @@ import { getViewer } from '@/lib/session';
 export async function answerQuestion(id: string, letter: string) {
   const v = await getViewer();
   if (!v || !(v.isMember || v.isAdmin)) return { error: 'Acesso negado.' };
-  const q = await sql.one<{ gabarito: string; status: string; resolucao: string }>(`select gabarito, status, resolucao from questions where id = $1`, [id]);
+  const q = await sql.one<{ gabarito: string; status: string; resolucao: string; resolucao_blocos: QBloco[] }>(
+    `select gabarito, status, resolucao, resolucao_blocos from questions where id = $1`,
+    [id],
+  );
   if (!q) return { error: 'Questão não encontrada.' };
-  const resolucao = rich(q.resolucao);
+  const resolucao = resolutionHtml(q);
   if (q.status === 'anulada') return { status: 'anulada' as const, gabarito: '', correct: null, resolucao };
   const l = String(letter).toUpperCase().slice(0, 1);
   if (!/^[A-E]$/.test(l)) return { error: 'Escolha uma alternativa.' };

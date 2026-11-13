@@ -5,7 +5,7 @@ import { classify, MHS, mhsOf, subassuntosDe } from '@/lib/taxonomy';
 import { RECLASSIFIED } from '@/lib/taxonomy-reclass';
 import { formulaProblems, latexProblems } from '@/lib/rich';
 import { publicUrlFor, putObject, removeObjects } from '@/lib/storage/server';
-import { DIFFICULTY, fileName, imagesOf, vestibularOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
+import { DIFFICULTY, fileName, imagesOf, resolutionBlocksOf, vestibularOf, type Difficulty, type ProvaIn, type QAlternativa, type QBloco, type QImg, type QuestaoIn } from '@/lib/question-types';
 
 export interface Paper {
   id: string;
@@ -53,6 +53,8 @@ export interface Question {
   alternativas: QAlternativa[];
   imagem_alternativas: QImg | QImg[] | null;
   resolucao: string;
+  /** resolução em blocos (texto, equação, tabela e imagem); vazio = só o texto de `resolucao` */
+  resolucao_blocos: QBloco[];
 }
 
 // ---------------------------------------------------------------- importação
@@ -100,6 +102,12 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
   }));
   const ia = q.imagemAlternativas;
   const imagem_alternativas = Array.isArray(ia) ? ia.map((i) => withUrl(cleanImg(i))).filter(Boolean) : ia ? withUrl(cleanImg(ia)) : null;
+  // resolução em blocos: as imagens ficam no lugar certo, entre os textos e as equações
+  const resolucao_blocos = resolutionBlocksOf(q)
+    .slice(0, 200)
+    .map(cleanBloco)
+    .filter((b): b is QBloco => Boolean(b))
+    .map((b) => (b.tipo === 'imagem' ? ({ tipo: 'imagem', ...withUrl(b)! } as QBloco) : b));
   const numero = Math.round(num(q.numero) ?? 0);
   const status = q.status === 'anulada' || q.status === 'abandonado_na_calibracao' ? q.status : 'valida';
   return {
@@ -123,7 +131,8 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
     blocos,
     alternativas,
     imagem_alternativas,
-    resolucao: str(resolutionOf(q), 30000),
+    resolucao: str(resolutionOf(q) || resolucao_blocos.map((b) => (b.tipo === 'texto' ? b.conteudo : '')).filter(Boolean).join('\n\n'), 30000),
+    resolucao_blocos,
     microdados:
       q.microdados && typeof q.microdados === 'object'
         ? JSON.parse(JSON.stringify(q.microdados, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v)))
@@ -136,7 +145,8 @@ function resolutionOf(q: QuestaoIn) {
   const x = q as unknown as Record<string, unknown>;
   for (const k of ['resolucao', 'resolução', 'solucao', 'solução', 'comentario', 'comentário', 'explicacao', 'explicação', 'gabaritoComentado']) {
     const v = x[k];
-    if (typeof v === 'string' && v.trim()) return v;
+    // aviso do gerador ("Resolução em imagem: ver resolucaoBlocos") não é texto da resolução
+    if (typeof v === 'string' && v.trim()) return v.replace(/\s*\(?Resolução em imagem:[^)]*\)?\.?/gi, '').trim();
     if (v && typeof v === 'object' && typeof (v as { texto?: unknown }).texto === 'string') return (v as { texto: string }).texto;
   }
   return '';
@@ -145,7 +155,7 @@ function resolutionOf(q: QuestaoIn) {
 type Row = ReturnType<typeof cleanQuestion>;
 
 /** Fórmulas com erro ou texto corrompido em cada parte da questão (vai para o aviso da importação). */
-export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao'>): PaperProblem[] {
+export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos'>): PaperProblem[] {
   const out: PaperProblem[] = [];
   const add = (onde: string, list: string[]) => list.slice(0, 1).forEach((msg) => out.push({ n: r.numero, onde, msg }));
   for (const b of r.blocos) {
@@ -153,10 +163,16 @@ export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativa
     else if (b.tipo === 'equacao') add('enunciado', latexProblems(b.latex));
   }
   for (const a of r.alternativas) add(`alternativa ${a.letra}`, formulaProblems(a.texto));
-  add('resolução', formulaProblems(r.resolucao));
+  if (r.resolucao_blocos.length)
+    for (const b of r.resolucao_blocos) {
+      if (b.tipo === 'texto') add('resolução', formulaProblems(b.conteudo));
+      else if (b.tipo === 'equacao') add('resolução', latexProblems(b.latex));
+    }
+  else add('resolução', formulaProblems(r.resolucao));
   return out;
 }
-const imgsOfRow = (r: Row) => imagesOf({ ...r, imagemAlternativas: r.imagem_alternativas, numero: r.numero } as unknown as QuestaoIn);
+const imgsOfRow = (r: Row) =>
+  imagesOf({ ...r, imagemAlternativas: r.imagem_alternativas, resolucaoBlocos: r.resolucao_blocos, numero: r.numero } as unknown as QuestaoIn);
 
 /** Grava (ou atualiza) uma prova inteira. Reimportar não duplica: as respostas dos alunos continuam. */
 // ---------------------------------------------------------------- taxonomia de assuntos
@@ -232,17 +248,17 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
   );
   await sql.exec(
     `insert into questions (id, paper_id, numero, banca, ano, area_sigla, area, disciplina, assunto_geral, assunto_especifico, competencia, habilidade,
-                            gabarito, status, param_a, param_b, param_c, blocos, alternativas, imagem_alternativas, resolucao, microdados, updated_at)
+                            gabarito, status, param_a, param_b, param_c, blocos, alternativas, imagem_alternativas, resolucao, resolucao_blocos, microdados, updated_at)
      select x.id, x.paper_id, x.numero, x.banca, x.ano, x.area_sigla, x.area, x.disciplina, x.assunto_geral, x.assunto_especifico, x.competencia, x.habilidade,
-            x.gabarito, x.status, x.param_a, x.param_b, x.param_c, x.blocos, x.alternativas, x.imagem_alternativas, x.resolucao, x.microdados, now()
+            x.gabarito, x.status, x.param_a, x.param_b, x.param_c, x.blocos, x.alternativas, x.imagem_alternativas, x.resolucao, x.resolucao_blocos, x.microdados, now()
        from jsonb_to_recordset($1::jsonb) as x(id text, paper_id text, numero int, banca text, ano int, area_sigla text, area text, disciplina text,
             assunto_geral text, assunto_especifico text, competencia text, habilidade text, gabarito text, status text, param_a float8, param_b float8,
-            param_c float8, blocos jsonb, alternativas jsonb, imagem_alternativas jsonb, resolucao text, microdados jsonb)
+            param_c float8, blocos jsonb, alternativas jsonb, imagem_alternativas jsonb, resolucao text, resolucao_blocos jsonb, microdados jsonb)
      on conflict (id) do update set paper_id = excluded.paper_id, numero = excluded.numero, banca = excluded.banca, ano = excluded.ano,
        area_sigla = excluded.area_sigla, area = excluded.area, disciplina = excluded.disciplina, assunto_geral = excluded.assunto_geral,
        assunto_especifico = excluded.assunto_especifico, competencia = excluded.competencia, habilidade = excluded.habilidade, gabarito = excluded.gabarito,
        status = excluded.status, param_a = excluded.param_a, param_b = excluded.param_b, param_c = excluded.param_c, blocos = excluded.blocos,
-       alternativas = excluded.alternativas, imagem_alternativas = excluded.imagem_alternativas, resolucao = excluded.resolucao,
+       alternativas = excluded.alternativas, imagem_alternativas = excluded.imagem_alternativas, resolucao = excluded.resolucao, resolucao_blocos = excluded.resolucao_blocos,
        microdados = excluded.microdados, updated_at = now()`,
     [JSON.stringify(rows)],
   );
@@ -259,14 +275,25 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
 
 /** URLs das imagens já guardadas no app, por nome de arquivo (para não reenviar e para encaixar imagens soltas). */
 export async function knownImages(paperIds?: string[]) {
-  const rows = await sql.query<{ paper_id: string; blocos: QBloco[]; alternativas: QAlternativa[]; imagem_alternativas: QImg | QImg[] | null }>(
-    `select paper_id, blocos, alternativas, imagem_alternativas from questions ${paperIds ? 'where paper_id = any($1::text[])' : ''}`,
+  const rows = await sql.query<{
+    paper_id: string;
+    blocos: QBloco[];
+    alternativas: QAlternativa[];
+    imagem_alternativas: QImg | QImg[] | null;
+    resolucao_blocos: QBloco[] | null;
+  }>(
+    `select paper_id, blocos, alternativas, imagem_alternativas, resolucao_blocos from questions ${paperIds ? 'where paper_id = any($1::text[])' : ''}`,
     paperIds ? [paperIds] : [],
   );
   const have: Record<string, Record<string, string>> = {};
   const want: Record<string, string[]> = {};
   for (const r of rows) {
-    for (const i of imagesOf({ blocos: r.blocos, alternativas: r.alternativas, imagemAlternativas: r.imagem_alternativas } as QuestaoIn)) {
+    for (const i of imagesOf({
+      blocos: r.blocos,
+      alternativas: r.alternativas,
+      imagemAlternativas: r.imagem_alternativas,
+      resolucaoBlocos: r.resolucao_blocos ?? [],
+    } as QuestaoIn)) {
       const n = fileName(i.arquivo);
       if (i.url) (have[r.paper_id] ??= {})[n] = i.url;
       else (want[r.paper_id] ??= []).push(n);
@@ -277,8 +304,8 @@ export async function knownImages(paperIds?: string[]) {
 
 /** Encaixa imagens enviadas depois (pelo nome do arquivo) nas questões que já estão no app. */
 export async function attachImages(paperId: string, urls: Record<string, string>) {
-  const rows = await sql.query<Pick<Row, 'id' | 'blocos' | 'alternativas' | 'imagem_alternativas'>>(
-    `select id, blocos, alternativas, imagem_alternativas from questions where paper_id = $1`,
+  const rows = await sql.query<Pick<Row, 'id' | 'blocos' | 'alternativas' | 'imagem_alternativas'> & { resolucao_blocos: QBloco[] | null }>(
+    `select id, blocos, alternativas, imagem_alternativas, resolucao_blocos from questions where paper_id = $1`,
     [paperId],
   );
   if (!rows.length) return 0;
@@ -291,21 +318,30 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     return { ...i, url: u };
   };
   const changed: string[] = [];
-  const upd: { id: string; b: string; a: string; i: string | null }[] = [];
+  const upd: { id: string; b: string; a: string; i: string | null; r: string }[] = [];
   for (const r of rows) {
-    const before = JSON.stringify([r.blocos, r.alternativas, r.imagem_alternativas]);
+    const res = r.resolucao_blocos ?? [];
+    const before = JSON.stringify([r.blocos, r.alternativas, r.imagem_alternativas, res]);
     const blocos = r.blocos.map((b) => (b.tipo === 'imagem' ? (fix(b) as QBloco) : b));
     const alternativas = r.alternativas.map((a) => ({ ...a, imagem: fix(a.imagem) ?? null }));
     const ia = Array.isArray(r.imagem_alternativas) ? r.imagem_alternativas.map((i) => fix(i)) : fix(r.imagem_alternativas as QImg | null);
-    if (JSON.stringify([blocos, alternativas, ia]) === before) continue;
+    // imagens da resolução: cada uma no seu bloco, no lugar em que aparece
+    const resolucao = res.map((b) => (b.tipo === 'imagem' ? (fix(b) as QBloco) : b));
+    if (JSON.stringify([blocos, alternativas, ia, resolucao]) === before) continue;
     changed.push(r.id);
-    upd.push({ id: r.id, b: JSON.stringify(blocos), a: JSON.stringify(alternativas), i: ia === null || ia === undefined ? null : JSON.stringify(ia) });
+    upd.push({
+      id: r.id,
+      b: JSON.stringify(blocos),
+      a: JSON.stringify(alternativas),
+      i: ia === null || ia === undefined ? null : JSON.stringify(ia),
+      r: JSON.stringify(resolucao),
+    });
   }
   // todas as questões do lote numa gravação só
   if (upd.length)
     await sql.exec(
-      `update questions q set blocos = x.b::jsonb, alternativas = x.a::jsonb, imagem_alternativas = x.i::jsonb, updated_at = now()
-         from jsonb_to_recordset($1::jsonb) as x(id text, b text, a text, i text) where q.id = x.id`,
+      `update questions q set blocos = x.b::jsonb, alternativas = x.a::jsonb, imagem_alternativas = x.i::jsonb, resolucao_blocos = x.r::jsonb, updated_at = now()
+         from jsonb_to_recordset($1::jsonb) as x(id text, b text, a text, i text, r text) where q.id = x.id`,
       [JSON.stringify(upd)],
     );
   // recorta só as questões que receberam imagem agora (as imagens chegam aos poucos, em lotes)
@@ -443,7 +479,7 @@ async function dropUnused(urls: string[]) {
   for (const u of [...new Set(urls)]) {
     if (!u.startsWith(base)) continue;
     const used = await sql.one(
-      `select 1 from questions where strpos(blocos::text || alternativas::text || coalesce(imagem_alternativas::text, ''), $1) > 0 limit 1`,
+      `select 1 from questions where strpos(blocos::text || alternativas::text || coalesce(imagem_alternativas::text, '') || resolucao_blocos::text, $1) > 0 limit 1`,
       [u],
     );
     if (!used) keys.push(decodeURIComponent(u.slice(base.length)));
@@ -459,7 +495,7 @@ export async function deletePapers(ids: string[]) {
   const list = [...new Set(ids.map((x) => String(x).slice(0, 130)))].slice(0, 500);
   if (!list.length) return 0;
   const qs = await sql.query<{ id: string; media: string }>(
-    `select id, blocos::text || alternativas::text || coalesce(imagem_alternativas::text, '') as media from questions where paper_id = any($1::text[])`,
+    `select id, blocos::text || alternativas::text || coalesce(imagem_alternativas::text, '') || resolucao_blocos::text as media from questions where paper_id = any($1::text[])`,
     [list],
   );
   const base = publicUrlFor('');

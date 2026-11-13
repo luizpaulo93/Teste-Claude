@@ -5,6 +5,7 @@ import type { Question } from '@/lib/questions';
 import { pdfFontsCss } from '@/lib/pdf-fonts';
 import { bigHeader, SMALL_HEADER_MM, VERTICE_CSS } from '@/lib/vertice-brand';
 import { rich, richTex } from '@/lib/rich';
+import { hasResolution, resolutionHtml } from '@/lib/resolution';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -149,11 +150,11 @@ export function listHtml(
           .map((q, i) => `<span><b>${i + 1}.</b> ${q.status === 'anulada' ? 'Anulada' : esc(q.gabarito || '–')}</span>`)
           .join('')}</div></section>${
           // só as questões que têm resolução (o gabarito de todas já está acima)
-          (opts.resolutions || opts.onlyResolutions) && qs.some((q) => q.resolucao?.trim())
+          (opts.resolutions || opts.onlyResolutions) && qs.some(hasResolution)
             ? `<section class="res"><h2>Resolução</h2>${qs
                 .map((q, i) =>
-                  q.resolucao?.trim()
-                    ? `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3><div class="t">${rich(q.resolucao)}</div></div>`
+                  hasResolution(q)
+                    ? `<div class="r"><h3>QUESTÃO ${String(i + 1).padStart(2, '0')} · ${q.status === 'anulada' ? 'Anulada' : `Gabarito: ${esc(q.gabarito || '–')}`}</h3><div class="t">${resolutionHtml(q, (im) => img(im))}</div></div>`
                     : '',
                 )
                 .join('')}</section>`

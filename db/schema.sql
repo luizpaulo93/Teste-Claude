@@ -881,3 +881,8 @@ create table if not exists mentoria_checks (
 );
 create index if not exists mentoria_checks_idx on mentoria_checks (mentoria_id, created_at desc);
 create index if not exists mentoria_checks_list_idx on mentoria_checks (list_id);
+
+-- ============================================================================
+-- Versão 33: resolução em blocos (texto, equação, tabela e imagem), com as imagens no lugar certo.
+-- ============================================================================
+alter table questions add column if not exists resolucao_blocos jsonb not null default '[]'::jsonb;

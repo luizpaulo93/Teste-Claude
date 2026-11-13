@@ -16,6 +16,7 @@ import { source } from '@/lib/list-html';
 import { canSeeList, getList, questionsOf, resolutionOpen } from '@/lib/question-lists';
 import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 import { rich } from '@/lib/rich';
+import { hasResolution, resolutionHtml } from '@/lib/resolution';
 import { requireViewer } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Lista de questões' };
@@ -96,7 +97,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
             id={list.id}
             title={list.title}
             resolutions={!test || mineList || (finished && resOpen)}
-            onlyKey={!qs.some((q) => q.resolucao?.trim())}
+            onlyKey={!qs.some(hasResolution)}
           />}
         <span className="flex-1" />
         <ListNav
@@ -162,7 +163,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
                 letter: mine?.letter ?? '',
                 gabarito: q.status === 'anulada' ? '' : q.gabarito,
                 correct: q.status === 'anulada' || !mine ? null : mine.correct,
-                resolucao: showResolution ? rich(q.resolucao) : '',
+                resolucao: showResolution ? resolutionHtml(q) : '',
               }
             : null;
           return (

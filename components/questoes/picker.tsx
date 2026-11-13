@@ -19,7 +19,7 @@ export interface PickerApi {
   search: typeof searchBank;
   ids: typeof idsForFilter;
   options: typeof bankOptions;
-  preview: (id: string) => Promise<{ html: string; gabarito?: string } | null>;
+  preview: (id: string) => Promise<{ html: string; gabarito?: string; resolucao?: string } | null>;
   /** filtros que não aparecem (o aluno não filtra por ano nem por banca) */
   hide?: (keyof AdminFilters)[];
 }
@@ -63,7 +63,7 @@ export function QuestionCard({
   actions?: React.ReactNode;
 }) {
   const api = useContext(ApiCtx);
-  const [prev, setPrev] = useState<{ html: string; gabarito?: string } | null>(null);
+  const [prev, setPrev] = useState<{ html: string; gabarito?: string; resolucao?: string } | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const dif = difficultyOf(item.param_b);
@@ -118,6 +118,12 @@ export function QuestionCard({
         <div className="mt-3 space-y-2 border-t border-line pt-3">
           <div className="qprev" dangerouslySetInnerHTML={{ __html: prev.html }} />
           {prev.gabarito && <p className="text-xs font-bold text-success">Gabarito: {prev.gabarito}</p>}
+          {prev.resolucao && (
+            <div className="rounded-xl border border-line bg-surface p-3">
+              <p className="mb-1.5 text-[11px] font-bold tracking-wider text-brand uppercase">Resolução</p>
+              <div className="q-rich text-[13px] text-ink-2" dangerouslySetInnerHTML={{ __html: prev.resolucao }} />
+            </div>
+          )}
         </div>
       )}
     </div>

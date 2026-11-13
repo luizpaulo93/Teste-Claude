@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { sql } from '@/lib/db';
 import { questionHtml } from '@/lib/list-html';
+import { resolutionHtml } from '@/lib/resolution';
 import { adminFilterOptions, adminSearch, adminSearchIds, deleteQuestions, itemsOf, type AdminFilters } from '@/lib/question-lists';
 import { getViewer } from '@/lib/session';
 
@@ -44,7 +45,12 @@ export async function previewQuestion(id: string) {
     [id],
   );
   if (!q) return null;
-  return { html: questionHtml(q, 0).replace(/QUESTÃO 00 ?/, ''), gabarito: q.status === 'anulada' ? 'Anulada' : q.gabarito };
+  return {
+    html: questionHtml(q, 0).replace(/QUESTÃO 00 ?/, ''),
+    gabarito: q.status === 'anulada' ? 'Anulada' : q.gabarito,
+    // resolução (com as imagens no lugar) para o professor conferir
+    resolucao: resolutionHtml(q),
+  };
 }
 
 /** Dados das questões escolhidas (na ordem). */

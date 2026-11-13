@@ -4,7 +4,8 @@ import { refresh } from 'next/cache';
 import { sql } from '@/lib/db';
 import { canSeeList, getList } from '@/lib/question-lists';
 import { afterListFinished } from '@/lib/mentoria-checks';
-import { rich } from '@/lib/rich';
+import { resolutionHtml } from '@/lib/resolution';
+import type { QBloco } from '@/lib/question-types';
 import { getViewer } from '@/lib/session';
 
 /**
@@ -16,7 +17,9 @@ export async function answerInList(listId: string, questionId: string, letter: s
   if (!v) return { error: 'Faça login.' };
   const list = await getList(listId);
   if (!list || !list.question_ids.includes(questionId) || !(await canSeeList(v, list))) return { error: 'Lista não encontrada.' };
-  const q = await sql.one<{ gabarito: string; status: string; resolucao: string }>(`select gabarito, status, resolucao from questions where id = $1`, [
+  const q = await sql.one<{ gabarito: string; status: string; resolucao: string; resolucao_blocos: QBloco[] }>(
+    `select gabarito, status, resolucao, resolucao_blocos from questions where id = $1`,
+    [
     questionId,
   ]);
   if (!q) return { error: 'Questão não encontrada.' };
@@ -24,7 +27,7 @@ export async function answerInList(listId: string, questionId: string, letter: s
   const first = await sql.one<{ open: boolean }>(`select open from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
   if (list.mode === 'teste' && first && !first.open) return { error: 'Teste já finalizado.' };
   const reveal = list.mode === 'lista';
-  if (q.status === 'anulada') return reveal ? { status: 'anulada' as const, gabarito: '', correct: null, resolucao: rich(q.resolucao) } : { saved: true };
+  if (q.status === 'anulada') return reveal ? { status: 'anulada' as const, gabarito: '', correct: null, resolucao: resolutionHtml(q) } : { saved: true };
   const l = String(letter).toUpperCase().slice(0, 1);
   if (!/^[A-E]$/.test(l)) return { error: 'Escolha uma alternativa.' };
   const correct = l === q.gabarito;
@@ -40,7 +43,7 @@ export async function answerInList(listId: string, questionId: string, letter: s
     [v.userId, questionId, l, correct],
   );
   if (!reveal) return { saved: true };
-  return { status: q.status, gabarito: q.gabarito, correct, resolucao: rich(q.resolucao) };
+  return { status: q.status, gabarito: q.gabarito, correct, resolucao: resolutionHtml(q) };
 }
 
 export async function finishList(listId: string) {

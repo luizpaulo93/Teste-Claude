@@ -11,6 +11,7 @@ import { sql } from '@/lib/db';
 import { DIFFICULTY, difficultyOf, type QImg, altImagesToShow, blankAlternatives, vestYear } from '@/lib/question-types';
 import { filterQuery, getQuestion, neighbors, paperLabel, readFilters } from '@/lib/questions';
 import { rich } from '@/lib/rich';
+import { resolutionHtml } from '@/lib/resolution';
 import { requireViewer } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Questão' };
@@ -49,7 +50,7 @@ export default async function QuestaoPage({
           letter: mine?.letter ?? '',
           gabarito: q.status === 'anulada' ? '' : q.gabarito,
           correct: q.status === 'anulada' ? null : teacher && !mine ? null : (mine?.correct ?? null),
-          resolucao: rich(q.resolucao),
+          resolucao: resolutionHtml(q),
         }
       : null;
 

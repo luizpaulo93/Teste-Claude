@@ -39,6 +39,8 @@ export interface QuestaoIn {
   alternativas?: QAlternativa[];
   imagemAlternativas?: QImg | QImg[] | null;
   resolucao?: string | null;
+  /** resolução em blocos (texto, equação, tabela e imagem), na ordem em que aparecem */
+  resolucaoBlocos?: QBloco[] | null;
   microdados?: Record<string, unknown> | null;
 }
 export interface ProvaIn {
@@ -53,14 +55,22 @@ export interface ProvaIn {
   questoes: QuestaoIn[];
 }
 
-/** Todas as imagens citadas numa questão (enunciado, alternativas e imagem das alternativas). */
+/** Todas as imagens citadas numa questão (enunciado, alternativas, imagem das alternativas e resolução). */
 export function imagesOf(q: QuestaoIn): QImg[] {
   const out: QImg[] = [];
   for (const b of q.blocos ?? []) if (b?.tipo === 'imagem' && b.arquivo) out.push(b);
   for (const a of q.alternativas ?? []) if (a?.imagem?.arquivo) out.push(a.imagem);
   const ia = q.imagemAlternativas;
   for (const i of Array.isArray(ia) ? ia : ia ? [ia] : []) if (i?.arquivo) out.push(i);
+  for (const b of resolutionBlocksOf(q)) if (b?.tipo === 'imagem' && b.arquivo) out.push(b);
   return out;
+}
+
+/** Blocos da resolução (aceita resolucaoBlocos do JSON e resolucao_blocos do banco). */
+export function resolutionBlocksOf(q: unknown): QBloco[] {
+  const x = (q ?? {}) as { resolucaoBlocos?: unknown; resolucao_blocos?: unknown };
+  const v = x.resolucaoBlocos ?? x.resolucao_blocos;
+  return Array.isArray(v) ? (v as QBloco[]) : [];
 }
 
 /** "img/brasil_q094_regua.webp" → "brasil_q094_regua.webp" (é assim que o arquivo é achado na pasta) */
