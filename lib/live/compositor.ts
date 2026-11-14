@@ -6,7 +6,6 @@
  * - "pdf": o PDF aberto no Estúdio (parte escolhida) com a câmera no canto
  * Desenha tudo num único quadro (canvas) no tamanho da live; a transmissão envia esse quadro.
  */
-import type { PdfPresenter } from './pdf-presenter';
 import { workerTicker, type Ticker } from './ticker';
 
 export type Scene = 'camera' | 'screen' | 'both' | 'pdf';
@@ -95,7 +94,6 @@ export class Compositor {
   pipX = 0.7;
   pipY = 0.55;
   pipW = 0.28;
-  pdf: PdfPresenter | null = null;
   /**
    * Caderno do estúdio (editor Traço): camadas da folha, desenhadas na live na ordem papel → câmera →
    * marca-texto → tinta → traço em andamento (a escrita fica por cima da câmera). As linhas do papel não entram.
@@ -245,12 +243,7 @@ export class Compositor {
         c.fillRect(0, 0, W, H);
         c.drawImage(tr.bg, 0, 0, W, H);
       }
-      else if (this.pdf) {
-        this.pdf.frameW = W;
-        this.pdf.frameH = H;
-        this.pdf.draw(c, 0, 0, W, H);
-      }
-      if (!tr && !this.pdf?.pages) this.message('Escolha o PDF para mostrar');
+      else this.message('Abrindo o caderno…');
     } else if (scr) this.fitFrame(scr, 0, 0, W, H);
     else this.message('Escolha a tela ou a janela para espelhar');
 

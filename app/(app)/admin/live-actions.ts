@@ -5,7 +5,6 @@ import { bool, fail, refreshCatalog, requireAdminAction, str, type ActionResult 
 import { newId, sql } from '@/lib/db';
 import { extractYoutubeId, isDocId } from '@/lib/utils';
 import type { LessonMaterial } from '@/lib/types';
-import { PACKED_RE, type PackedOps, type PackedStroke } from '@/lib/live/ink';
 import { claimLease, endStudio, setStageDevice, HOLDER_STALE_MS, patchScene, studioRow, type StudioResume, type StudioScene } from '@/lib/live-studio';
 import { createBroadcast, endBroadcast, getAccount, oauthConfigured, saveAccount, setIngest } from '@/lib/youtube';
 
@@ -530,7 +529,6 @@ export async function pollStudio(
     // aparelho principal: o da câmera em uso (durante a live, o que transmite); só vale se está com o estúdio aberto
     // o aparelho principal manda a foto enquanto alguém precisar; quem precisa recebe a última
     previewWanted: Boolean(pv?.wanted),
-    inkRev: row?.ink_rev ?? 0,
     preview: pv?.preview ?? null,
     stage: row?.device ? { device: row.device, label: row.label, present: devices.some((d) => d.device === row.device) } : null,
     now: Date.now(),
@@ -562,6 +560,7 @@ export async function setStudioScene(id: string, patch: StudioScene) {
         .map(([k, n]) => [k, Math.round(n)]),
     );
   if (typeof patch.trNb === 'string' && /^[\w-]{1,48}$/.test(patch.trNb)) clean.trNb = patch.trNb;
+  if (typeof patch.trPg === 'string' && /^[\w-]{1,48}$/.test(patch.trPg)) clean.trPg = patch.trPg;
   const pp = patch.paper;
   if (pp && (pp.type === 'blank' || pp.type === 'lined' || pp.type === 'grid' || pp.type === 'dots') && typeof pp.size === 'number' && pp.size >= 12 && pp.size <= 120)
     clean.paper = { type: pp.type, size: Math.round(pp.size) };
@@ -617,94 +616,3 @@ export async function setStage(id: string, device: { id: string; label: string }
   return { ok: true };
 }
 
-// ---------------------------------------------------------------- escrita por cima do PDF
-/** traço compacto vindo do estúdio: confere tudo antes de guardar */
-const cleanStroke = (x: PackedStroke): PackedStroke | null => {
-  if (!x || typeof x.id !== 'string' || !x.id || typeof x.d !== 'string' || !x.d || x.d.length > 60000 || !PACKED_RE.test(x.d)) return null;
-  const s: PackedStroke = {
-    id: x.id.slice(0, 24),
-    tool: x.tool === 'marker' ? 'marker' : 'pen',
-    color: /^#[0-9a-f]{6}$/i.test(x.color) ? x.color : '#111111',
-    size: Math.min(0.2, Math.max(0.00005, Number(x.size) || 0.004)),
-    d: x.d,
-  };
-  if (typeof x.p === 'string' && x.p.length <= 40000 && PACKED_RE.test(x.p)) s.p = x.p;
-  if (x.s === 1 || x.s === 2) s.s = x.s;
-  if (x.q === 1 || x.q === 2) s.q = x.q;
-  if (typeof x.n === 'number' && x.n >= 2 && x.n < 20000) s.n = Math.round(x.n);
-  return s;
-};
-/** até quantos traços por PDF */
-const INK_MAX = 20000;
-
-/** Traços do PDF (para quem abriu o estúdio ou trocou de PDF). */
-export async function getInk(id: string, pdfId: string) {
-  await requireAdminAction();
-  if (!isDocId(id)) return { strokes: [] as PackedStroke[] };
-  const rows = await sql.query<{ data: string }>(`select data from live_ink where live_id = $1 and pdf_id = $2 order by n limit ${INK_MAX}`, [
-    id,
-    String(pdfId).slice(0, 80),
-  ]);
-  const strokes: PackedStroke[] = [];
-  for (const r of rows)
-    try {
-      strokes.push(JSON.parse(r.data) as PackedStroke);
-    } catch {}
-  return { strokes };
-}
-
-/** Mudanças na escrita (traços novos, apagados, movidos): grava só os traços que mudaram. */
-export async function inkOps(id: string, pdfId: string, ops: PackedOps) {
-  await requireAdminAction();
-  if (!isDocId(id) || typeof pdfId !== 'string' || !pdfId) return { error: 'Inválido.' };
-  const pid = pdfId.slice(0, 80);
-  const add = (Array.isArray(ops?.add) ? ops.add : []).slice(0, 500).map(cleanStroke).filter((x): x is PackedStroke => Boolean(x));
-  const remove = [...new Set((Array.isArray(ops?.remove) ? ops.remove : []).slice(0, 5000).map((x) => String(x).slice(0, 24)))];
-  if (remove.length) await sql.exec(`delete from live_ink where live_id = $1 and pdf_id = $2 and id = any($3)`, [id, pid, remove]);
-  if (add.length) {
-    const cnt = await sql.one<{ n: number }>(`select count(*)::int n from live_ink where live_id = $1 and pdf_id = $2`, [id, pid]);
-    if ((cnt?.n ?? 0) + add.length <= INK_MAX)
-      await sql.exec(
-        `insert into live_ink (live_id, pdf_id, id, data) select $1, $2, x.id, x.data from unnest($3::text[], $4::text[]) as x(id, data)
-         on conflict (live_id, pdf_id, id) do update set data = excluded.data`,
-        [id, pid, add.map((x) => x.id), add.map((x) => JSON.stringify(x))],
-      );
-  }
-  // número da versão da escrita na live (os outros aparelhos buscam de novo quando muda)
-  const r = await sql.one<{ ink_rev: number }>(
-    `insert into live_studio (live_id, ink_rev) values ($1, 1) on conflict (live_id) do update set ink_rev = live_studio.ink_rev + 1 returning ink_rev`,
-    [id],
-  );
-  return { ok: true, rev: r?.ink_rev ?? 0 };
-}
-
-// ---------------- preferências da escrita (tamanhos, cor, forma): seguem o professor de uma live para outra
-export type InkPrefs = { sizes?: Record<string, number>; color?: string; shape?: string; dash?: boolean; part?: boolean };
-const cleanPrefs = (v: unknown): InkPrefs => {
-  const p = (v && typeof v === 'object' ? v : {}) as Record<string, unknown>;
-  const out: InkPrefs = {};
-  if (p.sizes && typeof p.sizes === 'object')
-    out.sizes = Object.fromEntries(
-      Object.entries(p.sizes as Record<string, unknown>)
-        .filter(([k, n]) => ['pen', 'marker', 'eraser', 'laser', 'shape'].includes(k) && typeof n === 'number' && n >= 0.1 && n <= 7)
-        .map(([k, n]) => [k, Math.round((n as number) * 10) / 10]),
-    );
-  if (typeof p.color === 'string' && /^#[0-9a-f]{6}$/i.test(p.color)) out.color = p.color;
-  if (typeof p.shape === 'string' && /^[a-z]{1,12}$/.test(p.shape)) out.shape = p.shape;
-  if (typeof p.dash === 'boolean') out.dash = p.dash;
-  if (typeof p.part === 'boolean') out.part = p.part;
-  return out;
-};
-export async function getInkPrefs(): Promise<InkPrefs | null> {
-  const v = await requireAdminAction();
-  const row = await sql.one<{ data: unknown }>(`select data from settings where id = $1`, [`ink:${v.userId}`]);
-  return row ? cleanPrefs(row.data) : null;
-}
-export async function saveInkPrefs(prefs: InkPrefs) {
-  const v = await requireAdminAction();
-  await sql.exec(
-    `insert into settings (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
-    [`ink:${v.userId}`, JSON.stringify(cleanPrefs(prefs))],
-  );
-  return { ok: true };
-}

@@ -2,40 +2,13 @@
 
 import {
   AppWindow,
-  Eraser,
-  Hand,
-  Highlighter,
-  MousePointerClick,
-  PenLine,
-  Lasso,
-  Shapes,
-  Minus,
-  MoveUpRight,
-  Square,
-  Circle,
-  Trash2,
-  Undo2,
-  Redo2,
-  Activity,
-  ArrowLeft,
-  Download,
-  Files,
-  NotebookText,
-  RotateCw,
-  Plus,
-  FilePlus2,
-  FileUp,
-  StickyNote,
   RefreshCw,
-  X,
   MessageSquare,
   Maximize2,
   Minimize2,
   Camera,
-  ChevronLeft,
   ChevronsLeft,
   ChevronsRight,
-  ChevronRight,
   CircleStop,
   FileText,
   FlipHorizontal2,
@@ -51,19 +24,14 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addLiveMaterials, claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, getInk, inkOps, getInkPrefs, saveInkPrefs, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
-import { uploadPdf } from '@/components/admin/uploads';
-import { download, exportPdf } from '@/lib/live/pdf-export';
-import { InkLayer, newStrokeId, packOps, unpackOps, unpackStroke, type EraseAcc, type InkOps, type InkTool, type PackedOps, type ShapeKind, type Stroke } from '@/lib/live/ink';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
-import { Modal, Spinner } from '@/components/ui-client';
+import { Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus, type ResumeState } from '@/lib/live/broadcaster';
 import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
-import { PdfPresenter, type PdfPos, type PdfView } from '@/lib/live/pdf-presenter';
-import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
@@ -162,68 +130,12 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
   return same.length > 1 ? `${base} ${n + 1}` : base;
 }
 
-// Escrita no PDF: cores e espessuras (em larguras de página)
-const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
-/** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
-const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015, shape: 0.001 } as const;
-type Sized = keyof typeof INK_UNIT;
-type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; er?: EraseAcc; last?: { x: number; y: number }; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number }; held?: number };
-
-const isBoard = (id: string) => /^quadro-\d+$/.test(id);
 /** a situação da live mudou em algo que a tela usa? (a consulta é a cada segundo; refazer o estúdio à toa trava a caneta) */
 const sameRemote = (a: NonNullable<StudioPoll>, b: NonNullable<StudioPoll>) =>
   a.status === b.status &&
   a.rev === b.rev &&
   a.res === b.res &&
   JSON.stringify([a.holder, a.stage]) === JSON.stringify([b.holder, b.stage]);
-
-/** Miniaturas das páginas (com o que foi escrito): desenhadas uma de cada vez, sem travar a tela. */
-function PageThumbs({ pdf, pages, current, onGo }: { pdf: PdfPresenter; pages: number; current: number; onGo: (page: number) => void }) {
-  const box = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    let off = false;
-    const el = box.current;
-    if (!el) return;
-    el.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'center' });
-    void (async () => {
-      // começa pela página atual e segue para as vizinhas
-      const order = Array.from({ length: pages }, (_, i) => i + 1).sort((a, b) => Math.abs(a - current) - Math.abs(b - current));
-      for (const i of order) {
-        if (off) return;
-        const target = el.querySelector<HTMLCanvasElement>(`canvas[data-page="${i}"]`);
-        if (!target) continue;
-        const c = await pdf.renderPage(i, 300).catch(() => null);
-        if (off || !c) return;
-        target.width = c.width;
-        target.height = c.height;
-        target.getContext('2d')?.drawImage(c, 0, 0);
-        c.width = c.height = 0;
-        await new Promise((r) => setTimeout(r, 30));
-      }
-    })();
-    return () => {
-      off = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pdf, pages]);
-  return (
-    <div ref={box} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 pb-3">
-      {Array.from({ length: pages }, (_, k) => k + 1).map((i) => (
-        <button
-          key={i}
-          type="button"
-          onClick={() => onGo(i)}
-          aria-label={`Ir para a página ${i}`}
-          aria-current={i === current}
-          className={cn('block w-full overflow-hidden rounded-lg border-2 bg-white text-left', i === current ? 'border-[#2347d9] ring-2 ring-[#e8edfd]' : 'border-[#dde3ec]')}
-        >
-          <canvas data-page={i} width={150} height={Math.round(150 * pdf.ratioOf(i))} className="block h-auto w-full" style={{ aspectRatio: `1 / ${pdf.ratioOf(i)}` }} />
-          <span className="block px-2 py-1 text-xs font-extrabold tabular-nums">{i}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
 
 const clock = (s: number) =>
   `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -328,20 +240,6 @@ export function Studio({
   const [mirror, setMirror] = useState(false);
   const fit: Fit = 'cover';
   const [pip, setPip] = useState(true);
-  const pdf = useRef<PdfPresenter | null>(null);
-  const [pdfId, setPdfId] = useState('');
-  /**
-   * Páginas em branco criadas na live: depois da última página de cada PDF e nos quadros em branco
-   * ("quadro-1", "quadro-2"…: documentos sem arquivo, só com páginas em branco).
-   */
-  const [extra, setExtra] = useState<Record<string, number>>({});
-  const extraRef = useRef(extra);
-  extraRef.current = extra;
-  const boards = Object.keys(extra)
-    .filter(isBoard)
-    .sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
-  /** o que dá para abrir na live: os PDFs e os quadros em branco */
-  const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Caderno ${id.slice(7)}` }))];
   // ---------------- caderno da live (editor Traço numa página própria, dentro do estúdio)
   const trFrame = useRef<HTMLIFrameElement>(null);
   /** o caderno é carregado na primeira vez que a cena do caderno aparece (e fica aberto: trocar de cena é na hora) */
@@ -351,6 +249,7 @@ export function Studio({
   }, [scene]);
   type TracoApi = {
     open: (id: string) => Promise<void>;
+    goPage: (nb: string, pg: string) => Promise<void>;
     notebook: () => string | null;
     remote: (m: unknown) => void;
     layers: () => { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement; camSlot: HTMLElement } | null;
@@ -362,6 +261,12 @@ export function Studio({
   const [trNb, setTrNb] = useState('');
   const trNbRef = useRef('');
   trNbRef.current = trNb;
+  /** página aberta no caderno (também vai pela cena da live: os aparelhos se acertam mesmo se uma mensagem se perder) */
+  const [trPg, setTrPg] = useState('');
+  const trPgRef = useRef('');
+  trPgRef.current = trPg;
+  /** quando a página/caderno foi trocado aqui (uma cena atrasada que chega logo depois não desfaz a troca) */
+  const trLocalAt = useRef(0);
   // ponte: o caderno (dentro do estúdio) chama estas funções
   const bridgeFns = useRef({
     exit: () => {},
@@ -378,8 +283,16 @@ export function Studio({
       full: () => bridgeFns.current.full(),
       notebook: () => trNbRef.current || null,
       opened: (id: string) => {
-        if (trNbRef.current !== id) setTrNb(id);
+        if (trNbRef.current !== id) {
+          trLocalAt.current = performance.now();
+          setTrNb(id);
+        }
         window.setTimeout(() => placeCam.current(), 50);
+      },
+      page: (nb: string, pg: string) => {
+        trLocalAt.current = performance.now();
+        if (trNbRef.current !== nb) setTrNb(nb);
+        if (trPgRef.current !== pg) setTrPg(pg);
       },
       attach: (api: TracoApi) => {
         trApi.current = api;
@@ -443,23 +356,7 @@ export function Studio({
   };
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
-  /** papel das páginas em branco (em branco, pautado ou quadriculado), como no caderno */
-  const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid' | 'dots'; size: number }>({ type: 'blank', size: 40 });
-  /** barra do topo do modo escrita: painel aberto (páginas ou papel) e exportação em andamento */
-  const [topPop, setTopPop] = useState<'pages' | 'paper' | null>(null);
-  const [exporting, setExporting] = useState('');
-  /** PDF importado no meio da live: abre assim que a lista chegar */
-  const pendingOpen = useRef('');
-  const importRef = useRef<HTMLInputElement>(null);
-  const [pdfView, setPdfView] = useState<PdfView | null>(null);
-  /** PDF mexeu: quem não transmite redesenha no próximo quadro da tela (parado fica econômico) */
-  const kick = useRef(() => {});
-  const kickRaf = useRef(0);
-  const [pdfBusy, setPdfBusy] = useState(false);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
-  const lastTap = useRef(0);
-  const [pageInput, setPageInput] = useState('');
-  const [choosing, setChoosing] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
   const [camPortrait, setCamPortrait] = useState(false);
@@ -597,122 +494,14 @@ export function Studio({
   };
   useEffect(() => {
     if (!onAir) comp.current?.setFps(light ? 4 : 30);
-    kick.current = () => {
-      if (!light || onAir || kickRaf.current) return;
-      kickRaf.current = requestAnimationFrame(() => {
-        kickRaf.current = 0;
-        comp.current?.draw();
-      });
-    };
   }, [light, onAir]);
   /** aparelhos abertos no estúdio (nome, câmeras, microfones) */
   const [devices, setDevices] = useState<StudioDevice[]>([]);
   const reported = useRef({ key: '', at: 0 });
   const [scanning, setScanning] = useState(false);
 
-  // ---- escrita por cima do PDF
-  const ink = useRef(new InkLayer());
-  const [inkTool, setInkTool] = useState<InkTool>('hand');
-  /** caneta só no celular e no iPad (no Mac/Windows o estúdio fica como era; a escrita feita no iPad aparece igual) */
-  const [canInk, setCanInk] = useState(false);
-  useEffect(() => {
-    try {
-      const touch = window.matchMedia('(pointer: coarse)').matches;
-      // iPad se apresenta como Mac; a tela de toque denuncia
-      const ipad = navigator.maxTouchPoints > 1 && /Macintosh|iPad/.test(navigator.userAgent);
-      setCanInk(touch || ipad || localStorage.getItem('studio-ink') === '1');
-      // já usou a Apple Pencil aqui: a mão nunca escreve (só move e dá zoom)
-      pencilSeen.current = localStorage.getItem('studio-pencil') === '1';
-    } catch {}
-  }, []);
-  const [inkColor, setInkColor] = useState('#111111');
-  // tamanho de cada ferramenta (0,1 a 7)
-  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 4, marker: 4, eraser: 4, laser: 3, shape: 3 });
-  const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
-  const [shapeDash, setShapeDash] = useState(false);
-  /** borracha: apaga só o pedaço tocado (parcial) ou o traço inteiro */
-  const [erPart, setErPart] = useState(true);
-  /**
-   * Tamanhos, cor e forma escolhidos ficam guardados na conta do professor: a próxima live (em qualquer
-   * aparelho) abre do mesmo jeito. Este aparelho guarda uma cópia para abrir na hora.
-   */
-  const prefsReady = useRef(false);
-  const applyPrefs = (v: unknown) => {
-    if (!v || typeof v !== 'object') return;
-    const p = v as { sizes?: Record<string, unknown>; color?: unknown; shape?: unknown; dash?: unknown; part?: unknown };
-    if (p.sizes && typeof p.sizes === 'object')
-      setInkW((o) => ({ ...o, ...Object.fromEntries(Object.entries(p.sizes!).filter(([k, n]) => k in o && typeof n === 'number' && n >= 0.1 && n <= 7)) }));
-    if (typeof p.color === 'string' && INK_COLORS.includes(p.color)) setInkColor(p.color);
-    if (typeof p.shape === 'string' && ['line', 'arrow', 'rect', 'ellipse'].includes(p.shape)) setShapeKind(p.shape as ShapeKind);
-    if (typeof p.dash === 'boolean') setShapeDash(p.dash);
-    if (typeof p.part === 'boolean') setErPart(p.part);
-  };
-  useEffect(() => {
-    try {
-      applyPrefs(JSON.parse(localStorage.getItem('studio-ink-prefs') ?? 'null'));
-      const old = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
-      if (old && !localStorage.getItem('studio-ink-prefs')) applyPrefs({ sizes: old });
-    } catch {}
-    let off = false;
-    void getInkPrefs()
-      .then((p) => {
-        if (!off && p) applyPrefs(p);
-      })
-      .catch(() => null)
-      .finally(() => {
-        if (!off) prefsReady.current = true;
-      });
-    return () => {
-      off = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  const prefsTimer = useRef(0);
-  useEffect(() => {
-    const p = { sizes: inkW, color: inkColor, shape: shapeKind, dash: shapeDash, part: erPart };
-    if (!prefsReady.current) return;
-    try {
-      localStorage.setItem('studio-ink-prefs', JSON.stringify(p));
-    } catch {}
-    window.clearTimeout(prefsTimer.current);
-    prefsTimer.current = window.setTimeout(() => void saveInkPrefs(p).catch(() => null), 1200);
-  }, [inkW, inkColor, shapeKind, shapeDash, erPart]);
-  const setSize = (k: Sized, n: number) => setInkW((o) => ({ ...o, [k]: Math.min(7, Math.max(0.1, Math.round(n * 10) / 10)) }));
-  /** opções recolhidas da barra: cores ou tamanho */
-  const [inkPop, setInkPop] = useState<'color' | 'size' | 'add' | null>(null);
-  /** barras laterais da tela cheia: recolhidas ou abertas */
-  const [barOpen, setBarOpen] = useState(true);
+  /** menu lateral da tela cheia: recolhido ou aberto */
   const [menuOpen, setMenuOpen] = useState(true);
-  const writingRef = useRef(false);
-  /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
-  const [writing, setWriting] = useState(false);
-  const inkPtr = useRef<InkPtr | null>(null);
-  const pencilSeen = useRef(false);
-  /** último evento da Apple Pencil (a mão encostando logo depois é a palma, não um gesto) */
-  const lastPen = useRef(0);
-  /** posição do PDF quando um gesto de dedos começou */
-  const viewSnap = useRef<{ cx: number; cy: number; zoom: number } | null>(null);
-  /** quando cada dedo encostou (dois dedos só são gesto se encostarem quase juntos) */
-  const downAt = useRef(new Map<number, number>());
-  const viewSnapAt = useRef(0);
-  /** até quando um traço cancelado pelo navegador pode ser retomado */
-  const resumeUntil = useRef(0);
-  /** quando a Pencil levantou pela última vez (movimentos logo depois são resíduo, não escrita) */
-  const penUpAt = useRef(0);
-  /** toque da Pencil que acabou de terminar (movimentos atrasados dele não viram traço novo) */
-  const lastPenId = useRef(-1);
-  const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
-  const undoStack = useRef<{ u: InkOps; r: InkOps }[]>([]);
-  const redoStack = useRef<{ u: InkOps; r: InkOps }[]>([]);
-  const inkQueue = useRef<InkOps>({});
-  const inkTimer = useRef(0);
-  const inkRevSeen = useRef(-1);
-  /** laço da seleção sendo desenhado (aparece na camada rápida, não vai para a live) */
-  const lasso = useRef<number[] | null>(null);
-  const [selBox, setSelBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
-  const selDrag = useRef<{ mode: 'move' | 'size' | 'rot'; x0: number; y0: number; before: Stroke[]; base: Stroke[]; box: { x0: number; y0: number; x1: number; y1: number }; changed: boolean } | null>(null);
-  /** horário do último ponto aproveitado da caneta (pontos fora de ordem ficam de fora) */
-  const lastTs = useRef(0);
   const stageClaimed = useRef(false);
   // som travado pelo sistema (iPad/iPhone que assumiu a live sem ninguém tocar na tela)
   const [soundLocked, setSoundLocked] = useState(false);
@@ -725,9 +514,6 @@ export function Studio({
   const [touching, setTouching] = useState(false);
   const touchTimer = useRef(0);
   const touched = () => {
-    // escrevendo: a tela local já fica sempre à mostra; nada muda a cada traço (mudar refazia o estúdio
-    // inteiro e redesenhava toda a escrita bem no começo do traço seguinte — a caneta "travava")
-    if (writingRef.current) return;
     setTouching(true);
     window.clearTimeout(touchTimer.current);
     touchTimer.current = window.setTimeout(() => setTouching(false), 1800);
@@ -774,25 +560,7 @@ export function Studio({
   // Mesa de cenas + permissão + lista de dispositivos
   useEffect(() => {
     if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
-    pdf.current = new PdfPresenter();
-    // a tela do estúdio só é refeita quando muda a página (o zoom é lido com atraso): rolar e dar zoom não pesam
-    let zoomT = 0;
-    pdf.current.onChange = () => {
-      const v = pdf.current!.view;
-      setPdfView((o) => (o && o.page === v.page && o.pages === v.pages ? o : v));
-      window.clearTimeout(zoomT);
-      zoomT = window.setTimeout(() => setPdfView((o) => (o && pdf.current && Math.abs(o.zoom - pdf.current.view.zoom) > 1e-3 ? pdf.current.view : o)), 200);
-      kick.current();
-    };
-    pdf.current.onView = (v) => {
-      sendView.current(v);
-      kick.current();
-    };
-    pdf.current.ink = ink.current;
-    if (comp.current) {
-      comp.current.pdf = pdf.current;
-      comp.current.traco = tracoLayers;
-    }
+    if (comp.current) comp.current.traco = tracoLayers;
     void checkSupport().then(setSupport);
     (async () => {
       try {
@@ -819,7 +587,6 @@ export function Studio({
       document.removeEventListener('visibilitychange', onVisible);
       navigator.mediaDevices.removeEventListener?.('devicechange', onChange);
       comp.current?.destroy();
-      pdf.current?.destroy();
       camTrack.current?.stop();
       screenTrack.current?.stop();
       micStream.current?.getTracks().forEach((t) => t.stop());
@@ -1044,7 +811,7 @@ export function Studio({
     );
     const t = window.setInterval(() => setCamPortrait(Boolean(comp.current?.cameraPortrait)), 800);
     const onFs = () => {
-      if (!document.fullscreenElement && !writingRef.current) setFull(false);
+      if (!document.fullscreenElement) setFull(false);
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => {
@@ -1084,203 +851,29 @@ export function Studio({
   }
 
   /** Abre um PDF da live no Estúdio */
-  async function openPdf(id: string, ex: Record<string, number> = extraRef.current) {
-    const m = materials.find((x) => x.id === id);
-    setPdfId(id);
-    if (!pdf.current) return;
-    if (isBoard(id)) {
-      // quadro em branco: não tem arquivo, só páginas em branco
-      pdf.current.loadBlank(ex[id] ?? 1);
-      setPdfView(pdf.current.view);
-      setScene('pdf');
-      return;
-    }
-    if (!m) return;
-    setPdfBusy(true);
-    try {
-      const url = await getFileUrl(m.file_path);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error();
-      await pdf.current.load(await res.arrayBuffer(), ex[id] ?? 0);
-      setPdfView(pdf.current.view);
-      setScene('pdf');
-    } catch {
-      toast.error('Não foi possível abrir este PDF.');
-    } finally {
-      setPdfBusy(false);
-    }
-  }
-
-  // papel das páginas em branco
-  useEffect(() => {
-    if (pdf.current) pdf.current.paper = paper;
-    kick.current();
-  }, [paper]);
-  /** Exporta em PDF o documento aberto, com tudo o que foi escrito (uma página de cada vez, sem travar a live). */
-  async function exportDoc() {
-    const p = pdf.current;
-    if (!p?.pages || exporting) return;
-    const total = p.pages;
-    const name = (docs.find((d) => d.id === pdfId)?.title ?? 'aula').replace(/[^\p{L}\p{N} _-]+/gu, ' ').replace(/\s+/g, ' ').trim() || 'aula';
-    setExporting(`0/${total}`);
-    try {
-      const pages = (async function* () {
-        for (let i = 1; i <= total; i++) {
-          const c = await p.renderPage(i, 1400);
-          if (c) yield c;
-          // respiro entre as páginas: a transmissão e a caneta continuam sendo atendidas
-          await new Promise((r) => setTimeout(r, 40));
-        }
-      })();
-      const blob = await exportPdf(pages, { onProgress: (n) => setExporting(`${n}/${total}`) });
-      download(blob, `${name}.pdf`);
-      toast('PDF baixado.');
-    } catch {
-      toast.error('Não foi possível gerar o PDF. Tente de novo.');
-    } finally {
-      setExporting('');
-    }
-  }
-  /** Página em branco depois da última página do que está aberto (PDF ou quadro) — e já vai para ela. */
-  function addBlankPage() {
-    const p = pdf.current;
-    if (!pdfId || !p?.pages) return void newBoard();
-    const n = p.extra + 1;
-    p.setExtra(n);
-    setExtra((o) => ({ ...o, [pdfId]: n }));
-    void p.goTo(p.pages);
-    setPdfView(p.view);
-  }
-  /** Quadro em branco novo (um documento só de páginas em branco). */
-  async function newBoard() {
-    const k = 1 + Math.max(0, ...Object.keys(extraRef.current).filter(isBoard).map((b) => Number(b.slice(7)) || 0));
-    const id = `quadro-${k}`;
-    const ex = { ...extraRef.current, [id]: 1 };
-    setExtra(ex);
-    await openPdf(id, ex);
-  }
-  /** PDF novo no meio da live: sobe, entra nos PDFs da live e já abre aqui (os outros aparelhos acompanham). */
-  async function importPdf(file: File) {
-    setPdfBusy(true);
-    toast('Enviando o PDF…');
-    try {
-      const r = await uploadPdf(file, 'lives/pdfs');
-      const res = await addLiveMaterials(liveId, [r]);
-      if (res.error || !res.ids?.[0]) throw new Error(res.error || 'Não foi possível adicionar o PDF.');
-      pendingOpen.current = res.ids[0];
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Não foi possível enviar o PDF.');
-    } finally {
-      setPdfBusy(false);
-    }
-  }
-  useEffect(() => {
-    const id = pendingOpen.current;
-    if (!id || !materials.some((m) => m.id === id)) return;
-    pendingOpen.current = '';
-    void openPdf(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [materials]);
-
-  // Na tela da transmissão: um dedo move o PDF, dois dedos dão zoom (pinça), dois toques alternam largura/página
+  // Na tela da transmissão (cena da câmera): arrastar escolhe a parte da imagem que aparece no recorte.
+  // Na cena do caderno, a folha é do caderno (ele fica por cima do quadro).
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // tocar na tela fecha o popup de microfone/câmera
     if (pop) {
       setPop(null);
-      if (!(writing && e.pointerType === 'pen')) return;
-    }
-    if (scene === 'camera') {
-      // câmera: arrastar escolhe a parte da imagem que aparece no recorte
-      e.currentTarget.setPointerCapture(e.pointerId);
-      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       return;
     }
-    if (scene !== 'pdf') return;
-    if (inkDown(e)) return;
-    // escrevendo com a Pencil (caneta, laser…): os dedos só valem em dupla. Com a ferramenta "mão", um dedo move.
-    const strict = writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch';
-    // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
-    // toque antigo que ficou sem o "soltar" (o navegador perdeu o evento): esquece, senão todo toque novo vira pinça
-    for (const [id, t] of downAt.current)
-      if (performance.now() - t > 20_000) {
-        downAt.current.delete(id);
-        pointers.current.delete(id);
-      }
-    if (!pointers.current.size) {
-      viewSnap.current = pdf.current?.pos ?? null;
-      viewSnapAt.current = performance.now();
-    }
-    downAt.current.set(e.pointerId, performance.now());
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* o navegador recusou a captura: o traço segue mesmo assim */
-    }
+    if (scene !== 'camera') return;
+    e.currentTarget.setPointerCapture(e.pointerId);
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (pointers.current.size === 1 && !strict) {
-      const now = Date.now();
-      if (now - lastTap.current < 300) pdf.current?.toggleFit();
-      lastTap.current = now;
-    }
   };
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (inkMove(e)) return;
     const ps = pointers.current;
     const prev = ps.get(e.pointerId);
-    if (prev && scene === 'camera' && ps.size === 1) {
-      const rc = e.currentTarget.getBoundingClientRect();
-      comp.current?.moveCamera((e.clientX - prev.x) / rc.width, (e.clientY - prev.y) / rc.height);
-      ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      return;
-    }
-    if (!prev || scene !== 'pdf' || !pdf.current) return;
-    const r = e.currentTarget.getBoundingClientRect();
-    if (ps.size === 1) {
-      // escrevendo com a Pencil, um dedo sozinho não move o PDF (palma e toques sem querer): use dois dedos
-      if (!(writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch')) pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
-    } else if (ps.size === 2) {
-      const [oid, other] = [...ps.entries()].find(([id]) => id !== e.pointerId)!;
-      // escrevendo com a Pencil: gesto de dois dedos só vale se os dois encostaram quase juntos
-      // (palma apoiada e depois outro contato não é pinça)
-      if (writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch' && Math.abs((downAt.current.get(oid) ?? 0) - (downAt.current.get(e.pointerId) ?? 0)) > 600) {
-        ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
-        return;
-      }
-      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
-      const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
-      const mx = ((e.clientX + other.x) / 2 - r.left) / r.width;
-      const my = ((e.clientY + other.y) / 2 - r.top) / r.height;
-      if (d0 > 0) pdf.current.zoomAt(d1 / d0, mx, my);
-      // arrastar com os dois dedos também move
-      pdf.current.pan((e.clientX - prev.x) / 2 / r.width, (e.clientY - prev.y) / 2 / r.height);
-    }
+    if (!prev || scene !== 'camera' || ps.size !== 1) return;
+    const rc = e.currentTarget.getBoundingClientRect();
+    comp.current?.moveCamera((e.clientX - prev.x) / rc.width, (e.clientY - prev.y) / rc.height);
     ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
   };
   const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (inkUp(e)) return;
     pointers.current.delete(e.pointerId);
-    downAt.current.delete(e.pointerId);
   };
-
-  // Rolagem (mouse/trackpad): rola o PDF e passa de página no fim; Ctrl + rolagem (ou pinça no trackpad) dá zoom
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const wheel = (e: WheelEvent) => {
-      if (scene !== 'pdf' || !pdf.current?.pages) return;
-      e.preventDefault();
-      const r = el.getBoundingClientRect();
-      if (e.ctrlKey) pdf.current.zoomAt(Math.exp(-e.deltaY / 300), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
-      else pdf.current.pan(-e.deltaX / r.width, -e.deltaY / r.height);
-    };
-    el.addEventListener('wheel', wheel, { passive: false });
-    return () => el.removeEventListener('wheel', wheel);
-  }, [scene]);
-
-  useEffect(() => {
-    if (pdfView) setPageInput(String(pdfView.page));
-  }, [pdfView?.page]);
 
   // Câmera escolhida
   useEffect(() => {
@@ -1487,7 +1080,6 @@ export function Studio({
       setRemote((o) => (o && sameRemote(o, r) ? o : r));
       // (a lista só muda quando um aparelho entra/sai ou troca de câmera: a tela não é refeita à toa)
       setDevices((o) => (JSON.stringify(o) === JSON.stringify(r.devices) ? o : r.devices));
-      inkRefetch.current(r.inkRev);
       if (r.cmd) void onCmd.current(r.cmd);
       const l = link.current;
       if (l) {
@@ -1543,39 +1135,35 @@ export function Studio({
     if (r.status === 'live' && !caster.current && r.res && r.res !== res) setRes(r.res);
     if (r.rev <= sync.current.rev) return;
     const st = r.state;
-    // PDF que outro aparelho acabou de subir: busca a lista nova antes
-    if (st.pdfId && !isBoard(st.pdfId) && !materials.some((m) => m.id === st.pdfId)) {
-      router.refresh();
-      return;
-    }
     sync.current.rev = r.rev;
     await applyScene(st);
   };
 
   type SceneState = {
-    pdfPos?: PdfPos;
     scene?: Scene;
-    pdfId?: string;
-    page?: number;
     pip?: boolean;
     muted?: boolean;
     mirror?: boolean;
     pipBox?: { x: number; y: number; w: number };
     pipAspect?: number;
-    extra?: Record<string, number>;
-    paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
     trNb?: string;
+    trPg?: string;
   };
-  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.trNb]);
-  const sceneNow = (): SceneState => ({ scene, pip, muted, mirror, pipBox, ...(trNb ? { trNb } : {}), ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.trNb, x.trPg]);
+  const sceneNow = (): SceneState => ({ scene, pip, muted, mirror, pipBox, ...(trNb ? { trNb } : {}), ...(trPg ? { trPg } : {}), ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
   /** Aplica a cena de outro aparelho (sem mandar de volta). */
   async function applyScene(st: SceneState) {
     sync.current.applying = true;
     try {
       // caderno aberto em outro aparelho: abre o mesmo aqui
-      if (st.trNb && st.trNb !== trNbRef.current) {
+      const fresh = performance.now() - trLocalAt.current > 3000;
+      if (fresh && st.trNb && st.trNb !== trNbRef.current) {
         setTrNb(st.trNb);
-        void trApi.current?.open(st.trNb);
+        if (!st.trPg) void trApi.current?.open(st.trNb);
+      }
+      if (fresh && st.trPg && st.trPg !== trPgRef.current) {
+        setTrPg(st.trPg);
+        void trApi.current?.goPage(st.trNb || trNbRef.current, st.trPg);
       }
       if (st.scene && st.scene !== scene) setScene(st.scene);
       if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
@@ -1594,30 +1182,6 @@ export function Studio({
   }
 
   // Mensagens da ligação direta
-  const sendView = useRef<(v: PdfPos) => void>(() => {});
-  const lastView = useRef(0);
-  const viewTimer = useRef(0);
-  const viewDbTimer = useRef(0);
-  sendView.current = (v) => {
-    if (sync.current.applying) return;
-    void v;
-    // pelo servidor: quem só controla manda a posição final ~1 s depois; quem transmite também (os outros seguem)
-    if (!viewDbTimer.current)
-      viewDbTimer.current = window.setTimeout(async () => {
-        viewDbTimer.current = 0;
-        if (!pdf.current || sync.current.applying) return;
-        const r = await setStudioScene(liveId, { pdfPos: pdf.current.pos }).catch(() => null);
-        if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
-      }, caster.current ? 1000 : 600);
-    if (!link.current?.connected) return;
-    // junta os movimentos e manda a posição final a cada 1 s (nos dois sentidos)
-    if (viewTimer.current) return;
-    viewTimer.current = window.setTimeout(() => {
-      viewTimer.current = 0;
-      if (pdf.current && !sync.current.applying) link.current?.post({ t: 'pdfv', v: pdf.current.pos });
-    }, caster.current ? 1000 : 150);
-    lastView.current = performance.now();
-  };
   const devicesNow = () => ({
     cams: [...cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })), { id: 'none', name: 'Sem câmera' }],
     mics: [...(android ? [{ id: AUTO_MIC, name: AUTO_MIC_NAME }] : []), ...mics.map((m, i) => ({ id: m.deviceId, name: micName(m, i) })), { id: 'none', name: 'Sem microfone' }],
@@ -1632,10 +1196,7 @@ export function Studio({
       return;
     }
     if (m.t === 'scene') void applyScene(m.s as SceneState);
-    else if (m.t === 'pdfv' && pdf.current) pdf.current.setView(m.v as PdfPos);
     else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
-    else if (m.t === 'ink' && m.pdfId === pdfId) ink.current.apply(unpackOps(m.ops as PackedOps));
-    else if (m.t === 'laser') ink.current.laserFrom(String(m.id), String(m.color), m.pts as number[], Number(m.size) || undefined);
     else if (m.t === 'cam' && caster.current) setCam(String(m.id));
     else if (m.t === 'mic' && caster.current) setMic(String(m.id));
   };
@@ -1643,7 +1204,6 @@ export function Studio({
   onLinkOpen.current = (d) => {
     if (!caster.current || !link.current) return;
     link.current.post({ t: 'scene', s: sceneNow() }, d);
-    if (pdf.current?.pages) link.current.post({ t: 'pdfv', v: pdf.current.pos }, d);
     link.current.post({ t: 'devices', d: devicesNow() }, d);
   };
   // câmeras/microfones de quem transmite mudaram: avisa os outros aparelhos
@@ -1676,13 +1236,14 @@ export function Studio({
         mirror,
         pipBox,
         ...(trNb ? { trNb } : {}),
+        ...(trPg ? { trPg } : {}),
         ...(camTrack.current && pipAspect ? { pipAspect } : {}),
       }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
     }, 400);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, pip, muted, mirror, pipBox, pipAspect, trNb, liveId]);
+  }, [scene, pip, muted, mirror, pipBox, pipAspect, trNb, trPg, liveId]);
 
   // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
@@ -1804,292 +1365,11 @@ export function Studio({
     } else if (c.t === 'start' && !caster.current && !liveOn) await goLive();
   };
 
-  /** Barra de escrita: ferramentas, cor e espessura, desfazer, limpar página e tela cheia */
-  async function openWriting() {
-    setInkTool('pen');
-    setInkPop(null);
-    writingRef.current = true;
-    setWriting(true);
-    setBarOpen(true);
-    // sem a tela cheia do navegador: no iPad ela fecha ao puxar a tela para baixo. O modo escrita ocupa a
-    // página inteira e só fecha no X.
-    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
-    setPop(null);
-    setFull(true);
-  }
-  function closeWriting() {
-    writingRef.current = false;
-    setWriting(false);
-    setInkTool('hand');
-    setInkPop(null);
-    setTopPop(null);
-    ink.current.selected.clear();
-    setSelBox(null);
-    void exitFull();
-  }
   // tela inteira sem a tela cheia do navegador: os menus do app saem da frente
   useEffect(() => {
     document.documentElement.classList.toggle('studio-full', full);
     return () => document.documentElement.classList.remove('studio-full');
   }, [full]);
-  // saiu da tela cheia (gesto do sistema, Esc): o modo escrita fecha junto
-  useEffect(() => {
-    if (!full && writing) {
-      writingRef.current = false;
-      setWriting(false);
-      setInkTool('hand');
-      setInkPop(null);
-      ink.current.selected.clear();
-    }
-  }, [full, writing]);
-
-  /**
-   * Ferramentas do modo escrita, no estilo dos apps de anotação do iPad: uma pílula flutuante no alto,
-   * com ferramentas, cores e espessuras à vista (sem menus). Se não couber, rola para o lado.
-   */
-  function inkBar() {
-    const tools: { k: InkTool; label: string; icon: typeof Hand }[] = [
-      { k: 'hand', label: 'Mover o PDF', icon: Hand },
-      { k: 'pen', label: 'Caneta', icon: PenLine },
-      { k: 'marker', label: 'Marca-texto', icon: Highlighter },
-      { k: 'shape', label: 'Formas', icon: Shapes },
-      { k: 'laser', label: 'Laser', icon: MousePointerClick },
-      { k: 'eraser', label: 'Borracha', icon: Eraser },
-      { k: 'select', label: 'Selecionar escrita', icon: Lasso },
-    ];
-    const kinds: { k: ShapeKind; label: string; icon: typeof Hand }[] = [
-      { k: 'line', label: 'Reta', icon: Minus },
-      { k: 'arrow', label: 'Seta', icon: MoveUpRight },
-      { k: 'rect', label: 'Retângulo', icon: Square },
-      { k: 'ellipse', label: 'Elipse', icon: Circle },
-    ];
-    const btn = (on: boolean) =>
-      cn('relative grid size-10 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black shadow' : 'text-white hover:bg-white/15');
-    const sep = <span className="my-1 h-px w-6 shrink-0 bg-white/20" />;
-    const ToolIcon = tools.find((t) => t.k === inkTool)?.icon ?? PenLine;
-    const paints = inkTool === 'pen' || inkTool === 'marker' || inkTool === 'shape' || inkTool === 'laser';
-    // cada ferramenta tem o seu tamanho (um não mexe no outro)
-    const sized: Sized | null = inkTool === 'pen' ? 'pen' : inkTool === 'shape' ? 'shape' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : inkTool === 'laser' ? 'laser' : null;
-    const pick = (t: InkTool) => {
-      setInkTool(t);
-      setInkPop(null);
-      if (t !== 'select') {
-        ink.current.selected.clear();
-        setSelBox(null);
-      }
-    };
-    return (
-      <>
-      <div
-        role="toolbar"
-        aria-label="Ferramentas de escrita"
-        data-scroll
-        className="no-scrollbar absolute top-1/2 left-2 z-30 flex max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col items-center gap-0.5 overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/85 p-1 shadow-2xl backdrop-blur-xl"
-      >
-        <button
-          type="button"
-          onClick={() => {
-            setBarOpen((v) => !v);
-            setInkPop(null);
-          }}
-          aria-label={barOpen ? 'Recolher ferramentas' : 'Mostrar ferramentas'}
-          aria-expanded={barOpen}
-          title={barOpen ? 'Recolher' : 'Ferramentas'}
-          className={btn(false)}
-        >
-          {barOpen ? <ChevronsLeft className="size-[18px]" /> : tools.find((t) => t.k === inkTool) ? <ToolIcon className="size-[18px]" /> : <ChevronsRight className="size-[18px]" />}
-        </button>
-        {barOpen && (
-          <>
-        {tools.map((t) => (
-          <button key={t.k} type="button" onClick={() => pick(t.k)} aria-label={t.label} aria-pressed={inkTool === t.k} title={t.label} className={btn(inkTool === t.k)}>
-            <t.icon className="size-[18px]" />
-          </button>
-        ))}
-        {inkTool === 'shape' && (
-          <>
-            {sep}
-            {kinds.map((k) => (
-              <button
-                key={k.k}
-                type="button"
-                onClick={() => setShapeKind(k.k)}
-                aria-label={k.label}
-                aria-pressed={shapeKind === k.k}
-                title={k.label}
-                className={cn('grid size-9 shrink-0 place-items-center rounded-full text-white transition', shapeKind === k.k ? 'bg-brand' : 'hover:bg-white/15')}
-              >
-                <k.icon className="size-4" />
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setShapeDash((v) => !v)}
-              aria-label={shapeDash ? 'Linha tracejada' : 'Linha cheia'}
-              aria-pressed={shapeDash}
-              title={shapeDash ? 'Tracejada (toque para linha cheia)' : 'Cheia (toque para tracejada)'}
-              className={cn('grid size-9 shrink-0 place-items-center rounded-full text-white transition', shapeDash ? 'bg-brand' : 'hover:bg-white/15')}
-            >
-              <span className={cn('block w-5 border-t-2 border-white', shapeDash && 'border-dashed')} />
-            </button>
-          </>
-        )}
-        {inkTool === 'eraser' && (
-          <>
-            {sep}
-            <button
-              type="button"
-              onClick={() => setErPart((v) => !v)}
-              aria-label={erPart ? 'Borracha parcial' : 'Borracha de traço inteiro'}
-              aria-pressed={!erPart}
-              title={erPart ? 'Parcial: apaga só onde passa (toque para traço inteiro)' : 'Traço inteiro (toque para parcial)'}
-              className={cn(btn(false), 'h-auto py-2 text-[10px] leading-tight font-bold')}
-            >
-              {erPart ? 'Parte' : 'Traço'}
-            </button>
-          </>
-        )}
-        {(paints || sized) && sep}
-        {paints && (
-          <button
-            type="button"
-            onClick={() => setInkPop((p) => (p === 'color' ? null : 'color'))}
-            aria-label="Cores"
-            aria-expanded={inkPop === 'color'}
-            title="Cores"
-            className={btn(false)}
-          >
-            <span className="block size-6 rounded-full ring-2 ring-white/80" style={{ background: inkTool === 'laser' ? laserColor : strokeStyle(inkTool === 'marker' ? 'marker' : 'pen').color }} />
-          </button>
-        )}
-        {sized && (
-          <button
-            type="button"
-            onClick={() => setInkPop((p) => (p === 'size' ? null : 'size'))}
-            aria-label="Tamanho"
-            aria-expanded={inkPop === 'size'}
-            title="Tamanho"
-            className={cn(btn(false), 'h-auto flex-col gap-0.5 py-1.5 text-[10px] font-bold tabular-nums')}
-          >
-            <span className="block rounded-full bg-white" style={{ width: 4 + inkW[sized] * 1.6, height: 4 + inkW[sized] * 1.6 }} />
-            {inkW[sized].toFixed(1).replace('.', ',')}
-          </button>
-        )}
-        {sep}
-        <button type="button" onClick={undoInk} aria-label="Desfazer" title="Desfazer" className={btn(false)}>
-          <Undo2 className="size-[18px]" />
-        </button>
-        <button type="button" onClick={redoInk} aria-label="Refazer" title="Refazer" className={btn(false)}>
-          <Redo2 className="size-[18px]" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setInkPop((p) => (p === 'add' ? null : 'add'))}
-          aria-label="Página em branco, quadro ou PDF"
-          aria-expanded={inkPop === 'add'}
-          title="Página em branco, quadro novo ou PDF"
-          className={btn(false)}
-        >
-          <Plus className="size-[18px]" />
-        </button>
-        <button
-          type="button"
-          onClick={async () => {
-            if (await confirmDialog('Apagar a escrita desta página?')) clearPage();
-          }}
-          aria-label="Limpar a página"
-          title="Limpar a página"
-          className={btn(false)}
-        >
-          <Trash2 className="size-[18px]" />
-        </button>
-          </>
-        )}
-        <button type="button" onClick={closeWriting} aria-label="Fechar escrita" title="Fechar escrita" className={cn(btn(false), 'bg-white/10')}>
-          <X className="size-[18px]" />
-        </button>
-      </div>
-      <input
-        ref={importRef}
-        type="file"
-        accept="application/pdf,.pdf"
-        className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          e.target.value = '';
-          if (f) void importPdf(f);
-        }}
-      />
-      {inkPop === 'add' && (
-        <div data-scroll className="absolute top-1/2 left-16 z-40 flex -translate-y-1/2 animate-scale-in flex-col gap-0.5 rounded-2xl border border-white/10 bg-neutral-900/90 p-1.5 text-sm font-semibold text-white shadow-2xl backdrop-blur-xl">
-          {[
-            { label: 'Página em branco', icon: StickyNote, run: addBlankPage },
-            { label: 'Novo caderno em branco', icon: FilePlus2, run: () => void newBoard() },
-            { label: 'Importar PDF', icon: FileUp, run: () => importRef.current?.click() },
-            { label: diagOn ? 'Desligar relatório da escrita' : 'Relatório da escrita', icon: Activity, run: toggleDiag },
-          ].map((o) => (
-            <button
-              key={o.label}
-              type="button"
-              onClick={() => {
-                setInkPop(null);
-                o.run();
-              }}
-              className="flex items-center gap-2.5 rounded-xl px-3 py-2.5 text-left whitespace-nowrap hover:bg-white/15"
-            >
-              <o.icon className="size-[18px] shrink-0" /> {o.label}
-            </button>
-          ))}
-        </div>
-      )}
-      {inkPop === 'color' && paints && (
-        <div data-scroll className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
-          {INK_COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => {
-                setInkColor(c);
-                setInkPop(null);
-              }}
-              aria-label={`Cor ${c}`}
-              aria-pressed={inkColor === c}
-              className="grid size-9 place-items-center rounded-full"
-            >
-              <span className={cn('block rounded-full transition-all', inkColor === c ? 'size-7 ring-2 ring-white ring-offset-2 ring-offset-neutral-900' : 'size-6 ring-1 ring-white/30')} style={{ background: c }} />
-            </button>
-          ))}
-        </div>
-      )}
-      {inkPop === 'size' && sized && (
-        <div data-scroll className="absolute top-1/2 left-16 z-40 flex w-72 max-w-[calc(100%-5rem)] -translate-y-1/2 animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
-          <span className="block size-1.5 shrink-0 rounded-full bg-white" />
-          <input
-            type="range"
-            min={0.1}
-            max={7}
-            step={0.1}
-            value={inkW[sized]}
-            onChange={(e) => setSize(sized, Number(e.target.value))}
-            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-            onPointerMove={(e) => {
-              if (!e.buttons && e.pointerType === 'mouse') return;
-              if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-              const r = e.currentTarget.getBoundingClientRect();
-              setSize(sized, 0.1 + Math.min(1, Math.max(0, (e.clientX - r.left - 10) / Math.max(1, r.width - 20))) * 6.9);
-            }}
-            style={{ touchAction: 'none' }}
-            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : sized === 'shape' ? 'Tamanho da forma' : 'Tamanho da caneta'}
-            className="h-8 min-w-0 flex-1 accent-white"
-          />
-          <span className="block size-4 shrink-0 rounded-full bg-white" />
-          <span className="w-8 shrink-0 text-right text-xs font-bold tabular-nums">{inkW[sized].toFixed(1).replace('.', ',')}</span>
-        </div>
-      )}
-      </>
-    );
-  }
-
   /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
   async function pickAnyCam(v: string) {
     const [dev, id] = v.split('|');
@@ -2140,848 +1420,6 @@ export function Studio({
     await studioScan(liveId).catch(() => null);
     window.setTimeout(() => setScanning(false), 2500);
   }
-
-  // ---------------- escrita: enviar, receber, desfazer
-  /** junta mudanças para mandar de uma vez (ao servidor, a cada ~0,6 s) */
-  function queueInk(ops: InkOps) {
-    const q = inkQueue.current;
-    const adds = new Map((q.add ?? []).map((x) => [x.id, x]));
-    for (const id of ops.remove ?? []) adds.delete(id);
-    for (const x of ops.add ?? []) adds.set(x.id, x);
-    inkQueue.current = { add: [...adds.values()], remove: [...new Set([...(q.remove ?? []), ...(ops.remove ?? [])])] };
-    if (!inkTimer.current)
-      inkTimer.current = window.setTimeout(async () => {
-        inkTimer.current = 0;
-        const send = inkQueue.current;
-        inkQueue.current = {};
-        if (!pdfId || (!send.add?.length && !send.remove?.length)) return;
-        const job = inkOps(liveId, pdfId, packOps(send)).catch(() => null);
-        inkFlight.current = job;
-        const r = await job;
-        if (inkFlight.current === job) inkFlight.current = null;
-        // versões gravadas daqui: não precisa buscar de volta
-        if (r && 'rev' in r && r.rev) {
-          ownRevs.current.add(r.rev);
-          if (r.rev === inkRevSeen.current + 1) inkRevSeen.current = r.rev;
-        }
-      }, caster.current ? 800 : 500);
-  }
-  /** mudança feita aqui: guarda para desfazer, manda para os outros aparelhos */
-  function commitInk(ops: InkOps | null, before: Stroke[]) {
-    if (!ops || (!ops.add?.length && !ops.remove?.length)) return;
-    for (const a of ops.add ?? []) localAdds.current.set(a.id, performance.now());
-    undoStack.current.push({ u: ink.current.invert(ops, before), r: ops });
-    if (undoStack.current.length > 300) undoStack.current.shift();
-    redoStack.current = [];
-    // quem transmite manda na hora para quem controla (o servidor guarda logo depois)
-    if (caster.current || !light) link.current?.post({ t: 'ink', pdfId, ops: packOps(ops) });
-    queueInk(ops);
-  }
-  function sendInk(ops: InkOps) {
-    for (const a of ops.add ?? []) localAdds.current.set(a.id, performance.now());
-    ink.current.selected.clear();
-    setSelBox(null);
-    ink.current.apply(ops);
-    if (caster.current || !light) link.current?.post({ t: 'ink', pdfId, ops: packOps(ops) });
-    queueInk(ops);
-  }
-  function undoInk() {
-    const a = undoStack.current.pop();
-    if (!a) return;
-    sendInk(a.u);
-    redoStack.current.push(a);
-  }
-  function redoInk() {
-    const a = redoStack.current.pop();
-    if (!a) return;
-    sendInk(a.r);
-    undoStack.current.push(a);
-  }
-  function clearPage() {
-    if (!pdf.current?.pages) return;
-    const r = pdf.current.pageRange(pdf.current.page);
-    const ids = ink.current.idsInRange(r.top, r.bottom);
-    if (!ids.length) return;
-    const before = [...ink.current.strokes];
-    const ops = { remove: ids };
-    ink.current.apply(ops);
-    commitInk(ops, before);
-  }
-  // escrita do PDF aberto (ao abrir o estúdio ou trocar de PDF)
-  useEffect(() => {
-    ink.current.strokes = [];
-    ink.current.selected.clear();
-    undoStack.current = [];
-    redoStack.current = [];
-    setSelBox(null);
-    if (!pdfId) return;
-    let off = false;
-    void getInk(liveId, pdfId).then((r) => {
-      if (off) return;
-      ink.current.strokes = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
-    });
-    return () => {
-      off = true;
-    };
-  }, [pdfId, liveId]);
-  // escrita feita em outro aparelho (pelo servidor)
-  /** traços feitos aqui há pouco: uma busca no servidor que ainda não os tem não pode apagá-los da tela */
-  const localAdds = useRef(new Map<string, number>());
-  /** gravação em andamento e versões que este aparelho gravou (não precisam ser buscadas de volta) */
-  const inkFlight = useRef<Promise<unknown> | null>(null);
-  const ownRevs = useRef(new Set<number>());
-  const inkRefetch = useRef<(rev: number) => void | Promise<void>>(() => {});
-  inkRefetch.current = async (rev) => {
-    if (!pdfId || rev <= inkRevSeen.current) return;
-    if (inkRevSeen.current < 0) {
-      inkRevSeen.current = rev;
-      return;
-    }
-    // espera a gravação daqui terminar: se todas as versões novas são nossas, não há o que buscar
-    // (recarregar tudo a cada traço travava a escrita conforme a aula enchia)
-    if (inkFlight.current) await inkFlight.current;
-    if (rev <= inkRevSeen.current) return;
-    let mine = true;
-    for (let k = inkRevSeen.current + 1; k <= rev; k++) if (!ownRevs.current.has(k)) mine = false;
-    for (const k of ownRevs.current) if (k <= rev) ownRevs.current.delete(k);
-    inkRevSeen.current = rev;
-    if (mine) return;
-    void getInk(liveId, pdfId).then((r) => {
-      const keep = ink.current.current;
-      const now = performance.now();
-      for (const [id, t] of localAdds.current) if (now - t > 30_000) localAdds.current.delete(id);
-      const next = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
-      const have = new Set(next.map((x) => x.id));
-      for (const o of ink.current.strokes) if (!have.has(o.id) && localAdds.current.has(o.id)) next.push(o);
-      // já tem tudo (chegou antes pela conexão direta entre os aparelhos): não redesenha o PDF à toa
-      const cur = ink.current.strokes;
-      const curIds = new Set(cur.map((x) => x.id));
-      const same = cur.length === next.length && next.every((x) => curIds.has(x.id)) && !inkQueue.current.add?.length && !inkQueue.current.remove?.length;
-      if (!same) ink.current.strokes = next;
-      // o que ainda não foi enviado daqui continua
-      ink.current.apply(inkQueue.current);
-      ink.current.current = keep;
-    });
-  };
-  // quem só controla desenha a prévia rápido enquanto escreve (senão fica a 4 quadros)
-  useEffect(() => {
-    if (light && !onAir) comp.current?.setFps(inkTool !== 'hand' ? 24 : 4);
-  }, [inkTool, light, onAir]);
-  // caixa da seleção acompanha zoom e rolagem
-  useEffect(() => {
-    if (inkTool !== 'select') return setSelBox(null);
-    const t = window.setInterval(() => {
-      const b = ink.current.selectionBox();
-      const p = pdf.current;
-      if (!b || !p?.pages) return setSelBox((o) => (o ? null : o));
-      const a = p.toFrame(b.x0, b.y0);
-      const c = p.toFrame(b.x1, b.y1);
-      const nb = { x: a.fx, y: a.fy, w: c.fx - a.fx, h: c.fy - a.fy };
-      setSelBox((o) => (o && Math.abs(o.x - nb.x) + Math.abs(o.y - nb.y) + Math.abs(o.w - nb.w) < 0.001 ? o : nb));
-    }, 80);
-    return () => window.clearInterval(t);
-  }, [inkTool]);
-
-  /**
-   * Palma da mão no iPad: enquanto a Pencil escreve, o toque da mão em qualquer lugar da página não
-   * seleciona texto, não rola e não aperta botões. No PDF, nenhum toque abre a lupa/seleção do Safari.
-   */
-  useEffect(() => {
-    if (!writing) return;
-    // a mão encostando não seleciona texto nem abre a lupa em lugar nenhum da página
-    const st = document.documentElement.style as CSSStyleDeclaration & { webkitUserSelect: string; webkitTouchCallout: string };
-    const prev = [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout];
-    st.userSelect = 'none';
-    st.webkitUserSelect = 'none';
-    st.webkitTouchCallout = 'none';
-    window.getSelection()?.removeAllRanges();
-    const finger = (t: Touch) => (t as Touch & { touchType?: string }).touchType !== 'stylus';
-    const onTouch = (e: TouchEvent) => {
-      const onCanvas = e.target === canvasRef.current;
-      if (!e.cancelable) return;
-      if (onCanvas && scene === 'pdf') e.preventDefault();
-      else if (pencilSeen.current && penBusy() && [...e.changedTouches].some(finger) && !(e.target as Element | null)?.closest?.('[data-scroll]')) e.preventDefault();
-    };
-    // o clique vem depois do toque: lembra se foi a mão (a Pencil continua apertando botões)
-    let palmDown = false;
-    const onDown = (e: PointerEvent) => {
-      // barras, régua e chat respondem ao dedo sempre (a proteção contra a palma vale para o resto da tela)
-      const control = Boolean((e.target as Element | null)?.closest?.('[data-scroll]'));
-      palmDown = !control && e.pointerType === 'touch' && pencilSeen.current && penBusy();
-      if (palmDown && e.target !== canvasRef.current) e.stopPropagation();
-    };
-    const onClick = (e: MouseEvent) => {
-      if (palmDown) {
-        palmDown = false;
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    // a página não rola nem "puxa para atualizar" enquanto escreve (só as barras e o chat rolam)
-    const root = document.documentElement.style;
-    const lock = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
-    root.overflow = 'hidden';
-    root.overscrollBehavior = 'none';
-    // nenhum gesto do navegador (zoom da página, arrastar para voltar) começa pela mão apoiada: quando um
-    // gesto desses começa, o navegador para de entregar a caneta por alguns instantes
-    const prevTouch = root.touchAction;
-    root.touchAction = 'none';
-    const noGesture = (e: Event) => e.preventDefault();
-    document.addEventListener('gesturestart', noGesture, { capture: true, passive: false });
-    document.addEventListener('gesturechange', noGesture, { capture: true, passive: false });
-    document.body.style.overflow = 'hidden';
-    const onTouchMove = (e: TouchEvent) => {
-      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
-    };
-    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
-    document.addEventListener('touchstart', onTouch, { capture: true, passive: false });
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('click', onClick, true);
-    return () => {
-      [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout] = prev;
-      [root.overflow, root.overscrollBehavior, document.body.style.overflow] = lock;
-      root.touchAction = prevTouch;
-      document.removeEventListener('gesturestart', noGesture, { capture: true });
-      document.removeEventListener('gesturechange', noGesture, { capture: true });
-      document.removeEventListener('touchmove', onTouchMove, { capture: true });
-      document.removeEventListener('touchstart', onTouch, { capture: true });
-      document.removeEventListener('pointerdown', onDown, true);
-      document.removeEventListener('click', onClick, true);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [writing, scene]);
-
-  /** cor e espessura de cada ferramenta */
-  const strokeStyle = (tool: 'pen' | 'marker') => ({
-    color: tool === 'marker' && inkColor === '#111111' ? '#facc15' : inkColor,
-    size: inkW[tool] * INK_UNIT[tool],
-  });
-  const laserColor = inkColor === '#111111' ? '#ef4444' : inkColor;
-  const laserSize = inkW.laser * INK_UNIT.laser;
-  const laserSent = useRef(0);
-
-  /**
-   * Camada rápida: o traço que está sendo escrito aparece aqui na hora (a cada quadro da tela, 60/120 Hz),
-   * sem esperar o próximo quadro da transmissão. A live recebe o mesmo traço no quadro seguinte.
-   */
-  const fastRef = useRef<HTMLCanvasElement>(null);
-  const fastRaf = useRef(0);
-  const fastClear = useRef(0);
-  /** pontos que o navegador prevê (só na camada rápida: tira a sensação de atraso) */
-  const predicted = useRef<number[]>([]);
-  /** onde a borracha está passando (posição e raio, em larguras de página) */
-  const eraserAt = useRef<{ x: number; y: number; r: number } | null>(null);
-  /** área do quadro dentro do elemento (o canvas fica centralizado, sem distorcer) */
-  const frameRect = (el: HTMLCanvasElement) => {
-    const r = el.getBoundingClientRect();
-    const s = Math.min(r.width / el.width, r.height / el.height) || 1;
-    const w = el.width * s;
-    const h = el.height * s;
-    return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, ox: (r.width - w) / 2, oy: (r.height - h) / 2, r };
-  };
-  function drawFast() {
-    fastRaf.current = 0;
-    const c = fastRef.current;
-    const el = canvasRef.current;
-    const p = pdf.current;
-    if (!c || !el || !p) return;
-    const f = frameRect(el);
-    const dpr = Math.min(3, window.devicePixelRatio || 1);
-    const W = Math.round(f.r.width * dpr);
-    const H = Math.round(f.r.height * dpr);
-    if (c.width !== W || c.height !== H) {
-      c.width = W;
-      c.height = H;
-    }
-    // camada de baixa latência (como a do traço em andamento no caderno)
-    const ctx = c.getContext('2d', { desynchronized: true });
-    if (!ctx) return;
-    ctx.clearRect(0, 0, W, H);
-    const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy };
-    const L = lasso.current;
-    if (L && L.length >= 4) {
-      // laço da seleção: traço livre tracejado
-      ctx.save();
-      ctx.setLineDash([6 * dpr, 5 * dpr]);
-      ctx.lineWidth = 1.5 * dpr;
-      ctx.strokeStyle = '#2563eb';
-      ctx.fillStyle = 'rgba(37,99,235,0.08)';
-      ctx.beginPath();
-      for (let i = 0; i < L.length; i += 2) {
-        const x = view.x + (L[i] - view.cx) * view.k;
-        const y = view.y + (L[i + 1] - view.cy) * view.k;
-        if (i) ctx.lineTo(x, y);
-        else ctx.moveTo(x, y);
-      }
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-    }
-    // laser sendo escrito: aparece na hora, como a caneta
-    if (inkPtr.current?.laser) ink.current.drawLasers(ctx, { ...view, w: f.width * dpr, h: f.height * dpr });
-    // borracha: círculo mostrando onde ela passa
-    const er = eraserAt.current;
-    if (er) {
-      ctx.strokeStyle = 'rgba(20,33,61,.6)';
-      ctx.lineWidth = 1.2 * dpr;
-      ctx.beginPath();
-      ctx.arc(view.x + (er.x - view.cx) * view.k, view.y + (er.y - view.cy) * view.k, er.r * view.k, 0, 7);
-      ctx.stroke();
-    }
-    // marca-texto é transparente: desenhado duas vezes ficaria mais escuro, então fica só na prévia normal
-    ink.current.drawCurrentPen(ctx, { ...view, w: f.width * dpr, h: f.height * dpr });
-  }
-  const fastDraw = () => {
-    window.clearTimeout(fastClear.current);
-    if (!fastRaf.current) fastRaf.current = requestAnimationFrame(drawFast);
-  };
-  /** fim do traço: a prévia normal já tem o traço inteiro, a camada rápida some */
-  const fastDone = () => {
-    predicted.current = [];
-    // quem só controla redesenha na hora; quem transmite mostra no próximo quadro
-    if (light && !onAir) {
-      comp.current?.draw();
-      if (inkTool === 'hand') comp.current?.setFps(4);
-    }
-    window.clearTimeout(fastClear.current);
-    fastClear.current = window.setTimeout(fastDraw, light && !onAir ? 0 : 90);
-  };
-  useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
-  /**
-   * Como na folha do caderno: no iPad o sistema tenta transformar um toque demorado em seleção de texto, lupa
-   * ou arrasto, e quando faz isso corta a caneta no meio do traço. Recusar esses gestos direto no quadro (no
-   * começo, no meio e no fim do toque) mantém a caneta sempre com o estúdio.
-   */
-  /**
-   * Relatório da escrita (liga no "+" da barra de escrita, ou abrindo o estúdio com ?diag=1; fica ligado neste
-   * aparelho até desligar). Conta os traços da caneta, os que o sistema cortou, os toques de palma ignorados e os
-   * engasgos da tela, e guarda os últimos acontecimentos com o horário — o botão "Copiar relatório" junta tudo.
-   */
-  const diag = useRef({ on: false, t0: 0, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, outside: 0, log: [] as string[], lastOrphan: 0 });
-  const diagEl = useRef<HTMLDivElement>(null);
-  const [diagOn, setDiagOn] = useState(false);
-  const diagLog = (m: string) => {
-    const d = diag.current;
-    if (!d.on) return;
-    d.log.push(`${((performance.now() - d.t0) / 1000).toFixed(1)}s ${m}`);
-    if (d.log.length > 80) d.log.shift();
-  };
-  useEffect(() => {
-    try {
-      const q = new URLSearchParams(window.location.search).get('diag');
-      if (q === '1') localStorage.setItem('studio-diag', '1');
-      if (q === '0') localStorage.removeItem('studio-diag');
-      setDiagOn(localStorage.getItem('studio-diag') === '1');
-    } catch {}
-  }, []);
-  useEffect(() => {
-    const d = diag.current;
-    d.on = diagOn;
-    if (!diagOn) return;
-    d.t0 = performance.now();
-    let raf = 0;
-    let last = performance.now();
-    const loop = () => {
-      const now = performance.now();
-      const gap = now - last;
-      last = now;
-      if (writingRef.current && document.visibilityState === 'visible' && gap > 60) {
-        d.hitch++;
-        d.worst = Math.max(d.worst, Math.round(gap));
-        diagLog(`tela engasgou ${Math.round(gap)} ms${inkPtr.current?.type === 'pen' ? ' (com a caneta escrevendo)' : ''}`);
-      }
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    const t = window.setInterval(() => {
-      if (diagEl.current)
-        diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.outside} fora da folha · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} sem traço aberto · palma ignorada: ${d.palm} · engasgos: ${d.hitch} (maior ${d.worst} ms)`;
-    }, 400);
-    return () => {
-      cancelAnimationFrame(raf);
-      window.clearInterval(t);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diagOn]);
-  // relatório: onde a caneta encosta (se cair fora da folha, é algo por cima "pegando" a caneta)
-  useEffect(() => {
-    if (!diagOn) return;
-    const desc = (el: Element | null) => {
-      if (!el) return 'nada';
-      const h = el as HTMLElement;
-      return [h.tagName.toLowerCase(), h.getAttribute('aria-label'), h.getAttribute('role'), typeof h.className === 'string' ? h.className.split(' ').slice(0, 3).join('.') : ''].filter(Boolean).join(' ');
-    };
-    const down = (e: PointerEvent) => {
-      if (e.pointerType !== 'pen' || !writingRef.current) return;
-      if (e.target !== canvasRef.current) {
-        diag.current.outside++;
-        diagLog(`caneta encostou FORA da folha, em: ${desc(e.target as Element)}`);
-      }
-    };
-    const lost = (e: PointerEvent) => e.pointerType === 'pen' && inkPtr.current && diagLog('a folha perdeu a captura da caneta');
-    const blur = () => diagLog('a página perdeu o foco');
-    const vis = () => diagLog(`página ${document.visibilityState === 'visible' ? 'visível' : 'escondida'}`);
-    document.addEventListener('pointerdown', down, true);
-    document.addEventListener('lostpointercapture', lost, true);
-    window.addEventListener('blur', blur);
-    document.addEventListener('visibilitychange', vis);
-    return () => {
-      document.removeEventListener('pointerdown', down, true);
-      document.removeEventListener('lostpointercapture', lost, true);
-      window.removeEventListener('blur', blur);
-      document.removeEventListener('visibilitychange', vis);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [diagOn]);
-  const toggleDiag = () => {
-    const on = !diagOn;
-    try {
-      if (on) localStorage.setItem('studio-diag', '1');
-      else localStorage.removeItem('studio-diag');
-    } catch {}
-    setDiagOn(on);
-    toast(on ? 'Relatório da escrita ligado: escreva normalmente e, quando falhar, toque em "Copiar relatório".' : 'Relatório da escrita desligado.');
-  };
-  async function copyDiag() {
-    const d = diag.current;
-    const text = [
-      'Relatório da escrita (Estúdio)',
-      `aparelho: ${navigator.userAgent}`,
-      `tela: ${window.innerWidth}×${window.innerHeight} · densidade ${window.devicePixelRatio}`,
-      `este aparelho ${onAir ? 'TRANSMITE a live' : light ? 'só controla (outro aparelho transmite)' : 'é o principal (live parada)'} · ferramenta ${inkTool} · ${ink.current.count} traços na página`,
-      `caneta: ${d.pen} traços · ${d.outside} toques fora da folha · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} vezes mexendo sem traço aberto · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`,
-      '',
-      'últimos acontecimentos:',
-      ...d.log,
-    ].join('\n');
-    try {
-      await navigator.clipboard.writeText(text);
-      toast('Relatório copiado. Cole na conversa.');
-    } catch {
-      // sem acesso à área de transferência: mostra o texto para copiar à mão
-      window.prompt('Copie o relatório:', text);
-    }
-  }
-  const resetDiag = () => {
-    Object.assign(diag.current, { t0: performance.now(), pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, outside: 0, log: [] });
-  };
-  const writingNow = useRef(false);
-  writingNow.current = writing && scene === 'pdf';
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el) return;
-    const stop = (e: TouchEvent) => {
-      if (writingNow.current && e.cancelable) e.preventDefault();
-    };
-    for (const t of ['touchstart', 'touchmove', 'touchend'] as const) el.addEventListener(t, stop, { passive: false });
-    const menu = (e: Event) => writingNow.current && e.preventDefault();
-    el.addEventListener('contextmenu', menu);
-    return () => {
-      for (const t of ['touchstart', 'touchmove', 'touchend'] as const) el.removeEventListener(t, stop);
-      el.removeEventListener('contextmenu', menu);
-    };
-  }, []);
-  /**
-   * Letra nítida: com o PDF parado, a caneta é redesenhada na resolução da tela (a imagem da live tem 720p
-   * e, ampliada no iPad, deixa a letra borrada). Enquanto o PDF rola ou dá zoom esta camada fica vazia
-   * (nada é desenhado por quadro: a rolagem não pesa) e volta assim que para.
-   */
-  const sharpRef = useRef<HTMLCanvasElement>(null);
-  /**
-   * Linhas do papel (com linhas, quadriculado ou pontilhado), como no caderno: numa camada só da tela do
-   * professor — os alunos não veem e não entram no PDF exportado. Redesenhada só quando o PDF mexe.
-   */
-  const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
-  const paperRef = useRef<HTMLCanvasElement>(null);
-  const paperOn = scene === 'pdf' && paper.type !== 'blank';
-  useEffect(() => {
-    const c = paperRef.current;
-    const ctx = c?.getContext('2d');
-    if (!c || !ctx) return;
-    if (!paperOn) {
-      ctx.clearRect(0, 0, c.width, c.height);
-      return;
-    }
-    let raf = 0;
-    let key = '';
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      const el = canvasRef.current;
-      const p = pdf.current;
-      if (!el || !p?.pages) return;
-      const f = frameRect(el);
-      const dpr = Math.min(3, window.devicePixelRatio || 1);
-      const W = Math.round(f.r.width * dpr);
-      const H = Math.round(f.r.height * dpr);
-      const k = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}|${p.pages}|${paper.type}|${paper.size}|${pipHole ? `${pipHole.x},${pipHole.y},${pipHole.w},${pipHole.h}` : ''}`;
-      if (k === key) return;
-      key = k;
-      if (c.width !== W || c.height !== H) {
-        c.width = W;
-        c.height = H;
-      }
-      ctx.clearRect(0, 0, W, H);
-      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(view.x, view.y, view.w, view.h);
-      // a câmera fica por cima
-      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
-      ctx.clip('evenodd');
-      p.drawPaperLayer(ctx, view, Math.max(1, Math.round(dpr * 0.75)));
-      ctx.restore();
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paperOn, paper.type, paper.size, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
-  const sharpOn = writing && scene === 'pdf';
-  useEffect(() => {
-    const c = sharpRef.current;
-    const ctx = c?.getContext('2d');
-    if (!c || !ctx) return;
-    if (!sharpOn) {
-      ctx.clearRect(0, 0, c.width, c.height);
-      return;
-    }
-    let raf = 0;
-    let viewKey = '';
-    let ver = -1;
-    let drawn = 0;
-    let movedAt = 0;
-    let empty = true;
-    const loop = () => {
-      raf = requestAnimationFrame(loop);
-      const el = canvasRef.current;
-      const p = pdf.current;
-      if (!el || !p?.pages) return;
-      const f = frameRect(el);
-      const dpr = Math.min(3, window.devicePixelRatio || 1);
-      const W = Math.round(f.r.width * dpr);
-      const H = Math.round(f.r.height * dpr);
-      const vk = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}`;
-      const now = performance.now();
-      if (vk !== viewKey) {
-        // mexendo: some na hora (a imagem da live, que anda junto com o PDF, fica à mostra)
-        viewKey = vk;
-        movedAt = now;
-        ver = -1;
-        if (!empty) {
-          ctx.clearRect(0, 0, c.width, c.height);
-          empty = true;
-        }
-        return;
-      }
-      if (now - movedAt < 140) return;
-      const n = ink.current.count;
-      const full = ver !== ink.current.version || n < drawn;
-      if (!full && n === drawn) return;
-      if (c.width !== W || c.height !== H) {
-        c.width = W;
-        c.height = H;
-      }
-      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(view.x, view.y, view.w, view.h);
-      // a câmera fica por cima da escrita
-      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
-      ctx.clip('evenodd');
-      if (full) {
-        ctx.clearRect(0, 0, W, H);
-        ink.current.drawPens(ctx, view, true);
-      } else ink.current.drawPens(ctx, view, true, drawn);
-      ctx.restore();
-      ver = ink.current.version;
-      drawn = n;
-      empty = false;
-    };
-    raf = requestAnimationFrame(loop);
-    return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sharpOn, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
-
-  /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
-  function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (!writing || scene !== 'pdf' || !pdf.current?.pages) return false;
-    // mãozinha: nada escreve. A Pencil e o dedo movem a folha; dois dedos dão zoom.
-    if (inkTool === 'hand') return false;
-    if (e.pointerType === 'pen') {
-      if (!pencilSeen.current)
-        try {
-          localStorage.setItem('studio-pencil', '1');
-        } catch {}
-      pencilSeen.current = true;
-      lastPen.current = performance.now();
-      // mão que encostou antes da caneta: não é gesto (não impede a escrita, e o que ela mexeu no PDF volta)
-      if (pointers.current.size && viewSnap.current && performance.now() - viewSnapAt.current < 1500) pdf.current.restore(viewSnap.current);
-      viewSnap.current = null;
-      pointers.current.clear();
-      downAt.current.clear();
-      // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
-      const old = inkPtr.current;
-      if (old) {
-        diagLog('caneta encostou de novo sem o aviso de levantar do traço anterior');
-        window.clearTimeout(old.held);
-        inkPtr.current = null;
-        if (old.type !== 'pen') {
-          // estava "escrevendo" com a mão encostada antes da Pencil: era a palma, descarta
-          ink.current.cancel();
-          lasso.current = null;
-          fastDone();
-        } else if (old.tool === 'pen' || old.tool === 'marker' || old.tool === 'shape') {
-          commitInk(ink.current.end(), old.before ?? []);
-          fastDone();
-        }
-      }
-    } else if (e.pointerType === 'touch' && pencilSeen.current) {
-      // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
-      if (penBusy()) {
-        diag.current.palm++;
-        diagLog('toque de dedo/palma ignorado');
-      }
-      return penBusy();
-    }
-    const tool: InkTool = inkTool;
-    if (inkPtr.current) {
-      // segundo dedo: deixa de escrever e vira pinça/rolagem
-      if (inkPtr.current.type === 'pen') return true; // palma da mão encostando: ignora
-      ink.current.cancel();
-      inkPtr.current = null;
-      fastDone();
-      return false;
-    }
-    if (pointers.current.size) return false;
-    const r = frameRect(e.currentTarget);
-    const d = pdf.current.toDoc((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* o navegador recusou a captura: o traço segue mesmo assim */
-    }
-    const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
-    if (e.pointerType === 'pen') {
-      diag.current.pen++;
-      diagLog(`caneta encostou (${tool})`);
-    } else diagLog(`${e.pointerType === 'touch' ? 'dedo' : 'mouse'} começou traço (${tool})`);
-    if (tool === 'pen' || tool === 'marker') {
-      const k = strokeStyle(tool);
-      lastTs.current = e.timeStamp;
-      ink.current.begin(tool, k.color, k.size, d.x, d.y, { pressure: e.pressure, pen: e.pointerType === 'pen', unit: pdf.current.viewWidth / r.width, t: e.timeStamp });
-      // quem só controla: prévia rápida enquanto escreve (mesmo com a ferramenta "mover" e a Pencil)
-      if (light && !onAir) comp.current?.setFps(24);
-      fastDraw();
-    } else if (tool === 'shape') {
-      st.from = d;
-      ink.current.beginShape(strokeStyle('pen').color, inkW.shape * INK_UNIT.shape, d.x, d.y, shapeDash);
-      if (light && !onAir) comp.current?.setFps(24);
-      fastDraw();
-    } else if (tool === 'laser') {
-      st.laser = newStrokeId();
-      ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
-      fastDraw();
-    } else if (tool === 'eraser') {
-      st.er = { del: new Map(), put: new Map() };
-      st.last = d;
-      ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth, erPart, st.er);
-      eraserAt.current = { ...d, r: inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth };
-      fastDraw();
-    } else if (tool === 'select') {
-      st.lasso = [d.x, d.y];
-      lasso.current = st.lasso;
-      ink.current.selected.clear();
-      setSelBox(null);
-      fastDraw();
-    }
-    inkPtr.current = st;
-    if (viewing) touched();
-    return true;
-  }
-  function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (e.pointerType === 'pen' && inkTool !== 'hand') lastPen.current = performance.now();
-    // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
-    // (ou o navegador nem avisou que a Pencil encostou: ela está pressionando há mais de 0,12 s sem traço aberto)
-    if (
-      !inkPtr.current &&
-      writing &&
-      inkTool !== 'hand' &&
-      e.pointerType === 'pen' &&
-      e.pressure > 0 &&
-      scene === 'pdf' &&
-      (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && (e.pointerId !== lastPenId.current || performance.now() - penUpAt.current > 120)))
-    ) {
-      diag.current.resumed++;
-      diagLog(performance.now() < resumeUntil.current ? 'traço retomado depois do cancelamento' : 'caneta pressionando sem aviso de encostar: traço começado assim mesmo');
-      resumeUntil.current = 0;
-      inkDown(e);
-      return true;
-    }
-    // a caneta está pressionando, mas não há traço aberto (e não deu para retomar): é aqui que "some" a escrita
-    if (!inkPtr.current && writing && inkTool !== 'hand' && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf') {
-      const d = diag.current;
-      if (performance.now() - d.lastOrphan > 400) {
-        d.orphan++;
-        d.lastOrphan = performance.now();
-        diagLog(`caneta mexendo sem traço aberto (botões ${e.buttons}, ${Math.round(performance.now() - penUpAt.current)} ms depois de levantar)`);
-      }
-    }
-    const st = inkPtr.current;
-    if (st && st.type === 'pen' && e.pointerType === 'pen' && st.id !== e.pointerId && e.pressure > 0) st.id = e.pointerId;
-    if (!st || st.id !== e.pointerId || !pdf.current) return Boolean(st && e.pointerType === 'touch' && st.type === 'pen');
-    if (st.held) {
-      // toque cancelado pelo navegador e a Pencil continua na tela: o mesmo traço segue, sem buraco
-      if (!(e.pressure > 0)) return true;
-      window.clearTimeout(st.held);
-      st.held = 0;
-    }
-    const r = frameRect(e.currentTarget);
-    // a caneta manda vários pontos por quadro: usa todos (traço liso)
-    const list = e.nativeEvent.getCoalescedEvents?.() ?? [];
-    const evs: PointerEvent[] = [];
-    for (const ev of list) {
-      // alguns navegadores entregam eventos intermediários sem posição, repetidos ou fora de ordem: ficam de fora
-      if (ev.clientX === 0 && ev.clientY === 0 && (e.clientX !== 0 || e.clientY !== 0)) continue;
-      const ts = ev.timeStamp || 0;
-      if (ts && ts < lastTs.current) continue;
-      if (ts) lastTs.current = ts;
-      evs.push(ev);
-    }
-    if (!evs.length) {
-      if (e.timeStamp) lastTs.current = e.timeStamp;
-      evs.push(e.nativeEvent);
-    }
-    for (const ev of evs) {
-      const d = pdf.current.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
-      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y, ev.pressure, ev.timeStamp || e.timeStamp);
-      else if (st.tool === 'shape' && st.from) ink.current.setShape(shapeKind, d.x, d.y);
-      else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
-      else if (st.tool === 'eraser' && st.er) {
-        const o = st.last ?? d;
-        ink.current.eraseLine(o.x, o.y, d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth, erPart, st.er);
-        st.last = d;
-        eraserAt.current = { ...d, r: inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth };
-      } else if (st.tool === 'select' && st.lasso) st.lasso.push(d.x, d.y);
-    }
-    fastDraw();
-    // laser: quem transmite manda para quem controla (e vice-versa), ~8 vezes por segundo
-    if (st.tool === 'laser' && st.laser && performance.now() - laserSent.current > 120) {
-      laserSent.current = performance.now();
-      const l = ink.current.lasers.get(st.laser);
-      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
-    }
-    if (viewing) touched();
-    return true;
-  }
-  function inkUp(e: React.PointerEvent<HTMLCanvasElement>) {
-    if (e.pointerType === 'pen' && inkTool !== 'hand') {
-      lastPen.current = performance.now();
-      // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
-      resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
-      penUpAt.current = performance.now();
-      lastPenId.current = e.pointerId;
-    }
-    const st = inkPtr.current;
-    if (!st || st.id !== e.pointerId) return false;
-    if (e.type === 'pointercancel' && st.type === 'pen') {
-      diag.current.cut++;
-      diagLog('o sistema cancelou o toque da caneta no meio do traço');
-    } else if (st.type === 'pen') diagLog(`caneta levantou${e.type === 'pointercancel' ? ' (cancelado)' : ''}`);
-    if (e.type === 'pointercancel' && st.type === 'pen' && (st.tool === 'pen' || st.tool === 'marker') && !st.held) {
-      // o navegador cancelou o toque no meio da letra: espera um instante; se a Pencil seguir, o traço continua
-      st.held = window.setTimeout(() => {
-        if (inkPtr.current !== st) return;
-        inkPtr.current = null;
-        commitInk(ink.current.end(), st.before ?? []);
-        fastDone();
-      }, 300);
-      return true;
-    }
-    window.clearTimeout(st.held);
-    inkPtr.current = null;
-    if (st.tool === 'shape') {
-      // toque sem arrastar não vira forma
-      if (ink.current.shapeSpan() < 0.004) ink.current.cancel();
-      else commitInk(ink.current.end(), st.before ?? []);
-      fastDone();
-    } else if (st.tool === 'pen' || st.tool === 'marker') {
-      commitInk(ink.current.end(), st.before ?? []);
-      fastDone();
-    } else if (st.tool === 'eraser') {
-      eraserAt.current = null;
-      fastDraw();
-      if (st.er && (st.er.del.size || st.er.put.size)) commitInk({ remove: [...st.er.del.keys()], add: [...st.er.put.values()] }, st.before ?? []);
-    }
-    else if (st.tool === 'select' && st.lasso) {
-      ink.current.selectLasso(st.lasso);
-      lasso.current = null;
-      fastDraw();
-    } else if (st.tool === 'laser' && st.laser) {
-      ink.current.laserEnd(st.laser);
-      fastDone();
-      const l = ink.current.lasers.get(st.laser);
-      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
-    }
-    return true;
-  }
-  // mover, mudar o tamanho e girar o que foi selecionado (a conta parte sempre dos traços como estavam)
-  const selDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size' | 'rot') => {
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    const b = ink.current.selectionBox();
-    const c = canvasRef.current;
-    const p = pdf.current;
-    if (!b || !c || !p) return;
-    const f = frameRect(c);
-    const at = p.toDoc((e.clientX - f.left) / f.width, (e.clientY - f.top) / f.height);
-    selDrag.current = { mode, x0: at.x, y0: at.y, before: [...ink.current.strokes], base: ink.current.selectedStrokes(), box: b, changed: false };
-  };
-  const selMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const d = selDrag.current;
-    const p = pdf.current;
-    const c = canvasRef.current;
-    if (!d || !p || !c) return;
-    const f = frameRect(c);
-    const at = p.toDoc((e.clientX - f.left) / f.width, (e.clientY - f.top) / f.height);
-    const b = d.box;
-    if (d.mode === 'move') ink.current.retransform(d.base, { dx: at.x - d.x0, dy: at.y - d.y0 });
-    else if (d.mode === 'size') {
-      // puxando o canto: o canto oposto fica no lugar
-      const w = b.x1 - b.x0;
-      const h = b.y1 - b.y0;
-      const k = ((at.x - b.x0) * w + (at.y - b.y0) * h) / (w * w + h * h);
-      ink.current.retransform(d.base, { k: Math.min(12, Math.max(0.08, k)), ox: b.x0, oy: b.y0 });
-    } else {
-      // gira em torno do centro da seleção (encaixa em 90°)
-      const cx = (b.x0 + b.x1) / 2;
-      const cy = (b.y0 + b.y1) / 2;
-      let rot = Math.atan2(at.y - cy, at.x - cx) - Math.atan2(d.y0 - cy, d.x0 - cx);
-      const q = Math.PI / 2;
-      const near = Math.round(rot / q) * q;
-      if (Math.abs(rot - near) < 0.045) rot = near;
-      ink.current.retransform(d.base, { rot, ox: cx, oy: cy });
-    }
-    d.changed = true;
-  };
-  /** apaga o que está selecionado */
-  const deleteSel = () => {
-    const ids = [...ink.current.selected];
-    if (!ids.length) return;
-    const before = [...ink.current.strokes];
-    const ops = { remove: ids };
-    ink.current.apply(ops);
-    ink.current.selected.clear();
-    setSelBox(null);
-    commitInk(ops, before);
-  };
-  const selUp = () => {
-    const d = selDrag.current;
-    selDrag.current = null;
-    if (!d) return;
-    if (!d.changed) return;
-    const moved = ink.current.selectedStrokes();
-    commitInk({ remove: moved.map((x) => x.id), add: moved }, d.before);
-  };
 
   // Assumir sozinho: o aparelho da live parou de enviar (caiu a internet, fechou o app) e este está pronto
   const autoTried = useRef('');
@@ -3069,7 +1507,7 @@ export function Studio({
         comp.current.setFps(30);
         comp.current.onFrame = (c) => b.pushFrame(c);
       }
-      void setStudioScene(liveId, { res, scene, pdfId: pdfId || undefined, page: pdfView?.page, pip, muted });
+      void setStudioScene(liveId, { res, scene, pip, muted, ...(trNb ? { trNb } : {}) });
       toast(resume ? 'Transmitindo deste aparelho' : 'Transmissão iniciada');
       router.refresh();
     } finally {
@@ -3110,32 +1548,6 @@ export function Studio({
   }
 
   const blocked = !support?.ok || !ready;
-  /** barra do topo (como no caderno): só no modo escrita, com um documento aberto */
-  const topBar = full && writing && scene === 'pdf' && !!pdfView?.pages;
-
-  const pdfList = (
-    <ul className="space-y-1.5">
-      {docs.map((m) => (
-        <li key={m.id}>
-          <button
-            type="button"
-            onClick={() => {
-              setChoosing(false);
-              void openPdf(m.id);
-            }}
-            className={cn(
-              'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2',
-              pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line',
-            )}
-          >
-            <FileText className="size-5 shrink-0 text-danger" />
-            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>
-            {pdfId === m.id && <span className="text-[11px] text-brand">aberto</span>}
-          </button>
-        </li>
-      ))}
-    </ul>
-  );
 
   return (
     <div
@@ -3151,13 +1563,13 @@ export function Studio({
             full ? 'fixed inset-0 z-[90] flex' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
           )}
         >
-          <div className={full ? cn('relative flex h-full min-w-0 flex-1 items-center justify-center', topBar && 'pt-12') : 'absolute inset-0'}>
+          <div className={full ? 'relative flex h-full min-w-0 flex-1 items-center justify-center' : 'absolute inset-0'}>
             <div
               className="relative"
               style={
                 full
                   ? {
-                      width: topBar ? 'min(100%, calc((100dvh - 3rem) * 16 / 9))' : 'min(100%, calc(100dvh * 16 / 9))',
+                      width: 'min(100%, calc(100dvh * 16 / 9))',
                       aspectRatio: '16 / 9',
                     }
                   : { position: 'absolute', inset: 0 }
@@ -3191,60 +1603,10 @@ export function Studio({
                   'size-full object-contain',
                   (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing',
                 )}
-                data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
-              {/* linhas do papel: só para o professor (mistura por baixo da tinta: a escrita fica por cima) */}
-              <canvas ref={paperRef} aria-hidden data-paper className="pointer-events-none absolute inset-0 size-full mix-blend-multiply" />
-              <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
-              <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
-              {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
-              {scene === 'pdf' && inkTool === 'select' && selBox && (
-                <div
-                  role="button"
-                  aria-label="Mover o que foi selecionado"
-                  onPointerDown={(e) => selDown(e, 'move')}
-                  onPointerMove={selMove}
-                  onPointerUp={selUp}
-                  onPointerCancel={selUp}
-                  className="absolute z-10 cursor-move touch-none border-2 border-dashed border-brand"
-                  style={{ left: `${selBox.x * 100}%`, top: `${selBox.y * 100}%`, width: `${selBox.w * 100}%`, height: `${selBox.h * 100}%` }}
-                >
-                  <div
-                    role="button"
-                    aria-label="Mudar o tamanho do que foi selecionado"
-                    onPointerDown={(e) => selDown(e, 'size')}
-                    onPointerMove={selMove}
-                    onPointerUp={selUp}
-                    onPointerCancel={selUp}
-                    className="absolute -right-3 -bottom-3 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
-                  >
-                    <Maximize2 className="size-3.5 text-white" />
-                  </div>
-                  <div
-                    role="button"
-                    aria-label="Girar o que foi selecionado"
-                    onPointerDown={(e) => selDown(e, 'rot')}
-                    onPointerMove={selMove}
-                    onPointerUp={selUp}
-                    onPointerCancel={selUp}
-                    className="absolute -bottom-11 left-1/2 grid size-8 -translate-x-1/2 cursor-grab touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
-                  >
-                    <RotateCw className="size-4 text-white" />
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Excluir seleção"
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={deleteSel}
-                    className="absolute -top-11 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full bg-red-600 text-white shadow-lg"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              )}
               {/* reserva: foto da imagem da live (1 por segundo) quando a ligação direta não conecta */}
-              {light && !mirrorOk && previewSrc && !touching && !writing && (
+              {light && !mirrorOk && previewSrc && !touching && scene !== 'pdf' && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewSrc} alt="Imagem da live" className="pointer-events-none absolute inset-0 size-full bg-black object-contain" />
               )}
@@ -3255,7 +1617,7 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching || writing) && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching || scene === 'pdf') && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
@@ -3271,7 +1633,7 @@ export function Studio({
                       'absolute cursor-move touch-none rounded-[6%]',
                       // escrevendo: a caneta passa por cima da câmera e escreve (o quadradinho, mesmo sem imagem, "pegava"
                       // a caneta e a escrita sumia ali); para mover a câmera, use a alça
-                      scene === 'pdf' || (writing && inkTool !== 'hand') ? 'pointer-events-none' : 'pointer-events-auto',
+                      scene === 'pdf' ? 'pointer-events-none' : 'pointer-events-auto',
                       // aparelho que só controla: contorno para ver onde está a câmera do principal
                       light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
@@ -3285,7 +1647,7 @@ export function Studio({
                   >
                     {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
                     {light && mirrorStream && scene !== 'pdf' && (
-                      <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || writing || !viewing) && 'invisible')}>
+                      <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
                         <video
                           ref={(v) => {
                             if (v && v.srcObject !== mirrorStream) {
@@ -3306,7 +1668,7 @@ export function Studio({
                         />
                       </div>
                     )}
-                    {(scene === 'pdf' || (writing && inkTool !== 'hand')) && (
+                    {scene === 'pdf' && (
                       <div
                         role="button"
                         aria-label="Mover a câmera"
@@ -3338,7 +1700,7 @@ export function Studio({
               )}
             </div>
             {onAir && (
-              <span className={cn('absolute left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white', topBar ? 'top-14' : 'top-3')}>
+              <span className={'absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white'}>
                 <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
               </span>
             )}
@@ -3370,12 +1732,14 @@ export function Studio({
             <div
               data-scroll
               className={cn(
-                'absolute right-2 z-30 flex items-center gap-1.5',
+                'absolute z-30 flex items-center gap-1.5',
                 full
-                  ? 'no-scrollbar top-1/2 max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/70 p-1 backdrop-blur-xl'
-                  : status?.state === 'reconnecting'
-                    ? 'top-10'
-                    : 'top-2',
+                  ? 'no-scrollbar top-1/2 right-2 max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/70 p-1 backdrop-blur-xl'
+                  : scene === 'pdf'
+                    ? 'bottom-2 left-2' // no caderno: embaixo, à esquerda (em cima ficam os botões do caderno)
+                    : status?.state === 'reconnecting'
+                      ? 'top-10 right-2'
+                      : 'top-2 right-2',
                 full && !menuOpen && '[&>*:not(:first-child)]:hidden',
               )}
             >
@@ -3391,17 +1755,6 @@ export function Studio({
                   className="grid size-9 shrink-0 place-items-center rounded-full text-white hover:bg-white/15"
                 >
                   {menuOpen ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
-                </button>
-              )}
-              {false && scene === 'pdf' && docs.length > 1 && (
-                <button
-                  type="button"
-                  onClick={() => setChoosing(true)}
-                  aria-label="Trocar de PDF"
-                  title="Trocar de PDF"
-                  className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75"
-                >
-                  <FileText className="size-3.5" /> Trocar
                 </button>
               )}
               {
@@ -3568,138 +1921,6 @@ export function Studio({
               </div>
             )}
 
-            {/* escrita na tela cheia: barra na lateral */}
-            {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
-            {full && writing && diagOn && (
-              <div data-scroll className="absolute bottom-14 left-16 z-40 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-1.5 rounded-xl bg-[#14213d]/90 px-2 py-1.5 text-[11px] text-white">
-                <span ref={diagEl} data-diag className="min-w-0">Relatório da escrita ligado</span>
-                <button type="button" onClick={() => void copyDiag()} className="rounded-lg bg-white px-2 py-1 font-bold text-[#14213d]">
-                  Copiar relatório
-                </button>
-                <button type="button" onClick={resetDiag} className="rounded-lg bg-white/15 px-2 py-1 font-bold">
-                  Zerar
-                </button>
-              </div>
-            )}
-            {topBar && pdfView && (
-              <>
-                {/* barra do topo, como no caderno: voltar, nome do documento, páginas, papel e exportar */}
-                <header data-scroll className="absolute inset-x-0 top-0 z-30 flex h-12 items-center gap-0.5 border-b border-[#dde3ec] bg-white px-2 text-[#14213d]">
-                  <button type="button" onClick={closeWriting} aria-label="Voltar" title="Voltar" className="grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5">
-                    <ArrowLeft className="size-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setChoosing(true)}
-                    title="Trocar de documento"
-                    className="h-10 max-w-60 min-w-0 truncate rounded-xl px-2.5 text-left text-[15px] font-bold hover:bg-[#14213d]/5"
-                  >
-                    {docs.find((d) => d.id === pdfId)?.title ?? 'Documento'}
-                  </button>
-                  <span className="flex-1" />
-                  <button
-                    type="button"
-                    onClick={() => setTopPop((v) => (v === 'pages' ? null : 'pages'))}
-                    aria-label="Páginas"
-                    aria-expanded={topPop === 'pages'}
-                    title="Páginas"
-                    className={cn('grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5', topPop === 'pages' && 'bg-[#e8edfd] text-[#2347d9]')}
-                  >
-                    <Files className="size-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTopPop((v) => (v === 'paper' ? null : 'paper'))}
-                    aria-label="Papel"
-                    aria-expanded={topPop === 'paper'}
-                    title="Papel das páginas em branco"
-                    className={cn('grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5', topPop === 'paper' && 'bg-[#e8edfd] text-[#2347d9]')}
-                  >
-                    <NotebookText className="size-5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void exportDoc()}
-                    disabled={!!exporting}
-                    aria-label="Exportar em PDF"
-                    title="Exportar em PDF (com o que foi escrito)"
-                    className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-bold tabular-nums hover:bg-[#14213d]/5 disabled:opacity-60"
-                  >
-                    <Download className="size-5" />
-                    {exporting}
-                  </button>
-                </header>
-                {topPop === 'paper' && (
-                  <div data-scroll className="absolute top-14 right-2 z-40 w-72 max-w-[calc(100%-1rem)] animate-scale-in space-y-3 rounded-2xl bg-white p-4 text-[#14213d] shadow-2xl ring-1 ring-[#14213d]/10">
-                    <p className="text-sm font-extrabold">Papel</p>
-                    <div className="flex gap-1 rounded-xl bg-[#edf0f4] p-1">
-                      {(
-                        [
-                          ['blank', 'Em branco'],
-                          ['lined', 'Linhas'],
-                          ['grid', 'Quadriculado'],
-                          ['dots', 'Pontilhado'],
-                        ] as const
-                      ).map(([k, l]) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setPaper((o) => ({ ...o, type: k }))}
-                          aria-pressed={paper.type === k}
-                          className={cn('h-9 flex-1 rounded-lg text-[11px] font-bold', paper.type === k ? 'bg-white shadow' : 'text-[#55627b]')}
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-                    <label className="block space-y-1 text-xs font-semibold text-[#55627b]">
-                      Tamanho das linhas
-                      <input
-                        type="range"
-                        min={18}
-                        max={90}
-                        step={1}
-                        value={paper.size}
-                        disabled={paper.type === 'blank'}
-                        onChange={(e) => setPaper((o) => ({ ...o, size: Number(e.target.value) }))}
-                        aria-label="Tamanho das linhas"
-                        className="w-full accent-[#2347d9]"
-                      />
-                    </label>
-                    <p className="text-[11px] text-[#55627b]">Vale para as páginas em branco. Só você vê as linhas: elas não aparecem para os alunos na live nem no PDF exportado.</p>
-                  </div>
-                )}
-                {topPop === 'pages' && pdf.current && (
-                  <aside data-scroll aria-label="Páginas" className="absolute top-12 right-0 bottom-0 z-40 flex w-56 max-w-[70%] flex-col bg-white text-[#14213d] shadow-2xl ring-1 ring-[#14213d]/10">
-                    <div className="flex items-center justify-between px-3 py-2">
-                      <p className="text-sm font-extrabold">Páginas</p>
-                      <button type="button" onClick={() => setTopPop(null)} aria-label="Fechar" className="grid size-9 place-items-center rounded-xl hover:bg-[#14213d]/5">
-                        <X className="size-4" />
-                      </button>
-                    </div>
-                    <PageThumbs
-                      pdf={pdf.current}
-                      pages={pdfView.pages}
-                      current={pdfView.page}
-                      onGo={(i) => {
-                        setTopPop(null);
-                        void pdf.current?.goTo(i);
-                      }}
-                    />
-                  </aside>
-                )}
-              </>
-            )}
-            {full && !writing && canInk && scene === 'pdf' && !!pdfView?.pages && (
-              <button
-                type="button"
-                onClick={() => void openWriting()}
-                aria-label="Escrever"
-                className="absolute top-1/2 left-2 z-30 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/75 text-white backdrop-blur"
-              >
-                <PenLine className="size-5" />
-              </button>
-            )}
 
             {/* Controles na tela cheia */}
             {full && (
@@ -3746,11 +1967,10 @@ export function Studio({
             )}
           </div>
           {/* Na tela cheia, as janelas aparecem dentro da própria tela da live */}
-          {full && (confirmEnd || choosing) && (
+          {full && confirmEnd && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
               <div className="w-full max-w-sm space-y-4 rounded-3xl border border-line-strong bg-surface p-5 shadow-2xl">
-                {confirmEnd ? (
-                  <>
+                <>
                     <p className="text-base font-bold text-ink">Encerrar a transmissão?</p>
                     <p className="text-sm text-muted">A gravação vira aula na pasta Live.</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -3766,18 +1986,7 @@ export function Studio({
                         {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar
                       </button>
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <p className="text-base font-bold text-ink">Qual PDF mostrar?</p>
-                      <button type="button" onClick={() => setChoosing(false)} aria-label="Fechar" className={buttonClass('ghost', 'icon', 'size-8')}>
-                        <X className="size-4" />
-                      </button>
-                    </div>
-                    <div className="max-h-[50dvh] overflow-y-auto">{pdfList}</div>
-                  </>
-                )}
+                </>
               </div>
             </div>
           )}
@@ -3800,12 +2009,6 @@ export function Studio({
             </aside>
           )}
         </div>
-
-        {scene === 'pdf' && canInk && !!pdfView?.pages && !full && (
-          <button type="button" onClick={() => void openWriting()} className={buttonClass('secondary', 'md', 'mx-auto flex w-fit')}>
-            <PenLine className="size-4" /> Escrever
-          </button>
-        )}
 
         {mobile && !full && (
           <button type="button" onClick={enterFull} className={buttonClass('secondary', 'md', 'w-full')}>
@@ -4084,9 +2287,6 @@ export function Studio({
           />
         </div>
       )}
-      <Modal open={choosing && !full} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
-        {pdfList}
-      </Modal>
     </div>
   );
 }

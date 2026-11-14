@@ -92,8 +92,42 @@ export class StudioEditor extends Editor {
 
   async go(i, force) {
     const before = this.page;
+    // avisa os outros aparelhos já (eles começam a abrir a página ao mesmo tempo que este)
+    const target = this.nb.pages[Math.min(this.nb.pages.length - 1, Math.max(0, i))];
+    const early = !this.quiet && !this.act && target && (!before || before.id !== target);
+    if (early) this.send({ k: "cur", nb: this.nb.id, id: target });
     await super.go(i, force);
-    if (this.page && this.page !== before && !this.quiet) this.send({ k: "cur", nb: this.nb.id, id: this.page.id });
+    if (this.page && this.page !== before && !this.quiet) {
+      if (!early || this.page.id !== target) this.send({ k: "cur", nb: this.nb.id, id: this.page.id });
+      // também pela cena da live (servidor): se a mensagem direta se perder, os aparelhos se acertam assim mesmo
+      this.bridge && this.bridge.page && this.bridge.page(this.nb.id, this.page.id);
+    }
+    this.prefetch();
+  }
+
+  // deixa prontas as páginas vizinhas (virar a página — aqui ou em outro aparelho — fica imediato)
+  prefetch() {
+    clearTimeout(this.prefetchTimer);
+    this.prefetchTimer = setTimeout(async () => {
+      for (const d of [1, -1, 2]) {
+        const id = this.nb.pages[this.index + d];
+        if (!id || this.dead) continue;
+        const p = this.pages.get(id);
+        if (p && (!p.hasBg || p.bg)) continue;
+        await this.loadPage(id).catch(() => null);
+      }
+    }, 300);
+  }
+
+  // alterações que chegam para uma página ainda não aberta aqui: guardadas e aplicadas quando ela abrir
+  async loadPage(id) {
+    const p = await super.loadPage(id);
+    const pend = this.pendingOps && this.pendingOps.get(id);
+    if (p && pend) {
+      this.pendingOps.delete(id);
+      for (const m of pend) p.items = ink.applyOp(p.items, m.d, m.p);
+    }
+    return p;
   }
 
   // PDF escolhido no aparelho: sobe para os PDFs da aula e entra no caderno (sem imagens pesadas)
@@ -255,7 +289,13 @@ export class StudioEditor extends Editor {
     }
     if (m.k === "op") {
       const p = this.pages.get(m.pg);
-      if (!p) return;
+      if (!p) {
+        (this.pendingOps ||= new Map());
+        const list = this.pendingOps.get(m.pg) || [];
+        list.push(m);
+        this.pendingOps.set(m.pg, list.slice(-500));
+        return;
+      }
       for (const it of m.p || []) {
         // imagem que só mudou de lugar ou que é pesada: a imagem é a que já está aqui (ou vem do servidor)
         if (it.k === "i" && !it.src) {

@@ -49,6 +49,8 @@ export interface StudioScene {
   paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
   /** caderno aberto no estúdio (editor Traço): todos os aparelhos abrem o mesmo */
   trNb?: string;
+  /** página aberta no caderno */
+  trPg?: string;
 }
 
 interface Row {

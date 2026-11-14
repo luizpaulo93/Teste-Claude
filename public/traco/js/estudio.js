@@ -7,12 +7,12 @@ import { uid } from "./ink.js";
 
 const app = document.getElementById("app");
 
-// A live usa a imagem da folha: com o estúdio pequeno na tela, a folha é desenhada com mais pontos (até 1920
+// A live usa a imagem da folha: com o estúdio pequeno na tela, a folha é desenhada com mais pontos (até 1600
 // de largura), para a live sair nítida. Em tela cheia no iPad nada muda.
 {
   const real = window.devicePixelRatio || 1;
   try {
-    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => Math.min(4, Math.max(real, 1920 / Math.max(1, window.innerWidth))) });
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => Math.min(3, Math.max(real, 1600 / Math.max(1, window.innerWidth))) });
   } catch {}
 }
 const bridge = (() => { try { return window.parent !== window ? window.parent.__tracoBridge || null : null; } catch { return null; } })();
@@ -65,6 +65,7 @@ async function open(id) {
         send: (m) => bridge.send(m),
         changed: (n) => bridge.changed && bridge.changed(n),
         full: () => bridge.full && bridge.full(),
+        page: (nid, pid) => bridge.page && bridge.page(nid, pid),
         open: (nid) => { open(nid); },
         create: async (o) => { const n = await newNotebook(o); open(n.id); },
       },
@@ -75,8 +76,24 @@ async function open(id) {
   return opening;
 }
 
+// vai para uma página (o caderno pode ter ganhado páginas em outro aparelho: busca o caderno de novo)
+async function goPage(nid, pid) {
+  if (!current || current.nb.id !== nid) await open(nid);
+  const ed = current;
+  if (!ed || ed.dead || (ed.page && ed.page.id === pid)) return;
+  if (!ed.nb.pages.includes(pid)) {
+    const r = await store.api({ op: "getnb", id: nid }).catch(() => null);
+    if (r && r.nb && r.nb.pages) { ed.nb.pages = r.nb.pages; ed.nbKey = ed.nbSig(); }
+  }
+  const i = ed.nb.pages.indexOf(pid);
+  if (i < 0) return;
+  ed.quiet = true;
+  try { await ed.go(i, true); } finally { ed.quiet = false; }
+}
+
 window.__traco = {
   open,
+  goPage,
   newNotebook,
   editor: () => current,
   notebook: () => (current ? current.nb.id : null),
