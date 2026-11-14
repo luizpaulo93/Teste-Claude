@@ -169,6 +169,12 @@ type Sized = keyof typeof INK_UNIT;
 type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; er?: EraseAcc; last?: { x: number; y: number }; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number }; held?: number };
 
 const isBoard = (id: string) => /^quadro-\d+$/.test(id);
+/** a situação da live mudou em algo que a tela usa? (a consulta é a cada segundo; refazer o estúdio à toa trava a caneta) */
+const sameRemote = (a: NonNullable<StudioPoll>, b: NonNullable<StudioPoll>) =>
+  a.status === b.status &&
+  a.rev === b.rev &&
+  a.res === b.res &&
+  JSON.stringify([a.holder, a.stage]) === JSON.stringify([b.holder, b.stage]);
 
 /** Miniaturas das páginas (com o que foi escrito): desenhadas uma de cada vez, sem travar a tela. */
 function PageThumbs({ pdf, pages, current, onGo }: { pdf: PdfPresenter; pages: number; current: number; onGo: (page: number) => void }) {
@@ -334,7 +340,7 @@ export function Studio({
     .filter(isBoard)
     .sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
   /** o que dá para abrir na live: os PDFs e os quadros em branco */
-  const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Quadro ${id.slice(7)}` }))];
+  const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Caderno ${id.slice(7)}` }))];
   /** papel das páginas em branco (em branco, pautado ou quadriculado), como no caderno */
   const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid'; size: number }>({ type: 'blank', size: 40 });
   /** barra do topo do modo escrita: painel aberto (páginas ou papel) e exportação em andamento */
@@ -464,14 +470,28 @@ export function Studio({
     return () => window.clearInterval(t);
   }, [light]);
   /** foto pequena da imagem da live (aparelho principal) */
+  const snapAt = useRef(0);
   const snapshot = () => {
     const c = canvasRef.current;
-    if (!c) return '';
+    if (!c || performance.now() - snapAt.current < 3000) return;
+    snapAt.current = performance.now();
     const t = document.createElement('canvas');
     t.width = 480;
     t.height = Math.round((480 * c.height) / c.width);
     t.getContext('2d')?.drawImage(c, 0, 0, t.width, t.height);
-    return t.toDataURL('image/jpeg', 0.55);
+    // (toDataURL codificava na hora e segurava a tela; toBlob codifica em segundo plano)
+    t.toBlob(
+      (b) => {
+        if (!b) return;
+        const fr = new FileReader();
+        fr.onload = () => {
+          if (typeof fr.result === 'string') pendingPreview.current = fr.result;
+        };
+        fr.readAsDataURL(b);
+      },
+      'image/jpeg',
+      0.55,
+    );
   };
   useEffect(() => {
     if (!onAir) comp.current?.setFps(light ? 4 : 30);
@@ -603,6 +623,9 @@ export function Studio({
   const [touching, setTouching] = useState(false);
   const touchTimer = useRef(0);
   const touched = () => {
+    // escrevendo: a tela local já fica sempre à mostra; nada muda a cada traço (mudar refazia o estúdio
+    // inteiro e redesenhava toda a escrita bem no começo do traço seguinte — a caneta "travava")
+    if (writingRef.current) return;
     setTouching(true);
     window.clearTimeout(touchTimer.current);
     touchTimer.current = window.setTimeout(() => setTouching(false), 1800);
@@ -1359,8 +1382,8 @@ export function Studio({
       if (r.preview && needPreview.current) setPreviewSrc(r.preview);
       // principal: alguém não recebe a imagem direta → prepara a foto para o próximo envio
       const isStage = caster.current || (r.status === 'live' && r.holder?.fresh ? r.holder.device : r.stage?.present ? r.stage.device : '') === device.current.id;
-      if (isStage && r.previewWanted) pendingPreview.current = snapshot();
-      setRemote(r);
+      if (isStage && r.previewWanted) snapshot();
+      setRemote((o) => (o && sameRemote(o, r) ? o : r));
       // (a lista só muda quando um aparelho entra/sai ou troca de câmera: a tela não é refeita à toa)
       setDevices((o) => (JSON.stringify(o) === JSON.stringify(r.devices) ? o : r.devices));
       inkRefetch.current(r.inkRev);
@@ -1905,7 +1928,7 @@ export function Studio({
         <div data-scroll className="absolute top-1/2 left-16 z-40 flex -translate-y-1/2 animate-scale-in flex-col gap-0.5 rounded-2xl border border-white/10 bg-neutral-900/90 p-1.5 text-sm font-semibold text-white shadow-2xl backdrop-blur-xl">
           {[
             { label: 'Página em branco', icon: StickyNote, run: addBlankPage },
-            { label: 'Novo quadro em branco', icon: FilePlus2, run: () => void newBoard() },
+            { label: 'Novo caderno em branco', icon: FilePlus2, run: () => void newBoard() },
             { label: 'Importar PDF', icon: FileUp, run: () => importRef.current?.click() },
           ].map((o) => (
             <button
@@ -2273,7 +2296,8 @@ export function Studio({
       c.width = W;
       c.height = H;
     }
-    const ctx = c.getContext('2d');
+    // camada de baixa latência (como a do traço em andamento no caderno)
+    const ctx = c.getContext('2d', { desynchronized: true });
     if (!ctx) return;
     ctx.clearRect(0, 0, W, H);
     const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy };
@@ -2328,12 +2352,64 @@ export function Studio({
   };
   useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
   /**
+   * Como na folha do caderno: no iPad o sistema tenta transformar um toque demorado em seleção de texto, lupa
+   * ou arrasto, e quando faz isso corta a caneta no meio do traço. Recusar esses gestos direto no quadro (no
+   * começo, no meio e no fim do toque) mantém a caneta sempre com o estúdio.
+   */
+  /**
+   * Diagnóstico (abra o estúdio com ?diag=1): mostra, enquanto escreve, quantos traços a caneta fez, quantos o
+   * sistema cortou, quantos toques de palma foram ignorados e quantas vezes a tela engasgou (e o maior engasgo).
+   */
+  const diag = useRef({ on: false, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0 });
+  const diagEl = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!new URLSearchParams(window.location.search).has('diag')) return;
+    diag.current.on = true;
+    let raf = 0;
+    let last = performance.now();
+    const loop = () => {
+      const now = performance.now();
+      const gap = now - last;
+      last = now;
+      if (writingRef.current && document.visibilityState === 'visible' && gap > 60) {
+        diag.current.hitch++;
+        diag.current.worst = Math.max(diag.current.worst, Math.round(gap));
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    const t = window.setInterval(() => {
+      const d = diag.current;
+      if (diagEl.current) diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`;
+    }, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearInterval(t);
+    };
+  }, []);
+  const writingNow = useRef(false);
+  writingNow.current = writing && scene === 'pdf';
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const stop = (e: TouchEvent) => {
+      if (writingNow.current && e.cancelable) e.preventDefault();
+    };
+    for (const t of ['touchstart', 'touchmove', 'touchend'] as const) el.addEventListener(t, stop, { passive: false });
+    const menu = (e: Event) => writingNow.current && e.preventDefault();
+    el.addEventListener('contextmenu', menu);
+    return () => {
+      for (const t of ['touchstart', 'touchmove', 'touchend'] as const) el.removeEventListener(t, stop);
+      el.removeEventListener('contextmenu', menu);
+    };
+  }, []);
+  /**
    * Letra nítida: com o PDF parado, a caneta é redesenhada na resolução da tela (a imagem da live tem 720p
    * e, ampliada no iPad, deixa a letra borrada). Enquanto o PDF rola ou dá zoom esta camada fica vazia
    * (nada é desenhado por quadro: a rolagem não pesa) e volta assim que para.
    */
   const sharpRef = useRef<HTMLCanvasElement>(null);
-  const sharpOn = writing && scene === 'pdf' && (!viewing || touching);
+  const sharpOn = writing && scene === 'pdf';
   const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
   useEffect(() => {
     const c = sharpRef.current;
@@ -2434,6 +2510,7 @@ export function Studio({
       }
     } else if (e.pointerType === 'touch' && pencilSeen.current) {
       // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
+      if (penBusy()) diag.current.palm++;
       return penBusy();
     }
     const tool: InkTool = inkTool;
@@ -2454,6 +2531,7 @@ export function Studio({
       /* o navegador recusou a captura: o traço segue mesmo assim */
     }
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
+    if (e.pointerType === 'pen') diag.current.pen++;
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
       lastTs.current = e.timeStamp;
@@ -2561,6 +2639,7 @@ export function Studio({
     }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
+    if (e.type === 'pointercancel' && st.type === 'pen') diag.current.cut++;
     if (e.type === 'pointercancel' && st.type === 'pen' && (st.tool === 'pen' || st.tool === 'marker') && !st.held) {
       // o navegador cancelou o toque no meio da letra: espera um instante; se a Pencil seguir, o traço continua
       st.held = window.setTimeout(() => {
@@ -2907,7 +2986,7 @@ export function Studio({
                 </div>
               )}
               {/* reserva: foto da imagem da live (1 por segundo) quando a ligação direta não conecta */}
-              {light && !mirrorOk && previewSrc && !touching && (
+              {light && !mirrorOk && previewSrc && !touching && !writing && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewSrc} alt="Imagem da live" className="pointer-events-none absolute inset-0 size-full bg-black object-contain" />
               )}
@@ -2918,7 +2997,7 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching || writing) && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
@@ -2945,7 +3024,7 @@ export function Studio({
                   >
                     {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
                     {light && mirrorStream && (
-                      <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
+                      <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || writing || !viewing) && 'invisible')}>
                         <video
                           ref={(v) => {
                             if (v && v.srcObject !== mirrorStream) {
@@ -3216,6 +3295,9 @@ export function Studio({
 
             {/* escrita na tela cheia: barra na lateral */}
             {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
+            {full && writing && diag.current.on && (
+              <div ref={diagEl} aria-hidden className="pointer-events-none absolute bottom-14 left-16 z-40 max-w-[calc(100%-5rem)] rounded-lg bg-[#14213d]/85 px-2 py-1 text-[11px] text-white" />
+            )}
             {topBar && pdfView && (
               <>
                 {/* barra do topo, como no caderno: voltar, nome do documento, páginas, papel e exportar */}
@@ -3510,8 +3592,11 @@ export function Studio({
                 ))}
               </Select>
             ) : (
-              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, abaixo.</p>
+              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, abaixo, ou escreva num caderno em branco.</p>
             )}
+            <button type="button" onClick={() => void newBoard()} className={buttonClass('outline', 'md', 'w-full')}>
+              <FilePlus2 className="size-4" /> Novo caderno em branco
+            </button>
             {pdfBusy && (
               <p className="flex items-center gap-2 text-xs text-muted">
                 <Spinner /> Abrindo o PDF…
