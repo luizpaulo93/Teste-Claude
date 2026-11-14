@@ -1360,11 +1360,13 @@ export function Studio({
     sync.current.applying = true;
     try {
       // páginas em branco e quadros criados em outro aparelho
-      const ex = st.extra ?? extra;
-      if (st.extra && JSON.stringify(st.extra) !== JSON.stringify(extra)) {
-        setExtra(st.extra);
+      // (uma página em branco nunca some: vale o maior número de cada documento)
+      const ex = { ...extra };
+      for (const [k, n] of Object.entries(st.extra ?? {})) if (n > (ex[k] ?? 0)) ex[k] = n;
+      if (JSON.stringify(ex) !== JSON.stringify(extra)) {
+        setExtra(ex);
         const cur = st.pdfId ?? pdfId;
-        if (cur === pdfId && pdfId && pdf.current?.pages) pdf.current.setExtra(st.extra[pdfId] ?? 0);
+        if (cur === pdfId && pdfId && pdf.current?.pages) pdf.current.setExtra(ex[pdfId] ?? 0);
       }
       if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId, ex);
       if (st.scene && st.scene !== scene) setScene(st.scene);
@@ -1379,7 +1381,7 @@ export function Studio({
         comp.current.camAspect = st.pipAspect;
         setPipRect(comp.current.pipRect());
       }
-      sync.current.sent = sceneKey({ ...sceneNow(), ...st, page: st.page ?? pdfView?.page ?? 0 });
+      sync.current.sent = sceneKey({ ...sceneNow(), ...st, extra: ex, page: st.page ?? pdfView?.page ?? 0 });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
     }

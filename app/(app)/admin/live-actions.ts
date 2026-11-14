@@ -561,6 +561,11 @@ export async function setStudioScene(id: string, patch: StudioScene) {
         .slice(0, 200)
         .map(([k, n]) => [k, Math.round(n)]),
     );
+  if (clean.extra) {
+    // páginas em branco nunca somem: um aparelho que ainda não soube de uma página nova não a apaga dos outros
+    const cur = await sql.one<{ extra: Record<string, number> | null }>(`select state->'extra' as extra from live_studio where live_id = $1`, [id]);
+    for (const [k, n] of Object.entries(cur?.extra ?? {})) if (typeof n === 'number' && n > (clean.extra[k] ?? 0)) clean.extra[k] = n;
+  }
   return patchScene(id, clean);
 }
 

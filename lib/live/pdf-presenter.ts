@@ -346,20 +346,69 @@ export class PdfPresenter {
         this.drawPages(g, 0, 0, w, h, k);
         this.ink?.drawDoneAll(g, { ...v, x: 0, y: 0 });
         this.still = { canvas: c, key, drawn: this.ink?.count ?? 0 };
+        this.snapInk(v, w, h);
       } else this.requestVisible();
       // traço que acabou de ser escrito: só ele é acrescentado à imagem pronta (soltar a caneta não trava a tela)
       const n = this.ink?.count ?? 0;
       if (this.ink && n > this.still.drawn) {
         this.ink.drawTail(this.still.canvas.getContext('2d', { alpha: false })!, { ...v, x: 0, y: 0 }, this.still.drawn);
+        // a imagem da escrita (usada enquanto o PDF se move) recebe o traço novo também
+        const L = this.inkSnap;
+        if (L && L.n === this.still.drawn && L.ver === this.ink.version) {
+          const lv = { x: 0, y: 0, k: L.k, cx: L.cx, cy: L.cy, w: L.canvas.width, h: L.canvas.height };
+          this.ink.drawTail(L.canvas.getContext('2d')!, lv, L.n);
+          L.n = n;
+          L.box = this.ink.visibleBounds(lv);
+        }
         this.still.drawn = n;
       } else if (n < this.still.drawn) this.still.drawn = n;
       ctx.drawImage(this.still.canvas, x, y);
     } else {
       this.drawPages(ctx, x, y, w, h, k);
-      // escrita por cima, na resolução do quadro (nítida em qualquer zoom); em movimento, o marca-texto vai no modo leve
-      this.ink?.drawDoneAll(ctx, v, false);
+      this.drawInkMoving(ctx, v);
     }
     this.ink?.drawLive(ctx, v);
+  }
+
+  /**
+   * Escrita enquanto o PDF se move (rolagem/zoom). Página leve: redesenha os traços a cada quadro. Página
+   * com muita escrita: usa a imagem da escrita feita na última parada, só deslocada e ampliada (instantâneo),
+   * e volta a ficar nítida quando o movimento para — a rolagem não pesa na live, por mais traços que haja.
+   */
+  private inkSnap: { canvas: HTMLCanvasElement; cx: number; cy: number; k: number; ver: number; n: number; box: [number, number, number, number] | null } | null = null;
+  private heavy = false;
+  private snapInk(v: { k: number; cx: number; cy: number }, w: number, h: number) {
+    const ink = this.ink;
+    if (!ink || !ink.count || !(this.heavy || ink.count > 250)) {
+      this.inkSnap = null;
+      return;
+    }
+    const c = this.inkSnap?.canvas ?? document.createElement('canvas');
+    if (c.width !== Math.ceil(w) || c.height !== Math.ceil(h)) {
+      c.width = Math.ceil(w);
+      c.height = Math.ceil(h);
+    }
+    const g = c.getContext('2d')!;
+    g.clearRect(0, 0, c.width, c.height);
+    const lv = { x: 0, y: 0, k: v.k, cx: v.cx, cy: v.cy, w: c.width, h: c.height };
+    ink.drawDoneAll(g, lv);
+    this.inkSnap = { canvas: c, cx: v.cx, cy: v.cy, k: v.k, ver: ink.version, n: ink.count, box: ink.visibleBounds(lv) };
+  }
+  private drawInkMoving(ctx: CanvasRenderingContext2D, v: { x: number; y: number; k: number; cx: number; cy: number; w: number; h: number }) {
+    const ink = this.ink;
+    if (!ink) return;
+    const L = this.inkSnap;
+    if (L && L.ver === ink.version && L.n === ink.count) {
+      // só o pedaço da imagem onde há escrita
+      const b = L.box;
+      if (!b) return;
+      const s = v.k / L.k;
+      ctx.drawImage(L.canvas, b[0], b[1], b[2] - b[0], b[3] - b[1], v.x + (L.cx - v.cx) * v.k + b[0] * s, v.y + (L.cy - v.cy) * v.k + b[1] * s, (b[2] - b[0]) * s, (b[3] - b[1]) * s);
+      return;
+    }
+    const t0 = performance.now();
+    ink.drawDoneAll(ctx, v, false);
+    if (performance.now() - t0 > 4) this.heavy = true;
   }
 
   /** páginas visíveis (pede a renderização das que faltam ou estão na resolução errada) */
@@ -399,6 +448,7 @@ export class PdfPresenter {
 
   destroy() {
     this.still = null;
+    this.inkSnap = null;
     void this.doc?.loadingTask.destroy();
     this.doc = null;
     this.cache.clear();

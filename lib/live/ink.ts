@@ -218,8 +218,60 @@ export class InkLayer {
     return !(b[2] < v.cx * U || b[0] > (v.cx + v.w / v.k) * U || b[3] < v.cy * U || b[1] > (v.cy + v.h / v.k) * U);
   }
 
+  /**
+   * Área do quadro (em pontos do quadro) ocupada pela escrita visível, com uma folga. Quem copia a escrita
+   * como imagem copia só esse pedaço (copiar o quadro inteiro a cada quadro da live pesa à toa).
+   */
+  visibleBounds(v: InkView, kind?: 'pen' | 'hl'): [number, number, number, number] | null {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    const add = (b: [number, number, number, number]) => {
+      if (b[0] < x0) x0 = b[0];
+      if (b[1] < y0) y0 = b[1];
+      if (b[2] > x1) x1 = b[2];
+      if (b[3] > y1) y1 = b[3];
+    };
+    for (const s of this.list) if ((!kind || s.t === kind) && this.seen(s, v)) add(bbox(s));
+    if (x0 > x1) return null;
+    const f = v.k / U;
+    const ox = v.x - v.cx * v.k;
+    const oy = v.y - v.cy * v.k;
+    const a = Math.max(v.x, Math.floor(ox + x0 * f) - 2);
+    const b = Math.max(v.y, Math.floor(oy + y0 * f) - 2);
+    const c = Math.min(v.x + v.w, Math.ceil(ox + x1 * f) + 2);
+    const d = Math.min(v.y + v.h, Math.ceil(oy + y1 * f) + 2);
+    return c > a && d > b ? [a, b, c, d] : null;
+  }
+
+  private boundsOf(v: InkView, s: TShape): [number, number, number, number] | null {
+    const p = s.p;
+    if (!p.length) return null;
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -Infinity;
+    let y1 = -Infinity;
+    for (let i = 0; i < p.length; i += 3) {
+      if (p[i] < x0) x0 = p[i];
+      if (p[i] > x1) x1 = p[i];
+      if (p[i + 1] < y0) y0 = p[i + 1];
+      if (p[i + 1] > y1) y1 = p[i + 1];
+    }
+    const f = v.k / U;
+    const ox = v.x - v.cx * v.k;
+    const oy = v.y - v.cy * v.k;
+    const a = Math.max(v.x, Math.floor(ox + (x0 - s.w) * f) - 2);
+    const b = Math.max(v.y, Math.floor(oy + (y0 - s.w) * f) - 2);
+    const c = Math.min(v.x + v.w, Math.ceil(ox + (x1 + s.w) * f) + 2);
+    const d = Math.min(v.y + v.h, Math.ceil(oy + (y1 + s.w) * f) + 2);
+    return c > a && d > b ? [a, b, c, d] : null;
+  }
+
   /** camada de rascunho do marca-texto (reaproveitada) */
   private scratch: HTMLCanvasElement | null = null;
+  /** pedaço do rascunho que ficou pintado da última vez (só ele é limpo) */
+  private scratchDirty: [number, number, number, number] | null = null;
   /**
    * Marca-texto: pintado opaco numa camada à parte e só então aplicado com transparência (como no motor):
    * onde um destaque passa por cima de outro, ou de si mesmo, a cor fica por igual.
@@ -237,7 +289,12 @@ export class InkLayer {
     }
     const g = layer.getContext('2d')!;
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, W, H);
+    // só a área onde há marca-texto é limpa e copiada
+    const r = extra ? this.boundsOf(v, extra) : this.visibleBounds(v, 'hl');
+    const od = this.scratchDirty;
+    if (od) g.clearRect(od[0], od[1], od[2] - od[0], od[3] - od[1]);
+    this.scratchDirty = r;
+    if (!r) return;
     g.setTransform(ctx.getTransform());
     this.enter(g, v);
     for (const s of vis) {
@@ -253,7 +310,7 @@ export class InkLayer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalCompositeOperation = 'multiply';
     ctx.globalAlpha = HL_ALPHA;
-    ctx.drawImage(layer, 0, 0);
+    ctx.drawImage(layer, r[0], r[1], r[2] - r[0], r[3] - r[1], r[0], r[1], r[2] - r[0], r[3] - r[1]);
     ctx.restore();
   }
 
