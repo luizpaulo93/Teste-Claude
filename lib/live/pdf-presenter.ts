@@ -38,6 +38,37 @@ const FIT = 1 / (1 + 2 * MARGIN);
 const DESK = '#edf0f4';
 const KEEP = 10; // páginas renderizadas guardadas na memória
 
+/** papel das páginas em branco (como no caderno): em branco, pautado ou quadriculado; size = distância entre as linhas */
+export interface Paper {
+  type: 'blank' | 'lined' | 'grid';
+  size: number;
+}
+/**
+ * Linhas do papel numa página em branco (bem claras, só para guiar a escrita). A página tem 1000 unidades de
+ * largura; `k` = pontos da tela por largura de página.
+ */
+function drawPaper(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, ratio: number, paper: Paper | null) {
+  if (!paper || paper.type === 'blank') return;
+  const u = k / 1000;
+  const gap = Math.max(12, paper.size || 40) * u;
+  const lw = Math.max(1, 0.7 * u);
+  const H = ratio * k;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, k, H);
+  ctx.clip();
+  ctx.fillStyle = paper.type === 'grid' ? '#dfe8f6' : '#d3dff2';
+  if (paper.type === 'lined') {
+    for (let ly = gap * 2; ly < H - gap * 0.6; ly += gap) ctx.fillRect(x, Math.round(y + ly), k, lw);
+    ctx.fillStyle = '#f6c9cf';
+    ctx.fillRect(Math.round(x + gap * 2.2), y, lw, H);
+  } else {
+    for (let ly = gap; ly < H; ly += gap) ctx.fillRect(x, Math.round(y + ly), k, lw);
+    for (let lx = gap; lx < k; lx += gap) ctx.fillRect(Math.round(x + lx), y, lw, H);
+  }
+  ctx.restore();
+}
+
 export class PdfPresenter {
   private doc: PDFDocumentProxy | null = null;
   private ratios: number[] = [];
@@ -114,6 +145,44 @@ export class PdfPresenter {
 
   /** páginas do PDF (as seguintes são páginas em branco, criadas na live) */
   private docPages = 0;
+  /** papel das páginas em branco */
+  private paperNow: Paper | null = null;
+  get paper() {
+    return this.paperNow;
+  }
+  set paper(p: Paper | null) {
+    this.paperNow = p && p.type !== 'blank' ? p : null;
+    this.pagesVer++;
+    this.onChange?.();
+  }
+
+  /**
+   * Uma página inteira num canvas à parte, com a escrita por cima (miniaturas e exportação em PDF).
+   * `width` = largura em pontos. Não mexe no que está na tela.
+   */
+  async renderPage(i: number, width: number): Promise<HTMLCanvasElement | null> {
+    if (i < 1 || i > this.pages) return null;
+    const r = this.ratios[i - 1] ?? PdfPresenter.BLANK;
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(width));
+    c.height = Math.max(1, Math.round(width * r));
+    const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, c.width, c.height);
+    if (i <= this.docPages && this.doc) {
+      const id = this.docId;
+      const p = await this.doc.getPage(i);
+      const base = p.getViewport({ scale: 1 });
+      await p.render({ canvas: c, canvasContext: ctx, viewport: p.getViewport({ scale: c.width / base.width }) }).promise;
+      if (id !== this.docId) return null;
+    } else drawPaper(ctx, 0, 0, c.width, r, this.paperNow);
+    this.ink?.drawDoneAll(ctx, { x: 0, y: 0, k: c.width, cx: 0, cy: this.tops[i - 1] ?? 0, w: c.width, h: c.height });
+    return c;
+  }
+  /** altura ÷ largura da página */
+  ratioOf(i: number) {
+    return this.ratios[i - 1] ?? PdfPresenter.BLANK;
+  }
   /** página em branco: folha A4 em pé */
   static BLANK = 1.414;
   /** Quadro em branco (sem PDF): só páginas em branco. */
@@ -444,6 +513,7 @@ export class PdfPresenter {
       else {
         ctx.fillStyle = '#fff';
         ctx.fillRect(dx, dy, k, r * k);
+        if (i > this.docPages) drawPaper(ctx, dx, dy, k, r, this.paperNow);
       }
       this.request(i);
     }

@@ -16,6 +16,10 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  ArrowLeft,
+  Download,
+  Files,
+  NotebookText,
   RotateCw,
   Plus,
   FilePlus2,
@@ -49,6 +53,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { addLiveMaterials, claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, getInk, inkOps, getInkPrefs, saveInkPrefs, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
 import { uploadPdf } from '@/components/admin/uploads';
+import { download, exportPdf } from '@/lib/live/pdf-export';
 import { InkLayer, newStrokeId, packOps, unpackOps, unpackStroke, type EraseAcc, type InkOps, type InkTool, type PackedOps, type ShapeKind, type Stroke } from '@/lib/live/ink';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
@@ -164,6 +169,54 @@ type Sized = keyof typeof INK_UNIT;
 type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; er?: EraseAcc; last?: { x: number; y: number }; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number }; held?: number };
 
 const isBoard = (id: string) => /^quadro-\d+$/.test(id);
+
+/** Miniaturas das páginas (com o que foi escrito): desenhadas uma de cada vez, sem travar a tela. */
+function PageThumbs({ pdf, pages, current, onGo }: { pdf: PdfPresenter; pages: number; current: number; onGo: (page: number) => void }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let off = false;
+    const el = box.current;
+    if (!el) return;
+    el.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'center' });
+    void (async () => {
+      // começa pela página atual e segue para as vizinhas
+      const order = Array.from({ length: pages }, (_, i) => i + 1).sort((a, b) => Math.abs(a - current) - Math.abs(b - current));
+      for (const i of order) {
+        if (off) return;
+        const target = el.querySelector<HTMLCanvasElement>(`canvas[data-page="${i}"]`);
+        if (!target) continue;
+        const c = await pdf.renderPage(i, 300).catch(() => null);
+        if (off || !c) return;
+        target.width = c.width;
+        target.height = c.height;
+        target.getContext('2d')?.drawImage(c, 0, 0);
+        c.width = c.height = 0;
+        await new Promise((r) => setTimeout(r, 30));
+      }
+    })();
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdf, pages]);
+  return (
+    <div ref={box} className="min-h-0 flex-1 space-y-2.5 overflow-y-auto px-3 pb-3">
+      {Array.from({ length: pages }, (_, k) => k + 1).map((i) => (
+        <button
+          key={i}
+          type="button"
+          onClick={() => onGo(i)}
+          aria-label={`Ir para a página ${i}`}
+          aria-current={i === current}
+          className={cn('block w-full overflow-hidden rounded-lg border-2 bg-white text-left', i === current ? 'border-[#2347d9] ring-2 ring-[#e8edfd]' : 'border-[#dde3ec]')}
+        >
+          <canvas data-page={i} width={150} height={Math.round(150 * pdf.ratioOf(i))} className="block h-auto w-full" style={{ aspectRatio: `1 / ${pdf.ratioOf(i)}` }} />
+          <span className="block px-2 py-1 text-xs font-extrabold tabular-nums">{i}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const clock = (s: number) =>
   `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -282,6 +335,11 @@ export function Studio({
     .sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
   /** o que dá para abrir na live: os PDFs e os quadros em branco */
   const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Quadro ${id.slice(7)}` }))];
+  /** papel das páginas em branco (em branco, pautado ou quadriculado), como no caderno */
+  const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid'; size: number }>({ type: 'blank', size: 40 });
+  /** barra do topo do modo escrita: painel aberto (páginas ou papel) e exportação em andamento */
+  const [topPop, setTopPop] = useState<'pages' | 'paper' | null>(null);
+  const [exporting, setExporting] = useState('');
   /** PDF importado no meio da live: abre assim que a lista chegar */
   const pendingOpen = useRef('');
   const importRef = useRef<HTMLInputElement>(null);
@@ -925,6 +983,36 @@ export function Studio({
     }
   }
 
+  // papel das páginas em branco
+  useEffect(() => {
+    if (pdf.current) pdf.current.paper = paper;
+    kick.current();
+  }, [paper]);
+  /** Exporta em PDF o documento aberto, com tudo o que foi escrito (uma página de cada vez, sem travar a live). */
+  async function exportDoc() {
+    const p = pdf.current;
+    if (!p?.pages || exporting) return;
+    const total = p.pages;
+    const name = (docs.find((d) => d.id === pdfId)?.title ?? 'aula').replace(/[^\p{L}\p{N} _-]+/gu, ' ').replace(/\s+/g, ' ').trim() || 'aula';
+    setExporting(`0/${total}`);
+    try {
+      const pages = (async function* () {
+        for (let i = 1; i <= total; i++) {
+          const c = await p.renderPage(i, 1400);
+          if (c) yield c;
+          // respiro entre as páginas: a transmissão e a caneta continuam sendo atendidas
+          await new Promise((r) => setTimeout(r, 40));
+        }
+      })();
+      const blob = await exportPdf(pages, { onProgress: (n) => setExporting(`${n}/${total}`) });
+      download(blob, `${name}.pdf`);
+      toast('PDF baixado.');
+    } catch {
+      toast.error('Não foi possível gerar o PDF. Tente de novo.');
+    } finally {
+      setExporting('');
+    }
+  }
   /** Página em branco depois da última página do que está aberto (PDF ou quadro) — e já vai para ela. */
   function addBlankPage() {
     const p = pdf.current;
@@ -1351,9 +1439,10 @@ export function Studio({
     pipBox?: { x: number; y: number; w: number };
     pipAspect?: number;
     extra?: Record<string, number>;
+    paper?: { type: 'blank' | 'lined' | 'grid'; size: number };
   };
-  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.extra]);
-  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, extra, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.extra, x.paper]);
+  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, extra, paper, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
   /** Aplica a cena de outro aparelho (sem mandar de volta). */
   async function applyScene(st: SceneState) {
     if (st.pdfId && !isBoard(st.pdfId) && !materials.some((m) => m.id === st.pdfId)) return router.refresh();
@@ -1368,6 +1457,7 @@ export function Studio({
         const cur = st.pdfId ?? pdfId;
         if (cur === pdfId && pdfId && pdf.current?.pages) pdf.current.setExtra(ex[pdfId] ?? 0);
       }
+      if (st.paper && (st.paper.type !== paper.type || st.paper.size !== paper.size)) setPaper(st.paper);
       if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId, ex);
       if (st.scene && st.scene !== scene) setScene(st.scene);
       if (st.page && pdf.current?.pages && st.page !== pdf.current.view.page) await pdf.current.goTo(st.page);
@@ -1466,13 +1556,14 @@ export function Studio({
         mirror,
         pipBox,
         extra,
+        paper,
         ...(camTrack.current && pipAspect ? { pipAspect } : {}),
       }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
     }, 400);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, pipAspect, extra, liveId]);
+  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, pipAspect, extra, paper, liveId]);
 
   // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
@@ -1612,6 +1703,7 @@ export function Studio({
     setWriting(false);
     setInkTool('hand');
     setInkPop(null);
+    setTopPop(null);
     ink.current.selected.clear();
     setSelBox(null);
     void exitFull();
@@ -2692,6 +2784,8 @@ export function Studio({
   }
 
   const blocked = !support?.ok || !ready;
+  /** barra do topo (como no caderno): só no modo escrita, com um documento aberto */
+  const topBar = full && writing && scene === 'pdf' && !!pdfView?.pages;
 
   const pdfList = (
     <ul className="space-y-1.5">
@@ -2731,13 +2825,13 @@ export function Studio({
             full ? 'fixed inset-0 z-[90] flex' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
           )}
         >
-          <div className={full ? 'relative flex h-full min-w-0 flex-1 items-center justify-center' : 'absolute inset-0'}>
+          <div className={full ? cn('relative flex h-full min-w-0 flex-1 items-center justify-center', topBar && 'pt-12') : 'absolute inset-0'}>
             <div
               className="relative"
               style={
                 full
                   ? {
-                      width: 'min(100%, calc(100dvh * 16 / 9))',
+                      width: topBar ? 'min(100%, calc((100dvh - 3rem) * 16 / 9))' : 'min(100%, calc(100dvh * 16 / 9))',
                       aspectRatio: '16 / 9',
                     }
                   : { position: 'absolute', inset: 0 }
@@ -2890,7 +2984,7 @@ export function Studio({
               )}
             </div>
             {onAir && (
-              <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
+              <span className={cn('absolute left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white', topBar ? 'top-14' : 'top-3')}>
                 <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
               </span>
             )}
@@ -3122,6 +3216,114 @@ export function Studio({
 
             {/* escrita na tela cheia: barra na lateral */}
             {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
+            {topBar && pdfView && (
+              <>
+                {/* barra do topo, como no caderno: voltar, nome do documento, páginas, papel e exportar */}
+                <header data-scroll className="absolute inset-x-0 top-0 z-30 flex h-12 items-center gap-0.5 border-b border-[#dde3ec] bg-white px-2 text-[#14213d]">
+                  <button type="button" onClick={closeWriting} aria-label="Voltar" title="Voltar" className="grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5">
+                    <ArrowLeft className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setChoosing(true)}
+                    title="Trocar de documento"
+                    className="h-10 max-w-60 min-w-0 truncate rounded-xl px-2.5 text-left text-[15px] font-bold hover:bg-[#14213d]/5"
+                  >
+                    {docs.find((d) => d.id === pdfId)?.title ?? 'Documento'}
+                  </button>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={() => setTopPop((v) => (v === 'pages' ? null : 'pages'))}
+                    aria-label="Páginas"
+                    aria-expanded={topPop === 'pages'}
+                    title="Páginas"
+                    className={cn('grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5', topPop === 'pages' && 'bg-[#e8edfd] text-[#2347d9]')}
+                  >
+                    <Files className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTopPop((v) => (v === 'paper' ? null : 'paper'))}
+                    aria-label="Papel"
+                    aria-expanded={topPop === 'paper'}
+                    title="Papel das páginas em branco"
+                    className={cn('grid size-10 shrink-0 place-items-center rounded-xl hover:bg-[#14213d]/5', topPop === 'paper' && 'bg-[#e8edfd] text-[#2347d9]')}
+                  >
+                    <NotebookText className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportDoc()}
+                    disabled={!!exporting}
+                    aria-label="Exportar em PDF"
+                    title="Exportar em PDF (com o que foi escrito)"
+                    className="flex h-10 shrink-0 items-center gap-1.5 rounded-xl px-2.5 text-xs font-bold tabular-nums hover:bg-[#14213d]/5 disabled:opacity-60"
+                  >
+                    <Download className="size-5" />
+                    {exporting}
+                  </button>
+                </header>
+                {topPop === 'paper' && (
+                  <div data-scroll className="absolute top-14 right-2 z-40 w-72 max-w-[calc(100%-1rem)] animate-scale-in space-y-3 rounded-2xl bg-white p-4 text-[#14213d] shadow-2xl ring-1 ring-[#14213d]/10">
+                    <p className="text-sm font-extrabold">Papel</p>
+                    <div className="flex gap-1 rounded-xl bg-[#edf0f4] p-1">
+                      {(
+                        [
+                          ['blank', 'Em branco'],
+                          ['lined', 'Pautado'],
+                          ['grid', 'Quadriculado'],
+                        ] as const
+                      ).map(([k, l]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setPaper((o) => ({ ...o, type: k }))}
+                          aria-pressed={paper.type === k}
+                          className={cn('h-9 flex-1 rounded-lg text-xs font-bold', paper.type === k ? 'bg-white shadow' : 'text-[#55627b]')}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                    <label className="block space-y-1 text-xs font-semibold text-[#55627b]">
+                      Tamanho das linhas
+                      <input
+                        type="range"
+                        min={18}
+                        max={90}
+                        step={1}
+                        value={paper.size}
+                        disabled={paper.type === 'blank'}
+                        onChange={(e) => setPaper((o) => ({ ...o, size: Number(e.target.value) }))}
+                        aria-label="Tamanho das linhas"
+                        className="w-full accent-[#2347d9]"
+                      />
+                    </label>
+                    <p className="text-[11px] text-[#55627b]">Vale para as páginas em branco. As linhas ficam bem clarinhas, só para guiar a escrita.</p>
+                  </div>
+                )}
+                {topPop === 'pages' && pdf.current && (
+                  <aside data-scroll aria-label="Páginas" className="absolute top-12 right-0 bottom-0 z-40 flex w-56 max-w-[70%] flex-col bg-white text-[#14213d] shadow-2xl ring-1 ring-[#14213d]/10">
+                    <div className="flex items-center justify-between px-3 py-2">
+                      <p className="text-sm font-extrabold">Páginas</p>
+                      <button type="button" onClick={() => setTopPop(null)} aria-label="Fechar" className="grid size-9 place-items-center rounded-xl hover:bg-[#14213d]/5">
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <PageThumbs
+                      pdf={pdf.current}
+                      pages={pdfView.pages}
+                      current={pdfView.page}
+                      onGo={(i) => {
+                        setTopPop(null);
+                        void pdf.current?.goTo(i);
+                      }}
+                    />
+                  </aside>
+                )}
+              </>
+            )}
             {full && !writing && canInk && scene === 'pdf' && !!pdfView?.pages && (
               <button
                 type="button"

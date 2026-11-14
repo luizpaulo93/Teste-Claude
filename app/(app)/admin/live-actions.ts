@@ -561,6 +561,9 @@ export async function setStudioScene(id: string, patch: StudioScene) {
         .slice(0, 200)
         .map(([k, n]) => [k, Math.round(n)]),
     );
+  const pp = patch.paper;
+  if (pp && (pp.type === 'blank' || pp.type === 'lined' || pp.type === 'grid') && typeof pp.size === 'number' && pp.size >= 12 && pp.size <= 120)
+    clean.paper = { type: pp.type, size: Math.round(pp.size) };
   if (clean.extra) {
     // páginas em branco nunca somem: um aparelho que ainda não soube de uma página nova não a apaga dos outros
     const cur = await sql.one<{ extra: Record<string, number> | null }>(`select state->'extra' as extra from live_studio where live_id = $1`, [id]);
