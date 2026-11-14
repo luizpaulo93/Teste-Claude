@@ -40,6 +40,11 @@ export interface StudioScene {
   pipAspect?: number;
   /** posição exata do PDF (os aparelhos que só controlam seguem sem precisar do espelho) */
   pdfPos?: { cx: number; cy: number; zoom: number };
+  /**
+   * Páginas em branco criadas na live: por PDF (acrescentadas depois da última página) e por quadro em branco
+   * ("quadro-1", "quadro-2"…, que não têm arquivo: só páginas em branco).
+   */
+  extra?: Record<string, number>;
 }
 
 interface Row {

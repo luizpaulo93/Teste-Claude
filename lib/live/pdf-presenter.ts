@@ -89,7 +89,7 @@ export class PdfPresenter {
   }
   /** Mostra a mesma parte que outro aparelho (sem avisar de volta). */
   setView(v: PdfPos) {
-    if (!this.doc) return;
+    if (!this.pages) return;
     this.zoom = Math.min(6, Math.max(this.minZoom, v.zoom));
     this.cx = v.cx;
     this.cy = v.cy;
@@ -105,7 +105,47 @@ export class PdfPresenter {
     this.onView?.(this.pos);
   }
 
-  async load(data: ArrayBuffer) {
+  /** páginas do PDF (as seguintes são páginas em branco, criadas na live) */
+  private docPages = 0;
+  /** página em branco: folha A4 em pé */
+  static BLANK = 1.414;
+  /** Quadro em branco (sem PDF): só páginas em branco. */
+  loadBlank(blank: number) {
+    void this.doc?.loadingTask.destroy();
+    this.doc = null;
+    this.cache.clear();
+    this.queue.clear();
+    ++this.docId;
+    this.docPages = 0;
+    this.pages = Math.max(1, Math.round(blank) || 1);
+    this.ratios = Array.from({ length: this.pages }, () => PdfPresenter.BLANK);
+    this.layout();
+    this.page = 1;
+    this.zoom = 1;
+    this.cx = 0;
+    this.cy = 0;
+    this.clamp();
+    this.pagesVer++;
+    this.onChange?.();
+  }
+  /** Páginas em branco depois do PDF (ou do quadro): acrescenta ou tira sem mexer na posição. */
+  setExtra(blank: number) {
+    if (!this.pages) return;
+    const n = this.docPages + Math.max(this.docPages ? 0 : 1, Math.round(blank) || 0);
+    if (n === this.pages) return;
+    this.ratios = Array.from({ length: n }, (_, i) => (i < this.docPages ? this.ratios[i] : PdfPresenter.BLANK));
+    this.pages = n;
+    this.layout();
+    this.clamp();
+    this.pagesVer++;
+    this.onChange?.();
+  }
+  /** quantas páginas em branco há depois do PDF */
+  get extra() {
+    return this.pages - this.docPages;
+  }
+
+  async load(data: ArrayBuffer, blank = 0) {
     const m = await pdfjs();
     void this.doc?.loadingTask.destroy();
     this.cache.clear();
@@ -113,9 +153,10 @@ export class PdfPresenter {
     const id = ++this.docId;
     const doc = await m.getDocument({ data }).promise;
     this.doc = doc;
-    this.pages = doc.numPages;
+    this.docPages = doc.numPages;
+    this.pages = doc.numPages + Math.max(0, Math.round(blank) || 0);
     const first = (await doc.getPage(1)).getViewport({ scale: 1 });
-    this.ratios = Array.from({ length: this.pages }, () => first.height / first.width);
+    this.ratios = Array.from({ length: this.pages }, (_, i) => (i < this.docPages ? first.height / first.width : PdfPresenter.BLANK));
     this.layout();
     this.page = 1;
     this.zoom = 1;
@@ -125,7 +166,7 @@ export class PdfPresenter {
     this.onChange?.();
     // proporção real de cada página, em segundo plano (PDFs com páginas de tamanhos diferentes)
     void (async () => {
-      for (let i = 2; i <= this.pages && id === this.docId; i++) {
+      for (let i = 2; i <= this.docPages && id === this.docId; i++) {
         const v = (await doc.getPage(i)).getViewport({ scale: 1 });
         const r = v.height / v.width;
         if (Math.abs(r - this.ratios[i - 1]) > 0.001) {
@@ -177,7 +218,7 @@ export class PdfPresenter {
 
   /** Vai para o começo da página (ou centraliza a página inteira, se ela couber) */
   async goTo(page: number) {
-    if (!this.doc) return;
+    if (!this.pages) return;
     const n = Math.min(this.pages, Math.max(1, page));
     const r = this.ratios[n - 1] ?? 1.414;
     this.cy = this.tops[n - 1] - (this.vh > r ? (this.vh - r) / 2 : 0);
@@ -240,6 +281,7 @@ export class PdfPresenter {
   }
 
   private request(i: number) {
+    if (i > this.docPages) return; // página em branco: nada para renderizar
     const c = this.cache.get(i);
     if (c) c.used = performance.now();
     const want = this.wantWidth(i);
