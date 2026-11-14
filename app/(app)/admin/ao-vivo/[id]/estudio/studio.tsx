@@ -3163,14 +3163,21 @@ export function Studio({
                     <span className="tabular-nums">
                       {pdfView.page}/{pdfView.pages}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
-                      aria-label="Próxima página"
-                      className="grid size-7 place-items-center rounded-full"
-                    >
-                      <ChevronRight className="size-4" />
-                    </button>
+                    {/* como no caderno: na última página, o botão vira "+" e cria uma página em branco */}
+                    {pdfView.page >= pdfView.pages && writing ? (
+                      <button type="button" onClick={addBlankPage} aria-label="Nova página em branco" title="Nova página em branco" className="grid size-7 place-items-center rounded-full">
+                        <Plus className="size-4" />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
+                        aria-label="Próxima página"
+                        className="grid size-7 place-items-center rounded-full"
+                      >
+                        <ChevronRight className="size-4" />
+                      </button>
+                    )}
                   </span>
                 )}
                 {onAir ? (

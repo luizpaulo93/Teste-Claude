@@ -29,6 +29,13 @@ export interface PdfView {
 }
 
 const GAP = 0.025; // espaço entre as páginas
+/**
+ * Layout da folha (como no caderno): a página fica sobre a "mesa" clara, com uma margem em volta e sombra.
+ * MARGIN = margem de cada lado (em larguras de página); FIT = zoom em que a página e as margens cabem na largura.
+ */
+const MARGIN = 0.024;
+const FIT = 1 / (1 + 2 * MARGIN);
+const DESK = '#edf0f4';
 const KEEP = 10; // páginas renderizadas guardadas na memória
 
 export class PdfPresenter {
@@ -121,9 +128,9 @@ export class PdfPresenter {
     this.ratios = Array.from({ length: this.pages }, () => PdfPresenter.BLANK);
     this.layout();
     this.page = 1;
-    this.zoom = 1;
-    this.cx = 0;
-    this.cy = 0;
+    this.zoom = FIT;
+    this.cx = -MARGIN;
+    this.cy = -MARGIN;
     this.clamp();
     this.pagesVer++;
     this.onChange?.();
@@ -159,9 +166,9 @@ export class PdfPresenter {
     this.ratios = Array.from({ length: this.pages }, (_, i) => (i < this.docPages ? first.height / first.width : PdfPresenter.BLANK));
     this.layout();
     this.page = 1;
-    this.zoom = 1;
-    this.cx = 0;
-    this.cy = 0;
+    this.zoom = FIT;
+    this.cx = -MARGIN;
+    this.cy = -MARGIN;
     this.clamp();
     this.onChange?.();
     // proporção real de cada página, em segundo plano (PDFs com páginas de tamanhos diferentes)
@@ -201,8 +208,9 @@ export class PdfPresenter {
   private clamp() {
     const vw = this.vw;
     const vh = this.vh;
-    this.cx = vw >= 1 ? (1 - vw) / 2 : Math.min(Math.max(0, this.cx), 1 - vw);
-    this.cy = vh >= this.total ? (this.total - vh) / 2 : Math.min(Math.max(0, this.cy), this.total - vh);
+    // a folha pode ser afastada até a margem aparecer (nunca além dela)
+    this.cx = vw >= 1 + 2 * MARGIN ? (1 - vw) / 2 : Math.min(Math.max(-MARGIN, this.cx), 1 + MARGIN - vw);
+    this.cy = vh >= this.total + 2 * MARGIN ? (this.total - vh) / 2 : Math.min(Math.max(-MARGIN, this.cy), this.total + MARGIN - vh);
     // página atual = a que está no meio da tela
     const mid = this.cy + vh / 2;
     let p = 1;
@@ -213,7 +221,7 @@ export class PdfPresenter {
   /** Menor zoom: a página inteira no quadro (bom para A4 em pé) */
   get minZoom() {
     const r = this.ratios[this.page - 1] ?? 1.414;
-    return Math.min(1, this.frameW / this.frameH / r);
+    return Math.min(FIT, this.frameW / this.frameH / (r + 2 * MARGIN));
   }
 
   /** Vai para o começo da página (ou centraliza a página inteira, se ela couber) */
@@ -221,7 +229,7 @@ export class PdfPresenter {
     if (!this.pages) return;
     const n = Math.min(this.pages, Math.max(1, page));
     const r = this.ratios[n - 1] ?? 1.414;
-    this.cy = this.tops[n - 1] - (this.vh > r ? (this.vh - r) / 2 : 0);
+    this.cy = this.tops[n - 1] - (this.vh > r + 2 * MARGIN ? (this.vh - r) / 2 : MARGIN);
     this.clamp();
     this.page = n;
     this.onChange?.();
@@ -249,7 +257,7 @@ export class PdfPresenter {
   /** Largura da página = largura do quadro (fica no começo da página atual) */
   fitWidth() {
     const n = this.page;
-    this.zoom = 1;
+    this.zoom = FIT;
     void this.goTo(n);
   }
   /** Página inteira no quadro */
@@ -260,7 +268,7 @@ export class PdfPresenter {
   }
   /** Dois toques: alterna entre largura e página inteira */
   toggleFit() {
-    if (Math.abs(this.zoom - 1) < 0.02) this.fitPage();
+    if (Math.abs(this.zoom - FIT) < 0.02) this.fitPage();
     else this.fitWidth();
   }
 
@@ -413,16 +421,24 @@ export class PdfPresenter {
 
   /** páginas visíveis (pede a renderização das que faltam ou estão na resolução errada) */
   private drawPages(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, k: number) {
-    ctx.fillStyle = '#2b2f36';
+    // a mesa
+    ctx.fillStyle = DESK;
     ctx.fillRect(x, y, w, h);
     const vh = this.vh;
+    const dx = x - this.cx * k;
     for (let i = 1; i <= this.pages; i++) {
       const top = this.tops[i - 1];
       const r = this.ratios[i - 1];
-      if (top + r < this.cy) continue;
+      if (top + r < this.cy - MARGIN) continue;
       if (top > this.cy + vh) break;
-      const dx = x - this.cx * k;
       const dy = y + (top - this.cy) * k;
+      // sombra suave da folha (faixas claras: bem mais leve que a sombra do canvas, que pesaria a cada quadro)
+      const sh = Math.max(1, k * 0.0035);
+      ctx.fillStyle = 'rgba(20,33,61,0.05)';
+      ctx.fillRect(dx - sh, dy - sh * 0.5, k + sh * 2, r * k + sh * 3);
+      ctx.fillRect(dx - sh * 0.5, dy, k + sh, r * k + sh * 1.8);
+      ctx.fillStyle = 'rgba(20,33,61,0.07)';
+      ctx.fillRect(dx, dy + sh * 0.3, k, r * k + sh * 0.7);
       const c = this.cache.get(i);
       if (c) ctx.drawImage(c.canvas, dx, dy, k, r * k);
       else {
