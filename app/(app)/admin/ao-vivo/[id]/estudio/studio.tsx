@@ -16,6 +16,7 @@ import {
   Trash2,
   Undo2,
   Redo2,
+  Activity,
   ArrowLeft,
   Download,
   Files,
@@ -1930,6 +1931,7 @@ export function Studio({
             { label: 'Página em branco', icon: StickyNote, run: addBlankPage },
             { label: 'Novo caderno em branco', icon: FilePlus2, run: () => void newBoard() },
             { label: 'Importar PDF', icon: FileUp, run: () => importRef.current?.click() },
+            { label: diagOn ? 'Desligar relatório da escrita' : 'Relatório da escrita', icon: Activity, run: toggleDiag },
           ].map((o) => (
             <button
               key={o.label}
@@ -2357,14 +2359,32 @@ export function Studio({
    * começo, no meio e no fim do toque) mantém a caneta sempre com o estúdio.
    */
   /**
-   * Diagnóstico (abra o estúdio com ?diag=1): mostra, enquanto escreve, quantos traços a caneta fez, quantos o
-   * sistema cortou, quantos toques de palma foram ignorados e quantas vezes a tela engasgou (e o maior engasgo).
+   * Relatório da escrita (liga no "+" da barra de escrita, ou abrindo o estúdio com ?diag=1; fica ligado neste
+   * aparelho até desligar). Conta os traços da caneta, os que o sistema cortou, os toques de palma ignorados e os
+   * engasgos da tela, e guarda os últimos acontecimentos com o horário — o botão "Copiar relatório" junta tudo.
    */
-  const diag = useRef({ on: false, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0 });
+  const diag = useRef({ on: false, t0: 0, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, log: [] as string[], lastOrphan: 0 });
   const diagEl = useRef<HTMLDivElement>(null);
+  const [diagOn, setDiagOn] = useState(false);
+  const diagLog = (m: string) => {
+    const d = diag.current;
+    if (!d.on) return;
+    d.log.push(`${((performance.now() - d.t0) / 1000).toFixed(1)}s ${m}`);
+    if (d.log.length > 80) d.log.shift();
+  };
   useEffect(() => {
-    if (!new URLSearchParams(window.location.search).has('diag')) return;
-    diag.current.on = true;
+    try {
+      const q = new URLSearchParams(window.location.search).get('diag');
+      if (q === '1') localStorage.setItem('studio-diag', '1');
+      if (q === '0') localStorage.removeItem('studio-diag');
+      setDiagOn(localStorage.getItem('studio-diag') === '1');
+    } catch {}
+  }, []);
+  useEffect(() => {
+    const d = diag.current;
+    d.on = diagOn;
+    if (!diagOn) return;
+    d.t0 = performance.now();
     let raf = 0;
     let last = performance.now();
     const loop = () => {
@@ -2372,21 +2392,55 @@ export function Studio({
       const gap = now - last;
       last = now;
       if (writingRef.current && document.visibilityState === 'visible' && gap > 60) {
-        diag.current.hitch++;
-        diag.current.worst = Math.max(diag.current.worst, Math.round(gap));
+        d.hitch++;
+        d.worst = Math.max(d.worst, Math.round(gap));
+        diagLog(`tela engasgou ${Math.round(gap)} ms${inkPtr.current?.type === 'pen' ? ' (com a caneta escrevendo)' : ''}`);
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     const t = window.setInterval(() => {
-      const d = diag.current;
-      if (diagEl.current) diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`;
+      if (diagEl.current)
+        diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} sem traço aberto · palma ignorada: ${d.palm} · engasgos: ${d.hitch} (maior ${d.worst} ms)`;
     }, 400);
     return () => {
       cancelAnimationFrame(raf);
       window.clearInterval(t);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagOn]);
+  const toggleDiag = () => {
+    const on = !diagOn;
+    try {
+      if (on) localStorage.setItem('studio-diag', '1');
+      else localStorage.removeItem('studio-diag');
+    } catch {}
+    setDiagOn(on);
+    toast(on ? 'Relatório da escrita ligado: escreva normalmente e, quando falhar, toque em "Copiar relatório".' : 'Relatório da escrita desligado.');
+  };
+  async function copyDiag() {
+    const d = diag.current;
+    const text = [
+      'Relatório da escrita (Estúdio)',
+      `aparelho: ${navigator.userAgent}`,
+      `tela: ${window.innerWidth}×${window.innerHeight} · densidade ${window.devicePixelRatio}`,
+      `este aparelho ${onAir ? 'TRANSMITE a live' : light ? 'só controla (outro aparelho transmite)' : 'é o principal (live parada)'} · ferramenta ${inkTool} · ${ink.current.count} traços na página`,
+      `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} vezes mexendo sem traço aberto · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`,
+      '',
+      'últimos acontecimentos:',
+      ...d.log,
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Relatório copiado. Cole na conversa.');
+    } catch {
+      // sem acesso à área de transferência: mostra o texto para copiar à mão
+      window.prompt('Copie o relatório:', text);
+    }
+  }
+  const resetDiag = () => {
+    Object.assign(diag.current, { t0: performance.now(), pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, log: [] });
+  };
   const writingNow = useRef(false);
   writingNow.current = writing && scene === 'pdf';
   useEffect(() => {
@@ -2543,6 +2597,7 @@ export function Studio({
       // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
       const old = inkPtr.current;
       if (old) {
+        diagLog('caneta encostou de novo sem o aviso de levantar do traço anterior');
         window.clearTimeout(old.held);
         inkPtr.current = null;
         if (old.type !== 'pen') {
@@ -2557,7 +2612,10 @@ export function Studio({
       }
     } else if (e.pointerType === 'touch' && pencilSeen.current) {
       // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
-      if (penBusy()) diag.current.palm++;
+      if (penBusy()) {
+        diag.current.palm++;
+        diagLog('toque de dedo/palma ignorado');
+      }
       return penBusy();
     }
     const tool: InkTool = inkTool;
@@ -2578,7 +2636,10 @@ export function Studio({
       /* o navegador recusou a captura: o traço segue mesmo assim */
     }
     const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
-    if (e.pointerType === 'pen') diag.current.pen++;
+    if (e.pointerType === 'pen') {
+      diag.current.pen++;
+      diagLog(`caneta encostou (${tool})`);
+    } else diagLog(`${e.pointerType === 'touch' ? 'dedo' : 'mouse'} começou traço (${tool})`);
     if (tool === 'pen' || tool === 'marker') {
       const k = strokeStyle(tool);
       lastTs.current = e.timeStamp;
@@ -2625,9 +2686,20 @@ export function Studio({
       scene === 'pdf' &&
       (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && (e.pointerId !== lastPenId.current || performance.now() - penUpAt.current > 120)))
     ) {
+      diag.current.resumed++;
+      diagLog(performance.now() < resumeUntil.current ? 'traço retomado depois do cancelamento' : 'caneta pressionando sem aviso de encostar: traço começado assim mesmo');
       resumeUntil.current = 0;
       inkDown(e);
       return true;
+    }
+    // a caneta está pressionando, mas não há traço aberto (e não deu para retomar): é aqui que "some" a escrita
+    if (!inkPtr.current && writing && inkTool !== 'hand' && e.pointerType === 'pen' && e.pressure > 0 && scene === 'pdf') {
+      const d = diag.current;
+      if (performance.now() - d.lastOrphan > 400) {
+        d.orphan++;
+        d.lastOrphan = performance.now();
+        diagLog(`caneta mexendo sem traço aberto (botões ${e.buttons}, ${Math.round(performance.now() - penUpAt.current)} ms depois de levantar)`);
+      }
     }
     const st = inkPtr.current;
     if (st && st.type === 'pen' && e.pointerType === 'pen' && st.id !== e.pointerId && e.pressure > 0) st.id = e.pointerId;
@@ -2686,7 +2758,10 @@ export function Studio({
     }
     const st = inkPtr.current;
     if (!st || st.id !== e.pointerId) return false;
-    if (e.type === 'pointercancel' && st.type === 'pen') diag.current.cut++;
+    if (e.type === 'pointercancel' && st.type === 'pen') {
+      diag.current.cut++;
+      diagLog('o sistema cancelou o toque da caneta no meio do traço');
+    } else if (st.type === 'pen') diagLog(`caneta levantou${e.type === 'pointercancel' ? ' (cancelado)' : ''}`);
     if (e.type === 'pointercancel' && st.type === 'pen' && (st.tool === 'pen' || st.tool === 'marker') && !st.held) {
       // o navegador cancelou o toque no meio da letra: espera um instante; se a Pencil seguir, o traço continua
       st.held = window.setTimeout(() => {
@@ -3344,8 +3419,16 @@ export function Studio({
 
             {/* escrita na tela cheia: barra na lateral */}
             {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
-            {full && writing && diag.current.on && (
-              <div ref={diagEl} aria-hidden className="pointer-events-none absolute bottom-14 left-16 z-40 max-w-[calc(100%-5rem)] rounded-lg bg-[#14213d]/85 px-2 py-1 text-[11px] text-white" />
+            {full && writing && diagOn && (
+              <div data-scroll className="absolute bottom-14 left-16 z-40 flex max-w-[calc(100%-5rem)] flex-wrap items-center gap-1.5 rounded-xl bg-[#14213d]/90 px-2 py-1.5 text-[11px] text-white">
+                <span ref={diagEl} data-diag className="min-w-0">Relatório da escrita ligado</span>
+                <button type="button" onClick={() => void copyDiag()} className="rounded-lg bg-white px-2 py-1 font-bold text-[#14213d]">
+                  Copiar relatório
+                </button>
+                <button type="button" onClick={resetDiag} className="rounded-lg bg-white/15 px-2 py-1 font-bold">
+                  Zerar
+                </button>
+              </div>
             )}
             {topBar && pdfView && (
               <>
