@@ -47,6 +47,8 @@ export interface StudioScene {
   extra?: Record<string, number>;
   /** papel das páginas em branco: em branco, pautado ou quadriculado (size = distância entre as linhas) */
   paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
+  /** caderno aberto no estúdio (editor Traço): todos os aparelhos abrem o mesmo */
+  trNb?: string;
 }
 
 interface Row {

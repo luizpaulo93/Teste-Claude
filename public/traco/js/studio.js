@@ -23,6 +23,12 @@ export class StudioEditor extends Editor {
     this.board.onView = (v, user) => { if (user) this.viewChanged(); };
   }
 
+  // estúdio: tela cheia e voltar são os do estúdio (o caderno fica dentro dele)
+  action(a, btn) {
+    if (a === "full" && this.bridge && this.bridge.full) { this.bridge.full(); return; }
+    super.action(a, btn);
+  }
+
   send(m) {
     if (this.bridge && !this.dead) this.bridge.send(m);
   }

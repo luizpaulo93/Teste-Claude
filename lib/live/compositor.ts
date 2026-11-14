@@ -96,6 +96,11 @@ export class Compositor {
   pipY = 0.55;
   pipW = 0.28;
   pdf: PdfPresenter | null = null;
+  /**
+   * Caderno do estúdio (editor Traço): camadas da folha, desenhadas na live na ordem papel → câmera →
+   * marca-texto → tinta → traço em andamento (a escrita fica por cima da câmera). As linhas do papel não entram.
+   */
+  traco?: () => { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement } | null;
   private cam: Source | ElSource | null = null;
   private screen: Source | ElSource | null = null;
   private ctx: CanvasRenderingContext2D;
@@ -227,16 +232,25 @@ export class Compositor {
     c.fillRect(0, 0, W, H);
     const cam = this.cam?.frame ?? null;
     const scr = this.screen?.frame ?? null;
+    let tr: { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement } | null = null;
     if (this.scene === 'camera') {
       if (cam) this.drawCam(cam, 0, 0, W, H, this.fit, true);
       else this.message('Sem câmera');
     } else if (this.scene === 'pdf') {
-      if (this.pdf) {
+      const t = this.traco?.() ?? null;
+      tr = t && t.bg.width ? t : null;
+      if (tr) {
+        // a mesa (no caderno ela é a cor de fundo da tela, não está desenhada)
+        c.fillStyle = '#edf0f4';
+        c.fillRect(0, 0, W, H);
+        c.drawImage(tr.bg, 0, 0, W, H);
+      }
+      else if (this.pdf) {
         this.pdf.frameW = W;
         this.pdf.frameH = H;
         this.pdf.draw(c, 0, 0, W, H);
       }
-      if (!this.pdf?.pages) this.message('Escolha o PDF para mostrar');
+      if (!tr && !this.pdf?.pages) this.message('Escolha o PDF para mostrar');
     } else if (scr) this.fitFrame(scr, 0, 0, W, H);
     else this.message('Escolha a tela ou a janela para espelhar');
 
@@ -260,6 +274,16 @@ export class Compositor {
       c.beginPath();
       c.roundRect(x, y, pw, ph, rad);
       c.stroke();
+    }
+    // caderno: a escrita por cima da câmera (marca-texto translúcido, como na folha)
+    if (tr) {
+      c.save();
+      c.globalAlpha = 0.5;
+      c.globalCompositeOperation = 'multiply';
+      c.drawImage(tr.hl, 0, 0, W, H);
+      c.restore();
+      c.drawImage(tr.ink, 0, 0, W, H);
+      c.drawImage(tr.live, 0, 0, W, H);
     }
     this.onFrame?.(this.canvas);
   }

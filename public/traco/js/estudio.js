@@ -6,6 +6,15 @@ import { StudioEditor } from "./studio.js";
 import { uid } from "./ink.js";
 
 const app = document.getElementById("app");
+
+// A live usa a imagem da folha: com o estúdio pequeno na tela, a folha é desenhada com mais pontos (até 1920
+// de largura), para a live sair nítida. Em tela cheia no iPad nada muda.
+{
+  const real = window.devicePixelRatio || 1;
+  try {
+    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => Math.min(4, Math.max(real, 1920 / Math.max(1, window.innerWidth))) });
+  } catch {}
+}
 const bridge = (() => { try { return window.parent !== window ? window.parent.__tracoBridge || null : null; } catch { return null; } })();
 let current = null;
 let materials = [];
@@ -55,6 +64,7 @@ async function open(id) {
       bridge: bridge && {
         send: (m) => bridge.send(m),
         changed: (n) => bridge.changed && bridge.changed(n),
+        full: () => bridge.full && bridge.full(),
         open: (nid) => { open(nid); },
         create: async (o) => { const n = await newNotebook(o); open(n.id); },
       },

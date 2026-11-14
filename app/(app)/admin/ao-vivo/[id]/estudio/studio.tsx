@@ -342,6 +342,107 @@ export function Studio({
     .sort((a, b) => Number(a.slice(7)) - Number(b.slice(7)));
   /** o que dá para abrir na live: os PDFs e os quadros em branco */
   const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Caderno ${id.slice(7)}` }))];
+  // ---------------- caderno da live (editor Traço numa página própria, dentro do estúdio)
+  const trFrame = useRef<HTMLIFrameElement>(null);
+  /** o caderno é carregado na primeira vez que a cena do caderno aparece (e fica aberto: trocar de cena é na hora) */
+  const [trMounted, setTrMounted] = useState(false);
+  useEffect(() => {
+    if (scene === 'pdf') setTrMounted(true);
+  }, [scene]);
+  type TracoApi = {
+    open: (id: string) => Promise<void>;
+    notebook: () => string | null;
+    remote: (m: unknown) => void;
+    layers: () => { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement; camSlot: HTMLElement } | null;
+    flush: () => Promise<unknown>;
+    materials: (list: { id: string; title: string; path: string }[]) => void;
+  };
+  const trApi = useRef<TracoApi | null>(null);
+  /** caderno aberto (os outros aparelhos abrem o mesmo) */
+  const [trNb, setTrNb] = useState('');
+  const trNbRef = useRef('');
+  trNbRef.current = trNb;
+  // ponte: o caderno (dentro do estúdio) chama estas funções
+  const bridgeFns = useRef({
+    exit: () => {},
+    full: () => {},
+  });
+  bridgeFns.current.exit = () => void exitFull();
+  bridgeFns.current.full = () => void (full ? exitFull() : enterFull());
+  useEffect(() => {
+    const w = window as Window & { __tracoBridge?: unknown };
+    w.__tracoBridge = {
+      // traço em andamento, alterações, página, enquadramento: na hora, para os outros aparelhos
+      send: (m: unknown) => link.current?.sendNow({ t: 'tr', m }),
+      exit: () => bridgeFns.current.exit(),
+      full: () => bridgeFns.current.full(),
+      notebook: () => trNbRef.current || null,
+      opened: (id: string) => {
+        if (trNbRef.current !== id) setTrNb(id);
+        window.setTimeout(() => placeCam.current(), 50);
+      },
+      attach: (api: TracoApi) => {
+        trApi.current = api;
+      },
+    };
+    return () => {
+      delete w.__tracoBridge;
+    };
+  }, []);
+  /** a câmera da live dentro da folha, entre o papel e a tinta (a escrita fica por cima dela) */
+  const placeCam = useRef<() => void>(() => {});
+  const camStream = useRef<{ track: MediaStreamTrack; stream: MediaStream } | null>(null);
+  placeCam.current = () => {
+    const slot = trApi.current?.layers()?.camSlot;
+    if (!slot) return;
+    const doc = slot.ownerDocument;
+    let box = slot.querySelector<HTMLDivElement>('div[data-cam]');
+    const track = camTrack.current;
+    const src: MediaStream | null = track && track.readyState === 'live' ? (camStream.current?.track === track ? camStream.current.stream : new MediaStream([track])) : light ? mirrorStream : null;
+    if (track && src && camStream.current?.track !== track) camStream.current = { track, stream: src };
+    if (scene !== 'pdf' || !pip || !src) {
+      box?.remove();
+      return;
+    }
+    if (!box) {
+      box = doc.createElement('div');
+      box.dataset.cam = '1';
+      box.style.cssText = 'position:absolute;overflow:hidden;border-radius:6%;box-shadow:0 0 0 2px rgba(255,255,255,.85);pointer-events:none;background:#000';
+      const v = doc.createElement('video');
+      v.muted = true;
+      v.autoplay = true;
+      v.playsInline = true;
+      v.setAttribute('playsinline', '');
+      v.style.cssText = 'position:absolute;max-width:none;pointer-events:none';
+      box.appendChild(v);
+      slot.appendChild(box);
+    }
+    const r = pipRect;
+    Object.assign(box.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
+    const v = box.querySelector('video')!;
+    if (v.srcObject !== src) {
+      v.srcObject = src;
+      void v.play().catch(() => {});
+    }
+    if (track) {
+      // câmera daqui: preenche o quadradinho (como na live)
+      Object.assign(v.style, { inset: '0', width: '100%', height: '100%', left: '0', top: '0', objectFit: 'cover', transform: mirror ? 'scaleX(-1)' : '' });
+    } else {
+      // quem só controla: o recorte da câmera na imagem da live
+      Object.assign(v.style, { objectFit: 'fill', transform: '', width: `${100 / r.w}%`, height: `${100 / r.h}%`, left: `${(-r.x / r.w) * 100}%`, top: `${(-r.y / r.h) * 100}%` });
+    }
+  };
+  useEffect(() => {
+    placeCam.current();
+  });
+  // a live desenha as camadas da folha do caderno (sem as linhas do papel)
+  const tracoLayers = () => {
+    if (sceneRef.current !== 'pdf') return null;
+    const l = trApi.current?.layers();
+    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live } : null;
+  };
+  const sceneRef = useRef(scene);
+  sceneRef.current = scene;
   /** papel das páginas em branco (em branco, pautado ou quadriculado), como no caderno */
   const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid' | 'dots'; size: number }>({ type: 'blank', size: 40 });
   /** barra do topo do modo escrita: painel aberto (páginas ou papel) e exportação em andamento */
@@ -688,7 +789,10 @@ export function Studio({
       kick.current();
     };
     pdf.current.ink = ink.current;
-    if (comp.current) comp.current.pdf = pdf.current;
+    if (comp.current) {
+      comp.current.pdf = pdf.current;
+      comp.current.traco = tracoLayers;
+    }
     void checkSupport().then(setSupport);
     (async () => {
       try {
@@ -1283,12 +1387,8 @@ export function Studio({
 
   function pickScene(s: Scene) {
     if (s === 'pdf') {
+      // o caderno da live (PDFs da aula e páginas em branco ficam dentro dele)
       setScene('pdf');
-      // já tem PDF aberto: volta para ele. Sem nenhum: abre um quadro em branco. Mais de um pergunta qual abrir.
-      if (pdfView?.pages) return;
-      if (!docs.length) void newBoard();
-      else if (docs.length > 1) setChoosing(true);
-      else void openPdf(docs[0].id);
       return;
     }
     if (s !== 'camera' && !screenTrack.current) {
@@ -1464,38 +1564,30 @@ export function Studio({
     pipAspect?: number;
     extra?: Record<string, number>;
     paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
+    trNb?: string;
   };
-  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.extra, x.paper]);
-  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, extra, paper, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.trNb]);
+  const sceneNow = (): SceneState => ({ scene, pip, muted, mirror, pipBox, ...(trNb ? { trNb } : {}), ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
   /** Aplica a cena de outro aparelho (sem mandar de volta). */
   async function applyScene(st: SceneState) {
-    if (st.pdfId && !isBoard(st.pdfId) && !materials.some((m) => m.id === st.pdfId)) return router.refresh();
     sync.current.applying = true;
     try {
-      // páginas em branco e quadros criados em outro aparelho
-      // (uma página em branco nunca some: vale o maior número de cada documento)
-      const ex = { ...extra };
-      for (const [k, n] of Object.entries(st.extra ?? {})) if (n > (ex[k] ?? 0)) ex[k] = n;
-      if (JSON.stringify(ex) !== JSON.stringify(extra)) {
-        setExtra(ex);
-        const cur = st.pdfId ?? pdfId;
-        if (cur === pdfId && pdfId && pdf.current?.pages) pdf.current.setExtra(ex[pdfId] ?? 0);
+      // caderno aberto em outro aparelho: abre o mesmo aqui
+      if (st.trNb && st.trNb !== trNbRef.current) {
+        setTrNb(st.trNb);
+        void trApi.current?.open(st.trNb);
       }
-      if (st.paper && (st.paper.type !== paper.type || st.paper.size !== paper.size)) setPaper(st.paper);
-      if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId, ex);
       if (st.scene && st.scene !== scene) setScene(st.scene);
-      if (st.page && pdf.current?.pages && st.page !== pdf.current.view.page) await pdf.current.goTo(st.page);
       if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
       if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
       if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
       // arrastando a câmera aqui: a posição que chega de fora (atrasada) não puxa o quadradinho de volta
       if (st.pipBox && !pipDrag.current && performance.now() - pipAt.current > 2500 && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
-      if (st.pdfPos && pdf.current?.pages) pdf.current.setView(st.pdfPos);
       if (st.pipAspect && comp.current && !camTrack.current) {
         comp.current.camAspect = st.pipAspect;
         setPipRect(comp.current.pipRect());
       }
-      sync.current.sent = sceneKey({ ...sceneNow(), ...st, extra: ex, page: st.page ?? pdfView?.page ?? 0 });
+      sync.current.sent = sceneKey({ ...sceneNow(), ...st });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
     }
@@ -1532,7 +1624,13 @@ export function Studio({
     cam,
     mic,
   });
-  onLinkMsg.current = (m) => {
+  onLinkMsg.current = (m, from) => {
+    if (m.t === 'tr') {
+      trApi.current?.remote(m.m);
+      // quem transmite repassa para os outros aparelhos (cada um fala só com quem transmite)
+      if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
+      return;
+    }
     if (m.t === 'scene') void applyScene(m.s as SceneState);
     else if (m.t === 'pdfv' && pdf.current) pdf.current.setView(m.v as PdfPos);
     else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
@@ -1573,21 +1671,18 @@ export function Studio({
       sync.current.sent = key;
       const r = await setStudioScene(liveId, {
         scene,
-        pdfId: pdfId || undefined,
-        page: pdfView?.page || undefined,
         pip,
         muted,
         mirror,
         pipBox,
-        extra,
-        paper,
+        ...(trNb ? { trNb } : {}),
         ...(camTrack.current && pipAspect ? { pipAspect } : {}),
       }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
     }, 400);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, pipAspect, extra, paper, liveId]);
+  }, [scene, pip, muted, mirror, pipBox, pipAspect, trNb, liveId]);
 
   // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
@@ -3068,6 +3163,15 @@ export function Studio({
                   : { position: 'absolute', inset: 0 }
               }
             >
+              {/* caderno da live: o editor do Traço, como ele é (a live desenha as camadas da folha dele) */}
+              {trMounted && (
+                <iframe
+                  ref={trFrame}
+                  title="Caderno da live"
+                  src={`/traco/estudio.html?live=${encodeURIComponent(liveId)}`}
+                  className={cn('absolute inset-0 z-[5] size-full border-0 bg-[#edf0f4]', scene !== 'pdf' && 'invisible')}
+                />
+              )}
               <canvas
                 ref={canvasRef}
                 width={1280}
@@ -3155,7 +3259,7 @@ export function Studio({
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
               {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
-                <div ref={pipArea} className="pointer-events-none absolute inset-0">
+                <div ref={pipArea} className="pointer-events-none absolute inset-0 z-[6]">
                   <div
                     role="button"
                     aria-label="Quadradinho da câmera"
@@ -3167,7 +3271,7 @@ export function Studio({
                       'absolute cursor-move touch-none rounded-[6%]',
                       // escrevendo: a caneta passa por cima da câmera e escreve (o quadradinho, mesmo sem imagem, "pegava"
                       // a caneta e a escrita sumia ali); para mover a câmera, use a alça
-                      writing && inkTool !== 'hand' ? 'pointer-events-none' : 'pointer-events-auto',
+                      scene === 'pdf' || (writing && inkTool !== 'hand') ? 'pointer-events-none' : 'pointer-events-auto',
                       // aparelho que só controla: contorno para ver onde está a câmera do principal
                       light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
@@ -3180,7 +3284,7 @@ export function Studio({
                     }}
                   >
                     {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
-                    {light && mirrorStream && (
+                    {light && mirrorStream && scene !== 'pdf' && (
                       <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || writing || !viewing) && 'invisible')}>
                         <video
                           ref={(v) => {
@@ -3202,7 +3306,7 @@ export function Studio({
                         />
                       </div>
                     )}
-                    {writing && inkTool !== 'hand' && (
+                    {(scene === 'pdf' || (writing && inkTool !== 'hand')) && (
                       <div
                         role="button"
                         aria-label="Mover a câmera"
@@ -3289,7 +3393,7 @@ export function Studio({
                   {menuOpen ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
                 </button>
               )}
-              {scene === 'pdf' && docs.length > 1 && (
+              {false && scene === 'pdf' && docs.length > 1 && (
                 <button
                   type="button"
                   onClick={() => setChoosing(true)}
@@ -3599,7 +3703,12 @@ export function Studio({
 
             {/* Controles na tela cheia */}
             {full && (
-              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 pt-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div
+                className={cn(
+                  'absolute inset-x-0 bottom-0 z-[7] flex flex-wrap items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+                  scene === 'pdf' ? 'pointer-events-none justify-end [&>*]:pointer-events-auto' : 'justify-center bg-gradient-to-t from-black/70 to-transparent pt-6',
+                )}
+              >
                 {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
                   <button
                     key={x.key}
@@ -3614,36 +3723,6 @@ export function Studio({
                     <x.icon className="size-4" /> {x.label}
                   </button>
                 ))}
-                {scene === 'pdf' && pdfView && pdfView.pages > 0 && (
-                  <span className="flex items-center gap-1 rounded-full bg-black/55 px-1 py-1 text-xs font-semibold text-white backdrop-blur">
-                    <button
-                      type="button"
-                      onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
-                      aria-label="Página anterior"
-                      className="grid size-7 place-items-center rounded-full"
-                    >
-                      <ChevronLeft className="size-4" />
-                    </button>
-                    <span className="tabular-nums">
-                      {pdfView.page}/{pdfView.pages}
-                    </span>
-                    {/* como no caderno: na última página, o botão vira "+" e cria uma página em branco */}
-                    {pdfView.page >= pdfView.pages && writing ? (
-                      <button type="button" onClick={addBlankPage} aria-label="Nova página em branco" title="Nova página em branco" className="grid size-7 place-items-center rounded-full">
-                        <Plus className="size-4" />
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
-                        aria-label="Próxima página"
-                        className="grid size-7 place-items-center rounded-full"
-                      >
-                        <ChevronRight className="size-4" />
-                      </button>
-                    )}
-                  </span>
-                )}
                 {onAir ? (
                   <button
                     type="button"
@@ -3752,88 +3831,16 @@ export function Studio({
             </button>
           ))}
         </div>
-        {/* PDF na live */}
+        {/* Caderno da live (editor Traço) */}
         {scene === 'pdf' && (
           <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
-            {docs.length ? (
-              <Select
-                value={pdfId}
-                onChange={(e) => void openPdf(e.target.value)}
-                aria-label="PDF para mostrar"
-                className={docs.length > 1 ? 'hidden' : ''}
-              >
-                <option value="" disabled>
-                  Escolha o PDF
-                </option>
-                {docs.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.title}
-                  </option>
-                ))}
-              </Select>
-            ) : (
-              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, abaixo, ou escreva num caderno em branco.</p>
-            )}
-            <button type="button" onClick={() => void newBoard()} className={buttonClass('outline', 'md', 'w-full')}>
-              <FilePlus2 className="size-4" /> Novo caderno em branco
-            </button>
-            {pdfBusy && (
-              <p className="flex items-center gap-2 text-xs text-muted">
-                <Spinner /> Abrindo o PDF…
-              </p>
-            )}
-            {pdfView && pdfView.pages > 0 && (
-              <>
-                <div className="flex items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
-                    disabled={pdfView.page <= 1}
-                    aria-label="Página anterior"
-                    className={buttonClass('secondary', 'icon', 'size-11')}
-                  >
-                    <ChevronLeft className="size-5" />
-                  </button>
-                  <form
-                    className="flex items-center gap-1.5 text-sm font-semibold text-ink"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const n = parseInt(pageInput, 10);
-                      if (n) void pdf.current?.goTo(n);
-                      (document.activeElement as HTMLElement | null)?.blur();
-                    }}
-                  >
-                    Página
-                    <input
-                      value={pageInput}
-                      onChange={(e) => setPageInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                      onBlur={() => {
-                        const n = parseInt(pageInput, 10);
-                        if (n && n !== pdfView.page) void pdf.current?.goTo(n);
-                        else setPageInput(String(pdfView.page));
-                      }}
-                      inputMode="numeric"
-                      aria-label="Ir para a página"
-                      className="h-9 w-14 rounded-lg border border-line-strong bg-bg-elev text-center tabular-nums"
-                    />
-                    <span className="tabular-nums">de {pdfView.pages}</span>
-                  </form>
-                  <button
-                    type="button"
-                    onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
-                    disabled={pdfView.page >= pdfView.pages}
-                    aria-label="Próxima página"
-                    className={buttonClass('secondary', 'icon', 'size-11')}
-                  >
-                    <ChevronRight className="size-5" />
-                  </button>
-                </div>
-                <label className="flex items-center gap-2 text-xs text-ink-2">
-                  <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
-                </label>
-                <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
-              </>
-            )}
+            <p className="text-xs text-muted">
+              Escreva no caderno acima. PDFs da aula, páginas novas e outros cadernos entram pelo <b>+</b> do caderno; o que aparece nele vai para a live.
+            </p>
+            <label className="flex items-center gap-2 text-xs text-ink-2">
+              <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
+            </label>
+            <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
           </div>
         )}
 

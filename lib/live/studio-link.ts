@@ -259,6 +259,16 @@ export class StudioLink {
     this.postNow(m, to);
   }
 
+  /**
+   * Manda na hora, sem juntar nem descartar (o caderno: cada traço conta). `except`: não manda de volta para
+   * quem mandou (quem transmite repassa o que chegou de um aparelho para os outros).
+   */
+  sendNow(m: LinkMsg, opts: { to?: string; except?: string } = {}) {
+    const text = JSON.stringify(m);
+    if (this.vdc?.readyState === 'open' && (!opts.to || opts.to === this.vTarget) && opts.except !== this.vTarget) this.vdc.send(text);
+    for (const [d, p] of this.peers) if (p.dc?.readyState === 'open' && (!opts.to || opts.to === d) && d !== opts.except) p.dc.send(text);
+  }
+
   private postNow(m: LinkMsg, to?: string) {
     const text = JSON.stringify(m);
     if (this.vdc?.readyState === 'open' && (!to || to === this.vTarget)) this.vdc.send(text);

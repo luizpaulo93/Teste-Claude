@@ -561,6 +561,7 @@ export async function setStudioScene(id: string, patch: StudioScene) {
         .slice(0, 200)
         .map(([k, n]) => [k, Math.round(n)]),
     );
+  if (typeof patch.trNb === 'string' && /^[\w-]{1,48}$/.test(patch.trNb)) clean.trNb = patch.trNb;
   const pp = patch.paper;
   if (pp && (pp.type === 'blank' || pp.type === 'lined' || pp.type === 'grid' || pp.type === 'dots') && typeof pp.size === 'number' && pp.size >= 12 && pp.size <= 120)
     clean.paper = { type: pp.type, size: Math.round(pp.size) };
