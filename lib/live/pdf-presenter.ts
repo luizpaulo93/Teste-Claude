@@ -38,33 +38,50 @@ const FIT = 1 / (1 + 2 * MARGIN);
 const DESK = '#edf0f4';
 const KEEP = 10; // páginas renderizadas guardadas na memória
 
-/** papel das páginas em branco (como no caderno): em branco, pautado ou quadriculado; size = distância entre as linhas */
+/**
+ * Papel das páginas em branco (como no caderno): em branco, com linhas, quadriculado ou pontilhado;
+ * size = distância entre as linhas. As linhas são só para guiar o professor: não entram na imagem da live
+ * nem no PDF exportado (ficam numa camada à parte, na tela de quem escreve).
+ */
 export interface Paper {
-  type: 'blank' | 'lined' | 'grid';
+  type: 'blank' | 'lined' | 'grid' | 'dots';
   size: number;
 }
+/** cores bem fraquinhas (sobre o branco da folha) */
+const PAPER_COLOR = { lined: '#e3eaf5', grid: '#eaf0f8', dots: '#cfd9e8', margin: '#f7dfe2' };
 /**
- * Linhas do papel numa página em branco (bem claras, só para guiar a escrita). A página tem 1000 unidades de
- * largura; `k` = pontos da tela por largura de página.
+ * Linhas do papel numa página em branco. A página tem 1000 unidades de largura; `k` = pontos da tela por
+ * largura de página; `px` = um ponto físico da tela.
  */
-function drawPaper(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, ratio: number, paper: Paper | null) {
-  if (!paper || paper.type === 'blank') return;
+function drawPaper(ctx: CanvasRenderingContext2D, x: number, y: number, k: number, ratio: number, paper: Paper, px = 1) {
   const u = k / 1000;
   const gap = Math.max(12, paper.size || 40) * u;
-  const lw = Math.max(1, 0.7 * u);
+  if (gap < 3 * px) return; // muito afastado: as linhas viraram um borrão, melhor não mostrar
+  const lw = px;
   const H = ratio * k;
   ctx.save();
   ctx.beginPath();
   ctx.rect(x, y, k, H);
   ctx.clip();
-  ctx.fillStyle = paper.type === 'grid' ? '#dfe8f6' : '#d3dff2';
   if (paper.type === 'lined') {
+    ctx.fillStyle = PAPER_COLOR.lined;
     for (let ly = gap * 2; ly < H - gap * 0.6; ly += gap) ctx.fillRect(x, Math.round(y + ly), k, lw);
-    ctx.fillStyle = '#f6c9cf';
+    ctx.fillStyle = PAPER_COLOR.margin;
     ctx.fillRect(Math.round(x + gap * 2.2), y, lw, H);
-  } else {
+  } else if (paper.type === 'grid') {
+    ctx.fillStyle = PAPER_COLOR.grid;
     for (let ly = gap; ly < H; ly += gap) ctx.fillRect(x, Math.round(y + ly), k, lw);
     for (let lx = gap; lx < k; lx += gap) ctx.fillRect(Math.round(x + lx), y, lw, H);
+  } else if (paper.type === 'dots') {
+    ctx.fillStyle = PAPER_COLOR.dots;
+    const d = Math.max(0.9 * px, Math.min(1.6 * px, gap * 0.045));
+    ctx.beginPath();
+    for (let ly = gap; ly < H; ly += gap)
+      for (let lx = gap; lx < k; lx += gap) {
+        ctx.moveTo(x + lx + d, y + ly);
+        ctx.arc(x + lx, y + ly, d, 0, 2 * Math.PI);
+      }
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -152,8 +169,28 @@ export class PdfPresenter {
   }
   set paper(p: Paper | null) {
     this.paperNow = p && p.type !== 'blank' ? p : null;
-    this.pagesVer++;
-    this.onChange?.();
+  }
+  /**
+   * Linhas do papel nas páginas em branco visíveis, na camada só do professor. `v`: onde o documento está nessa
+   * camada (x, y = canto da área do quadro; k = pontos por largura de página; w, h = tamanho da área).
+   */
+  drawPaperLayer(ctx: CanvasRenderingContext2D, v: { x: number; y: number; k: number; cx: number; cy: number; w: number; h: number }, px = 1) {
+    const paper = this.paperNow;
+    if (!paper || !this.pages) return;
+    const top0 = v.cy;
+    const top1 = v.cy + v.h / v.k;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(v.x, v.y, v.w, v.h);
+    ctx.clip();
+    for (let i = this.docPages + 1; i <= this.pages; i++) {
+      const top = this.tops[i - 1];
+      const r = this.ratios[i - 1];
+      if (top + r < top0) continue;
+      if (top > top1) break;
+      drawPaper(ctx, v.x + (0 - v.cx) * v.k, v.y + (top - v.cy) * v.k, v.k, r, paper, px);
+    }
+    ctx.restore();
   }
 
   /**
@@ -175,7 +212,8 @@ export class PdfPresenter {
       const base = p.getViewport({ scale: 1 });
       await p.render({ canvas: c, canvasContext: ctx, viewport: p.getViewport({ scale: c.width / base.width }) }).promise;
       if (id !== this.docId) return null;
-    } else drawPaper(ctx, 0, 0, c.width, r, this.paperNow);
+    }
+    // (página em branco: só o branco; as linhas do papel não entram no PDF exportado)
     this.ink?.drawDoneAll(ctx, { x: 0, y: 0, k: c.width, cx: 0, cy: this.tops[i - 1] ?? 0, w: c.width, h: c.height });
     return c;
   }
@@ -513,7 +551,6 @@ export class PdfPresenter {
       else {
         ctx.fillStyle = '#fff';
         ctx.fillRect(dx, dy, k, r * k);
-        if (i > this.docPages) drawPaper(ctx, dx, dy, k, r, this.paperNow);
       }
       this.request(i);
     }

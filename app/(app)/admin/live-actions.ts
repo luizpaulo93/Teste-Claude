@@ -562,7 +562,7 @@ export async function setStudioScene(id: string, patch: StudioScene) {
         .map(([k, n]) => [k, Math.round(n)]),
     );
   const pp = patch.paper;
-  if (pp && (pp.type === 'blank' || pp.type === 'lined' || pp.type === 'grid') && typeof pp.size === 'number' && pp.size >= 12 && pp.size <= 120)
+  if (pp && (pp.type === 'blank' || pp.type === 'lined' || pp.type === 'grid' || pp.type === 'dots') && typeof pp.size === 'number' && pp.size >= 12 && pp.size <= 120)
     clean.paper = { type: pp.type, size: Math.round(pp.size) };
   if (clean.extra) {
     // páginas em branco nunca somem: um aparelho que ainda não soube de uma página nova não a apaga dos outros

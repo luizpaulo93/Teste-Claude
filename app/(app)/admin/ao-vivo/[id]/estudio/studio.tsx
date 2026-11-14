@@ -342,7 +342,7 @@ export function Studio({
   /** o que dá para abrir na live: os PDFs e os quadros em branco */
   const docs = [...materials.map((m) => ({ id: m.id, title: m.title })), ...boards.map((id) => ({ id, title: `Caderno ${id.slice(7)}` }))];
   /** papel das páginas em branco (em branco, pautado ou quadriculado), como no caderno */
-  const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid'; size: number }>({ type: 'blank', size: 40 });
+  const [paper, setPaper] = useState<{ type: 'blank' | 'lined' | 'grid' | 'dots'; size: number }>({ type: 'blank', size: 40 });
   /** barra do topo do modo escrita: painel aberto (páginas ou papel) e exportação em andamento */
   const [topPop, setTopPop] = useState<'pages' | 'paper' | null>(null);
   const [exporting, setExporting] = useState('');
@@ -1462,7 +1462,7 @@ export function Studio({
     pipBox?: { x: number; y: number; w: number };
     pipAspect?: number;
     extra?: Record<string, number>;
-    paper?: { type: 'blank' | 'lined' | 'grid'; size: number };
+    paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
   };
   const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.extra, x.paper]);
   const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, extra, paper, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
@@ -2409,8 +2409,55 @@ export function Studio({
    * (nada é desenhado por quadro: a rolagem não pesa) e volta assim que para.
    */
   const sharpRef = useRef<HTMLCanvasElement>(null);
-  const sharpOn = writing && scene === 'pdf';
+  /**
+   * Linhas do papel (com linhas, quadriculado ou pontilhado), como no caderno: numa camada só da tela do
+   * professor — os alunos não veem e não entram no PDF exportado. Redesenhada só quando o PDF mexe.
+   */
   const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
+  const paperRef = useRef<HTMLCanvasElement>(null);
+  const paperOn = scene === 'pdf' && paper.type !== 'blank';
+  useEffect(() => {
+    const c = paperRef.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    if (!paperOn) {
+      ctx.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    let raf = 0;
+    let key = '';
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = canvasRef.current;
+      const p = pdf.current;
+      if (!el || !p?.pages) return;
+      const f = frameRect(el);
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const W = Math.round(f.r.width * dpr);
+      const H = Math.round(f.r.height * dpr);
+      const k = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}|${p.pages}|${paper.type}|${paper.size}|${pipHole ? `${pipHole.x},${pipHole.y},${pipHole.w},${pipHole.h}` : ''}`;
+      if (k === key) return;
+      key = k;
+      if (c.width !== W || c.height !== H) {
+        c.width = W;
+        c.height = H;
+      }
+      ctx.clearRect(0, 0, W, H);
+      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      // a câmera fica por cima
+      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
+      ctx.clip('evenodd');
+      p.drawPaperLayer(ctx, view, Math.max(1, Math.round(dpr * 0.75)));
+      ctx.restore();
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paperOn, paper.type, paper.size, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
+  const sharpOn = writing && scene === 'pdf';
   useEffect(() => {
     const c = sharpRef.current;
     const ctx = c?.getContext('2d');
@@ -2938,6 +2985,8 @@ export function Studio({
                 data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
+              {/* linhas do papel: só para o professor (mistura por baixo da tinta: a escrita fica por cima) */}
+              <canvas ref={paperRef} aria-hidden data-paper className="pointer-events-none absolute inset-0 size-full mix-blend-multiply" />
               <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
               {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
@@ -3353,8 +3402,9 @@ export function Studio({
                       {(
                         [
                           ['blank', 'Em branco'],
-                          ['lined', 'Pautado'],
+                          ['lined', 'Linhas'],
                           ['grid', 'Quadriculado'],
+                          ['dots', 'Pontilhado'],
                         ] as const
                       ).map(([k, l]) => (
                         <button
@@ -3362,7 +3412,7 @@ export function Studio({
                           type="button"
                           onClick={() => setPaper((o) => ({ ...o, type: k }))}
                           aria-pressed={paper.type === k}
-                          className={cn('h-9 flex-1 rounded-lg text-xs font-bold', paper.type === k ? 'bg-white shadow' : 'text-[#55627b]')}
+                          className={cn('h-9 flex-1 rounded-lg text-[11px] font-bold', paper.type === k ? 'bg-white shadow' : 'text-[#55627b]')}
                         >
                           {l}
                         </button>
@@ -3382,7 +3432,7 @@ export function Studio({
                         className="w-full accent-[#2347d9]"
                       />
                     </label>
-                    <p className="text-[11px] text-[#55627b]">Vale para as páginas em branco. As linhas ficam bem clarinhas, só para guiar a escrita.</p>
+                    <p className="text-[11px] text-[#55627b]">Vale para as páginas em branco. Só você vê as linhas: elas não aparecem para os alunos na live nem no PDF exportado.</p>
                   </div>
                 )}
                 {topPop === 'pages' && pdf.current && (
