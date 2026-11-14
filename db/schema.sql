@@ -886,3 +886,30 @@ create index if not exists mentoria_checks_list_idx on mentoria_checks (list_id)
 -- Versão 33: resolução em blocos (texto, equação, tabela e imagem), com as imagens no lugar certo.
 -- ============================================================================
 alter table questions add column if not exists resolucao_blocos jsonb not null default '[]'::jsonb;
+
+-- ============================================================================
+-- Versão 34: cadernos do estúdio (editor Traço): cadernos, páginas e o que foi escrito em cada página.
+-- ============================================================================
+create table if not exists live_tr_nbs (
+  live_id text not null,
+  id text not null,
+  data jsonb not null,                       -- { id, name, paper, orient, pages: [ids] }
+  updated_at timestamptz not null default now(),
+  primary key (live_id, id)
+);
+create table if not exists live_tr_pages (
+  live_id text not null,
+  id text not null,
+  nb text not null,
+  data jsonb not null,                       -- { w, h, bgRef?: { path, n } }
+  primary key (live_id, id)
+);
+create table if not exists live_tr_items (
+  live_id text not null,
+  page_id text not null,
+  id text not null,
+  n bigint generated always as identity,
+  data text not null,                        -- traço ou imagem (JSON do Traço)
+  primary key (live_id, page_id, id)
+);
+create index if not exists live_tr_items_order on live_tr_items (live_id, page_id, n);

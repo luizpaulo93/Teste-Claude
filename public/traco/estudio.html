@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Caderno do estúdio</title>
+  <link rel="stylesheet" href="app.css">
+  <style>
+    /* estúdio: a câmera da live, entre o papel e a tinta (a escrita fica por cima) */
+    .cam-slot { position: absolute; inset: 0; pointer-events: none; }
+    .cam-slot video { position: absolute; object-fit: cover; border-radius: 6%; box-shadow: 0 0 0 2px rgba(255,255,255,.85); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="js/estudio.js"></script>
+</body>
+</html>
