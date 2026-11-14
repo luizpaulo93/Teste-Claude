@@ -2363,7 +2363,7 @@ export function Studio({
    * aparelho até desligar). Conta os traços da caneta, os que o sistema cortou, os toques de palma ignorados e os
    * engasgos da tela, e guarda os últimos acontecimentos com o horário — o botão "Copiar relatório" junta tudo.
    */
-  const diag = useRef({ on: false, t0: 0, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, log: [] as string[], lastOrphan: 0 });
+  const diag = useRef({ on: false, t0: 0, pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, outside: 0, log: [] as string[], lastOrphan: 0 });
   const diagEl = useRef<HTMLDivElement>(null);
   const [diagOn, setDiagOn] = useState(false);
   const diagLog = (m: string) => {
@@ -2401,11 +2401,41 @@ export function Studio({
     raf = requestAnimationFrame(loop);
     const t = window.setInterval(() => {
       if (diagEl.current)
-        diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} sem traço aberto · palma ignorada: ${d.palm} · engasgos: ${d.hitch} (maior ${d.worst} ms)`;
+        diagEl.current.textContent = `caneta: ${d.pen} traços · ${d.outside} fora da folha · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} sem traço aberto · palma ignorada: ${d.palm} · engasgos: ${d.hitch} (maior ${d.worst} ms)`;
     }, 400);
     return () => {
       cancelAnimationFrame(raf);
       window.clearInterval(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [diagOn]);
+  // relatório: onde a caneta encosta (se cair fora da folha, é algo por cima "pegando" a caneta)
+  useEffect(() => {
+    if (!diagOn) return;
+    const desc = (el: Element | null) => {
+      if (!el) return 'nada';
+      const h = el as HTMLElement;
+      return [h.tagName.toLowerCase(), h.getAttribute('aria-label'), h.getAttribute('role'), typeof h.className === 'string' ? h.className.split(' ').slice(0, 3).join('.') : ''].filter(Boolean).join(' ');
+    };
+    const down = (e: PointerEvent) => {
+      if (e.pointerType !== 'pen' || !writingRef.current) return;
+      if (e.target !== canvasRef.current) {
+        diag.current.outside++;
+        diagLog(`caneta encostou FORA da folha, em: ${desc(e.target as Element)}`);
+      }
+    };
+    const lost = (e: PointerEvent) => e.pointerType === 'pen' && inkPtr.current && diagLog('a folha perdeu a captura da caneta');
+    const blur = () => diagLog('a página perdeu o foco');
+    const vis = () => diagLog(`página ${document.visibilityState === 'visible' ? 'visível' : 'escondida'}`);
+    document.addEventListener('pointerdown', down, true);
+    document.addEventListener('lostpointercapture', lost, true);
+    window.addEventListener('blur', blur);
+    document.addEventListener('visibilitychange', vis);
+    return () => {
+      document.removeEventListener('pointerdown', down, true);
+      document.removeEventListener('lostpointercapture', lost, true);
+      window.removeEventListener('blur', blur);
+      document.removeEventListener('visibilitychange', vis);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diagOn]);
@@ -2425,7 +2455,7 @@ export function Studio({
       `aparelho: ${navigator.userAgent}`,
       `tela: ${window.innerWidth}×${window.innerHeight} · densidade ${window.devicePixelRatio}`,
       `este aparelho ${onAir ? 'TRANSMITE a live' : light ? 'só controla (outro aparelho transmite)' : 'é o principal (live parada)'} · ferramenta ${inkTool} · ${ink.current.count} traços na página`,
-      `caneta: ${d.pen} traços · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} vezes mexendo sem traço aberto · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`,
+      `caneta: ${d.pen} traços · ${d.outside} toques fora da folha · ${d.cut} cortados pelo sistema · ${d.resumed} retomados · ${d.orphan} vezes mexendo sem traço aberto · palma ignorada: ${d.palm} · engasgos da tela: ${d.hitch} (maior ${d.worst} ms)`,
       '',
       'últimos acontecimentos:',
       ...d.log,
@@ -2439,7 +2469,7 @@ export function Studio({
     }
   }
   const resetDiag = () => {
-    Object.assign(diag.current, { t0: performance.now(), pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, log: [] });
+    Object.assign(diag.current, { t0: performance.now(), pen: 0, cut: 0, palm: 0, hitch: 0, worst: 0, orphan: 0, resumed: 0, outside: 0, log: [] });
   };
   const writingNow = useRef(false);
   writingNow.current = writing && scene === 'pdf';
@@ -3134,7 +3164,10 @@ export function Studio({
                     onPointerUp={pipUp}
                     onPointerCancel={pipUp}
                     className={cn(
-                      'pointer-events-auto absolute cursor-move touch-none rounded-[6%]',
+                      'absolute cursor-move touch-none rounded-[6%]',
+                      // escrevendo: a caneta passa por cima da câmera e escreve (o quadradinho, mesmo sem imagem, "pegava"
+                      // a caneta e a escrita sumia ali); para mover a câmera, use a alça
+                      writing && inkTool !== 'hand' ? 'pointer-events-none' : 'pointer-events-auto',
                       // aparelho que só controla: contorno para ver onde está a câmera do principal
                       light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
@@ -3167,6 +3200,20 @@ export function Studio({
                             top: `${(-pipRect.y / pipRect.h) * 100}%`,
                           }}
                         />
+                      </div>
+                    )}
+                    {writing && inkTool !== 'hand' && (
+                      <div
+                        role="button"
+                        aria-label="Mover a câmera"
+                        title="Arraste para mover a câmera"
+                        onPointerDown={(e) => pipDown(e, 'move')}
+                        onPointerMove={pipMove}
+                        onPointerUp={pipUp}
+                        onPointerCancel={pipUp}
+                        className="pointer-events-auto absolute -top-3 left-1/2 grid h-6 w-12 -translate-x-1/2 cursor-move touch-none place-items-center rounded-full border-2 border-white bg-black/60 shadow"
+                      >
+                        <span className="block h-0.5 w-5 rounded-full bg-white" />
                       </div>
                     )}
                     {pipSel && (
