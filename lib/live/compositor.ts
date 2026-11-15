@@ -78,6 +78,14 @@ class Source {
   }
 }
 
+export type TracoLayers = {
+  bg: HTMLCanvasElement;
+  hl: HTMLCanvasElement;
+  ink: HTMLCanvasElement;
+  live: HTMLCanvasElement;
+  rev?: { bg: number; ink: number; live: number };
+};
+
 export class Compositor {
   scene: Scene = 'camera';
   corner: Corner = 'br';
@@ -98,7 +106,12 @@ export class Compositor {
    * Caderno do estúdio (editor Traço): camadas da folha, desenhadas na live na ordem papel → câmera →
    * marca-texto → tinta → traço em andamento (a escrita fica por cima da câmera). As linhas do papel não entram.
    */
-  traco?: () => { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement } | null;
+  traco?: () => TracoLayers | null;
+  /**
+   * Cópias das camadas do caderno no tamanho da live, refeitas só quando a camada muda (a folha do caderno é
+   * desenhada na resolução da tela — redimensionar tudo a cada quadro pesava e travava a caneta).
+   */
+  private trCache: { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; key: { bg: string; ink: string } } | null = null;
   private cam: Source | ElSource | null = null;
   private screen: Source | ElSource | null = null;
   private ctx: CanvasRenderingContext2D;
@@ -121,9 +134,17 @@ export class Compositor {
   /** Muda o ritmo de desenho (a live com quadros adaptativos pede mais ou menos quadros). */
   setFps(fps: number) {
     fps = Math.max(1, fps);
-    if (fps === this.fps) return;
+    if (fps === this.fps && !this.paused) return;
     this.fps = fps;
+    this.paused = false;
     this.tick.set(1000 / fps);
+  }
+  /** Para de desenhar (aparelho que só escreve no caderno: a prévia da live fica atrás dele e ninguém vê). */
+  private paused = false;
+  pause() {
+    if (this.paused) return;
+    this.paused = true;
+    this.tick.set(0);
   }
 
   resize(w: number, h: number) {
@@ -230,19 +251,14 @@ export class Compositor {
     c.fillRect(0, 0, W, H);
     const cam = this.cam?.frame ?? null;
     const scr = this.screen?.frame ?? null;
-    let tr: { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement } | null = null;
+    let tr: TracoLayers | null = null;
     if (this.scene === 'camera') {
       if (cam) this.drawCam(cam, 0, 0, W, H, this.fit, true);
       else this.message('Sem câmera');
     } else if (this.scene === 'pdf') {
       const t = this.traco?.() ?? null;
       tr = t && t.bg.width ? t : null;
-      if (tr) {
-        // a mesa (no caderno ela é a cor de fundo da tela, não está desenhada)
-        c.fillStyle = '#edf0f4';
-        c.fillRect(0, 0, W, H);
-        c.drawImage(tr.bg, 0, 0, W, H);
-      }
+      if (tr) c.drawImage(this.tracoCache(tr, W, H).bg, 0, 0);
       else this.message('Abrindo o caderno…');
     } else if (scr) this.fitFrame(scr, 0, 0, W, H);
     else this.message('Escolha a tela ou a janela para espelhar');
@@ -270,15 +286,53 @@ export class Compositor {
     }
     // caderno: a escrita por cima da câmera (marca-texto translúcido, como na folha)
     if (tr) {
+      const k = this.trCache!;
       c.save();
       c.globalAlpha = 0.5;
       c.globalCompositeOperation = 'multiply';
-      c.drawImage(tr.hl, 0, 0, W, H);
+      c.drawImage(k.hl, 0, 0);
       c.restore();
-      c.drawImage(tr.ink, 0, 0, W, H);
-      c.drawImage(tr.live, 0, 0, W, H);
+      c.drawImage(k.ink, 0, 0);
     }
     this.onFrame?.(this.canvas);
+  }
+
+  /** cópias das camadas do caderno no tamanho da live (refeitas só quando mudam) */
+  private tracoCache(tr: TracoLayers, W: number, H: number) {
+    let k = this.trCache;
+    if (!k || k.bg.width !== W || k.bg.height !== H) {
+      const mk = () => {
+        const x = document.createElement('canvas');
+        x.width = W;
+        x.height = H;
+        return x;
+      };
+      k = this.trCache = { bg: mk(), hl: mk(), ink: mk(), key: { bg: '', ink: '' } };
+    }
+    const r = tr.rev;
+    const size = `${tr.bg.width}x${tr.bg.height}`;
+    // sem versão (não deveria acontecer): refaz sempre
+    const bgKey = r ? `${r.bg}|${size}` : String(Math.random());
+    const inkKey = r ? `${r.ink}|${r.live}|${size}` : String(Math.random());
+    if (k.key.bg !== bgKey) {
+      k.key.bg = bgKey;
+      const g = k.bg.getContext('2d')!;
+      // a mesa (no caderno ela é a cor de fundo da tela, não está desenhada)
+      g.fillStyle = '#edf0f4';
+      g.fillRect(0, 0, W, H);
+      g.drawImage(tr.bg, 0, 0, W, H);
+    }
+    if (k.key.ink !== inkKey) {
+      k.key.ink = inkKey;
+      const h = k.hl.getContext('2d')!;
+      h.clearRect(0, 0, W, H);
+      h.drawImage(tr.hl, 0, 0, W, H);
+      const g = k.ink.getContext('2d')!;
+      g.clearRect(0, 0, W, H);
+      g.drawImage(tr.ink, 0, 0, W, H);
+      g.drawImage(tr.live, 0, 0, W, H);
+    }
+    return k;
   }
 
   private message(text: string) {

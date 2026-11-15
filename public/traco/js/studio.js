@@ -21,6 +21,14 @@ export class StudioEditor extends Editor {
     this.nbKey = this.nbSig();
     // enquadramento: só o que a pessoa mexeu vai para os outros (o que veio de fora não volta)
     this.board.onView = (v, user) => { if (user) this.viewChanged(); };
+    // versão de cada camada: a live só refaz a sua cópia de uma camada quando ela mudou de fato
+    // (parado, a live não gasta nada com a folha; escrevendo, só a tinta é refeita)
+    this.rev = { bg: 0, ink: 0, live: 0 };
+    const b = this.board;
+    for (const [name, key] of [["renderBg", "bg"], ["renderInk", "ink"], ["commitStroke", "ink"], ["drawLive", "live"]]) {
+      const f = b[name].bind(b);
+      b[name] = (...args) => { this.rev[key]++; return f(...args); };
+    }
   }
 
   // estúdio: tela cheia e voltar são os do estúdio (o caderno fica dentro dele)
@@ -350,7 +358,7 @@ export class StudioEditor extends Editor {
   // camadas da folha, para a imagem da live (papel → câmera → marca-texto → tinta → ao vivo)
   layers() {
     const b = this.board;
-    return { bg: b.cBg, hl: b.cHl, ink: b.cInk, live: b.cLive, camSlot: b.camSlot, root: b.root, layers: b.layers };
+    return { bg: b.cBg, hl: b.cHl, ink: b.cInk, live: b.cLive, camSlot: b.camSlot, root: b.root, layers: b.layers, rev: this.rev };
   }
 
   async destroy() {

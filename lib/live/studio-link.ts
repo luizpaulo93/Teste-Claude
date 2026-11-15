@@ -144,6 +144,12 @@ export class StudioLink {
     // aparelho que está servindo de câmera: ninguém olha a tela dele, o espelho vai no mínimo
     // (sobra processador e internet para a transmissão)
     const cam = this.feeding.has(device);
+    // aparelho no caderno (só escreve): não precisa da imagem da live — nada é enviado para ele
+    if (this.muted.has(device)) {
+      params.encodings = [{ active: false }];
+      void sender.setParameters(params).catch(() => {});
+      return;
+    }
     params.encodings = [
       cam
         ? { maxBitrate: 120_000, maxFramerate: 2, scaleResolutionDownBy: Math.max(1, w / 320) }
@@ -151,6 +157,17 @@ export class StudioLink {
     ];
     params.degradationPreference = 'maintain-resolution';
     void sender.setParameters(params).catch(() => {});
+  }
+
+  /** aparelhos que pediram para não receber a imagem da live */
+  private muted = new Set<string>();
+  /** Liga ou desliga o envio da imagem da live para um aparelho (o que escreve no caderno não precisa dela). */
+  setMirrorFor(device: string, on: boolean) {
+    if (on === !this.muted.has(device)) return; // já está assim
+    if (on) this.muted.delete(device);
+    else this.muted.add(device);
+    const p = this.peers.get(device);
+    if (p) for (const sd of p.pc.getSenders()) if (sd.track && sd.track.kind === 'video') this.tune(sd, device);
   }
 
   /** O aparelho da live apertou (perdendo quadros): o espelho fica no mínimo para não disputar com a transmissão. */

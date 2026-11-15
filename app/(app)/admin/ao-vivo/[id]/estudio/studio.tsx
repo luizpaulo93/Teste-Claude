@@ -252,7 +252,14 @@ export function Studio({
     goPage: (nb: string, pg: string) => Promise<void>;
     notebook: () => string | null;
     remote: (m: unknown) => void;
-    layers: () => { bg: HTMLCanvasElement; hl: HTMLCanvasElement; ink: HTMLCanvasElement; live: HTMLCanvasElement; camSlot: HTMLElement } | null;
+    layers: () => {
+      bg: HTMLCanvasElement;
+      hl: HTMLCanvasElement;
+      ink: HTMLCanvasElement;
+      live: HTMLCanvasElement;
+      camSlot: HTMLElement;
+      rev: { bg: number; ink: number; live: number };
+    } | null;
     flush: () => Promise<unknown>;
     materials: (list: { id: string; title: string; path: string }[]) => void;
   };
@@ -311,9 +318,11 @@ export function Studio({
     const doc = slot.ownerDocument;
     let box = slot.querySelector<HTMLDivElement>('div[data-cam]');
     const track = camTrack.current;
-    const src: MediaStream | null = track && track.readyState === 'live' ? (camStream.current?.track === track ? camStream.current.stream : new MediaStream([track])) : light ? mirrorStream : null;
+    const src: MediaStream | null = track && track.readyState === 'live' ? (camStream.current?.track === track ? camStream.current.stream : new MediaStream([track])) : null;
+    // quem só escreve (não transmite): só o contorno de onde a câmera está — sem receber vídeo, como no TraçoApp
+    const outline = !src && light;
     if (track && src && camStream.current?.track !== track) camStream.current = { track, stream: src };
-    if (scene !== 'pdf' || !pip || !src) {
+    if (scene !== 'pdf' || !pip || (!src && !outline)) {
       box?.remove();
       return;
     }
@@ -333,6 +342,14 @@ export function Studio({
     const r = pipRect;
     Object.assign(box.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
     const v = box.querySelector('video')!;
+    if (outline) {
+      Object.assign(box.style, { background: 'rgba(20,33,61,.06)', boxShadow: 'inset 0 0 0 2px rgba(20,33,61,.25)' });
+      v.srcObject = null;
+      v.style.display = 'none';
+      return;
+    }
+    Object.assign(box.style, { background: '#000', boxShadow: '0 0 0 2px rgba(255,255,255,.85)' });
+    v.style.display = '';
     if (v.srcObject !== src) {
       v.srcObject = src;
       void v.play().catch(() => {});
@@ -352,7 +369,7 @@ export function Studio({
   const tracoLayers = () => {
     if (sceneRef.current !== 'pdf') return null;
     const l = trApi.current?.layers();
-    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live } : null;
+    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev } : null;
   };
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -493,8 +510,22 @@ export function Studio({
     );
   };
   useEffect(() => {
-    if (!onAir) comp.current?.setFps(light ? 4 : 30);
-  }, [light, onAir]);
+    // Quem só escreve no caderno trabalha como no TraçoApp: só escreve e manda os traços. A prévia da live
+    // (atrás do caderno, ninguém vê) para, e a imagem da live deixa de vir para cá — quem transmite desenha a
+    // folha e gera o vídeo; aqui sobra tudo para a caneta.
+    if (!onAir) {
+      if (light && scene === 'pdf') comp.current?.pause();
+      else comp.current?.setFps(light ? 4 : 30);
+    }
+  }, [light, onAir, scene]);
+  // pede (e repete a cada 5 s, para valer depois de reconexões) a imagem da live só quando ela aparece aqui
+  useEffect(() => {
+    const want = !(light && !onAir && scene === 'pdf');
+    const tell = () => link.current?.sendNow({ t: 'mirror', on: want });
+    tell();
+    const t = window.setInterval(tell, 5000);
+    return () => window.clearInterval(t);
+  }, [light, onAir, scene]);
   /** aparelhos abertos no estúdio (nome, câmeras, microfones) */
   const [devices, setDevices] = useState<StudioDevice[]>([]);
   const reported = useRef({ key: '', at: 0 });
@@ -1195,6 +1226,10 @@ export function Studio({
       if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
       return;
     }
+    if (m.t === 'mirror') {
+      link.current?.setMirrorFor(from, Boolean(m.on));
+      return;
+    }
     if (m.t === 'scene') void applyScene(m.s as SceneState);
     else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
     else if (m.t === 'cam' && caster.current) setCam(String(m.id));
@@ -1601,7 +1636,9 @@ export function Studio({
                 onPointerCancel={onUp}
                 className={cn(
                   'size-full object-contain',
-                  (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing',
+                  scene === 'camera' && fit === 'cover' && 'cursor-grab touch-none active:cursor-grabbing',
+                  // no caderno, a prévia fica atrás dele: fora da tela (o navegador não gasta para mostrá-la; a live segue igual)
+                  scene === 'pdf' && trMounted && 'invisible',
                 )}
                 aria-label="Prévia da transmissão"
               />

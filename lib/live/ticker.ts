@@ -34,7 +34,9 @@ export function workerTicker(ms: number, fn: () => void): Ticker {
     worker.onmessage = (e) => run(typeof e.data === 'number' && e.data > 0 ? e.data : Date.now());
     worker.postMessage(every);
     return {
+      // 0: para (sem batidas) até o próximo set
       set: (n) => {
+        if (n <= 0) return worker.postMessage(0);
         every = clamp(n);
         worker.postMessage(every);
       },
@@ -48,7 +50,7 @@ export function workerTicker(ms: number, fn: () => void): Ticker {
     return {
       set: (n) => {
         window.clearInterval(id);
-        id = window.setInterval(fn, n);
+        if (n > 0) id = window.setInterval(fn, n);
       },
       stop: () => window.clearInterval(id),
     };
