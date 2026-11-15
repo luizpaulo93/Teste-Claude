@@ -84,6 +84,8 @@ export type TracoLayers = {
   ink: HTMLCanvasElement;
   live: HTMLCanvasElement;
   rev?: { bg: number; ink: number; live: number };
+  /** trecho das camadas que vai para a live (pontos do canvas) */
+  crop?: { x: number; y: number; w: number; h: number };
 };
 
 export class Compositor {
@@ -310,7 +312,9 @@ export class Compositor {
       k = this.trCache = { bg: mk(), hl: mk(), ink: mk(), key: { bg: '', ink: '' } };
     }
     const r = tr.rev;
-    const size = `${tr.bg.width}x${tr.bg.height}`;
+    const cr = tr.crop ?? { x: 0, y: 0, w: tr.bg.width, h: tr.bg.height };
+    const size = `${tr.bg.width}x${tr.bg.height}|${Math.round(cr.x)},${Math.round(cr.y)},${Math.round(cr.w)},${Math.round(cr.h)}`;
+    const put = (g: CanvasRenderingContext2D, src: HTMLCanvasElement) => g.drawImage(src, cr.x, cr.y, cr.w, cr.h, 0, 0, W, H);
     // sem versão (não deveria acontecer): refaz sempre
     const bgKey = r ? `${r.bg}|${size}` : String(Math.random());
     const inkKey = r ? `${r.ink}|${r.live}|${size}` : String(Math.random());
@@ -320,17 +324,17 @@ export class Compositor {
       // a mesa (no caderno ela é a cor de fundo da tela, não está desenhada)
       g.fillStyle = '#edf0f4';
       g.fillRect(0, 0, W, H);
-      g.drawImage(tr.bg, 0, 0, W, H);
+      put(g, tr.bg);
     }
     if (k.key.ink !== inkKey) {
       k.key.ink = inkKey;
       const h = k.hl.getContext('2d')!;
       h.clearRect(0, 0, W, H);
-      h.drawImage(tr.hl, 0, 0, W, H);
+      put(h, tr.hl);
       const g = k.ink.getContext('2d')!;
       g.clearRect(0, 0, W, H);
-      g.drawImage(tr.ink, 0, 0, W, H);
-      g.drawImage(tr.live, 0, 0, W, H);
+      put(g, tr.ink);
+      put(g, tr.live);
     }
     return k;
   }

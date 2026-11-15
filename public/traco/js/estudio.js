@@ -7,14 +7,7 @@ import { uid } from "./ink.js";
 
 const app = document.getElementById("app");
 
-// A live usa a imagem da folha: com o estúdio pequeno na tela, a folha é desenhada com mais pontos (até 1600
-// de largura), para a live sair nítida. Em tela cheia no iPad nada muda.
-{
-  const real = window.devicePixelRatio || 1;
-  try {
-    Object.defineProperty(window, "devicePixelRatio", { configurable: true, get: () => Math.min(3, Math.max(real, 1600 / Math.max(1, window.innerWidth))) });
-  } catch {}
-}
+
 const bridge = (() => { try { return window.parent !== window ? window.parent.__tracoBridge || null : null; } catch { return null; } })();
 let current = null;
 let materials = [];
@@ -66,6 +59,7 @@ async function open(id) {
         changed: (n) => bridge.changed && bridge.changed(n),
         full: () => bridge.full && bridge.full(),
         page: (nid, pid) => bridge.page && bridge.page(nid, pid),
+        view: () => bridge.view && bridge.view(),
         open: (nid) => { open(nid); },
         create: async (o) => { const n = await newNotebook(o); open(n.id); },
       },

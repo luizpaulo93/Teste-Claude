@@ -20,7 +20,11 @@ export class StudioEditor extends Editor {
     this.materials = opts.materials || [];
     this.nbKey = this.nbSig();
     // enquadramento: só o que a pessoa mexeu vai para os outros (o que veio de fora não volta)
-    this.board.onView = (v, user) => { if (user) this.viewChanged(); };
+    this.board.onView = (v, user) => {
+      if (user) this.viewChanged();
+      // a moldura da live e a câmera acompanham a folha (uma vez por quadro)
+      if (this.bridge && this.bridge.view && !this.viewRaf) this.viewRaf = requestAnimationFrame(() => { this.viewRaf = 0; this.bridge.view(); });
+    };
     // versão de cada camada: a live só refaz a sua cópia de uma camada quando ela mudou de fato
     // (parado, a live não gasta nada com a folha; escrevendo, só a tinta é refeita)
     this.rev = { bg: 0, ink: 0, live: 0 };
@@ -261,12 +265,20 @@ export class StudioEditor extends Editor {
     }
   }
 
+  // o trecho da folha (em unidades da página) que está dentro da moldura da live
+  liveRect() {
+    const b = this.board, v = b.view;
+    if (!this.page || !b.W) return null;
+    const c = this.layers().cropCss;
+    return [(c.x - v.x) / v.s, (c.y - v.y) / v.s, (c.x + c.w - v.x) / v.s, (c.y + c.h - v.y) / v.s].map(ink.r1);
+  }
   viewChanged() {
     if (this.viewTimer) return;
     this.viewTimer = setTimeout(() => {
       this.viewTimer = 0;
-      const r = this.board.viewRect();
-      if (r && this.page) this.send({ k: "vw", pg: this.page.id, r: r.map(ink.r1) });
+      // vai o trecho da moldura: os outros aparelhos (e a live) mostram exatamente ele, na mesma proporção
+      const r = this.liveRect();
+      if (r && this.page) this.send({ k: "vw", pg: this.page.id, r, live: 1 });
     }, 60);
   }
 
@@ -325,8 +337,15 @@ export class StudioEditor extends Editor {
     }
     if (m.k === "vw") {
       if (!this.page || m.pg !== this.page.id || !Array.isArray(m.r) || m.r.length !== 4) return;
-      const v = b.rectView(m.r);
-      if (v) b.setView(v);
+      if (m.live) {
+        // o trecho da moldura de quem mexeu ocupa exatamente a moldura daqui (a live mostra a mesma coisa)
+        const c = this.layers(16 / 9, true).cropCss;
+        const s = c.w / Math.max(1, m.r[2] - m.r[0]);
+        b.setView({ s, x: c.x - m.r[0] * s, y: c.y - m.r[1] * s });
+      } else {
+        const v = b.rectView(m.r);
+        if (v) b.setView(v);
+      }
       return;
     }
     if (m.pg && (!this.page || m.pg !== this.page.id)) return;
@@ -356,9 +375,30 @@ export class StudioEditor extends Editor {
   }
 
   // camadas da folha, para a imagem da live (papel → câmera → marca-texto → tinta → ao vivo)
-  layers() {
+  // `aspect`: largura/altura da live. `crop`: o trecho da folha que vai para a live — o que o professor vê entre
+  // as barras (sem ferramentas nem barra de cima), no formato da live, mantendo a largura (pontos da tela).
+  layers(aspect = 16 / 9, raw = false) {
     const b = this.board;
-    return { bg: b.cBg, hl: b.cHl, ink: b.cInk, live: b.cLive, camSlot: b.camSlot, root: b.root, layers: b.layers, rev: this.rev };
+    const top = b.insetTop;
+    let x = 0, y = top, w = b.W, hh = b.H - top - b.insetBottom;
+    if (w / hh > aspect) { const w2 = hh * aspect; x = (w - w2) / 2; w = w2; }
+    else { const h2 = w / aspect; y = top + (hh - h2) / 2; hh = h2; }
+    if (!raw && this.page) {
+      // a live mostra só a folha: se a moldura passa da borda da página (a mesa cinza), ela desliza para dentro dela
+      const v = b.view, pw = this.page.w * v.s, ph = this.page.h * v.s;
+      const fit = (c, len, p0, plen, max) => {
+        c = plen >= len ? Math.min(Math.max(c, p0), p0 + plen - len) : p0 + (plen - len) / 2;
+        return Math.min(Math.max(c, 0), Math.max(0, max - len));
+      };
+      x = fit(x, w, v.x, pw, b.W);
+      y = fit(y, hh, v.y, ph, b.H);
+    }
+    const d = b.dpr || 1;
+    return {
+      bg: b.cBg, hl: b.cHl, ink: b.cInk, live: b.cLive, camSlot: b.camSlot, root: b.root, layers: b.layers, rev: this.rev,
+      crop: { x: x * d, y: y * d, w: w * d, h: hh * d },
+      cropCss: { x, y, w, h: hh, W: b.W, H: b.H },
+    };
   }
 
   async destroy() {

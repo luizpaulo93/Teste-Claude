@@ -252,13 +252,15 @@ export function Studio({
     goPage: (nb: string, pg: string) => Promise<void>;
     notebook: () => string | null;
     remote: (m: unknown) => void;
-    layers: () => {
+    layers: (aspect?: number) => {
       bg: HTMLCanvasElement;
       hl: HTMLCanvasElement;
       ink: HTMLCanvasElement;
       live: HTMLCanvasElement;
       camSlot: HTMLElement;
       rev: { bg: number; ink: number; live: number };
+      crop: { x: number; y: number; w: number; h: number };
+      cropCss: { x: number; y: number; w: number; h: number; W: number; H: number };
     } | null;
     flush: () => Promise<unknown>;
     materials: (list: { id: string; title: string; path: string }[]) => void;
@@ -301,6 +303,7 @@ export function Studio({
         if (trNbRef.current !== nb) setTrNb(nb);
         if (trPgRef.current !== pg) setTrPg(pg);
       },
+      view: () => placeCam.current(),
       attach: (api: TracoApi) => {
         trApi.current = api;
       },
@@ -312,16 +315,69 @@ export function Studio({
   /** a câmera da live dentro da folha, entre o papel e a tinta (a escrita fica por cima dela) */
   const placeCam = useRef<() => void>(() => {});
   const camStream = useRef<{ track: MediaStreamTrack; stream: MediaStream } | null>(null);
+  /** arrastar a câmera pela alça (dentro do caderno) */
+  const camDrag = useRef<(e: PointerEvent, handle: HTMLElement) => void>(() => {});
+  camDrag.current = (e, handle) => {
+    const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
+    if (!l) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      handle.setPointerCapture(e.pointerId);
+    } catch {}
+    const c = l.cropCss;
+    const x0 = e.clientX;
+    const y0 = e.clientY;
+    const b0 = { ...pipBox, x: pipRect.x, y: pipRect.y };
+    const w = pipRect.w;
+    const h = pipRect.h;
+    pipAt.current = performance.now();
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      pipAt.current = performance.now();
+      pipSet({ ...b0, x: b0.x + (ev.clientX - x0) / c.w, y: b0.y + (ev.clientY - y0) / c.h });
+    };
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      cancelAnimationFrame(pipRaf.current);
+      pipRaf.current = 0;
+      const last = pipNext.current ?? b0;
+      pipNext.current = null;
+      const fixed = { x: Math.min(Math.max(0, last.x), 1 - w), y: Math.min(Math.max(0, last.y), 1 - h), w: last.w };
+      setPipBox(fixed);
+      savePip(fixed);
+      pipAt.current = performance.now();
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  };
   placeCam.current = () => {
-    const slot = trApi.current?.layers()?.camSlot;
-    if (!slot) return;
+    const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
+    const slot = l?.camSlot;
+    if (!l || !slot) return;
     const doc = slot.ownerDocument;
+    const c = l.cropCss;
+    // moldura discreta: o trecho da folha que vai para a live (só na tela do professor)
+    let frame = slot.querySelector<HTMLDivElement>('div[data-frame]');
+    if (scene === 'pdf') {
+      if (!frame) {
+        frame = doc.createElement('div');
+        frame.dataset.frame = '1';
+        frame.style.cssText = 'position:absolute;pointer-events:none;border:1.5px dashed rgba(35,71,217,.28);border-radius:4px';
+        slot.prepend(frame);
+      }
+      Object.assign(frame.style, { left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: `${c.h}px` });
+    } else frame?.remove();
     let box = slot.querySelector<HTMLDivElement>('div[data-cam]');
     const track = camTrack.current;
     const src: MediaStream | null = track && track.readyState === 'live' ? (camStream.current?.track === track ? camStream.current.stream : new MediaStream([track])) : null;
+    if (track && src && camStream.current?.track !== track) camStream.current = { track, stream: src };
     // quem só escreve (não transmite): só o contorno de onde a câmera está — sem receber vídeo, como no TraçoApp
     const outline = !src && light;
-    if (track && src && camStream.current?.track !== track) camStream.current = { track, stream: src };
     if (scene !== 'pdf' || !pip || (!src && !outline)) {
       box?.remove();
       return;
@@ -329,53 +385,91 @@ export function Studio({
     if (!box) {
       box = doc.createElement('div');
       box.dataset.cam = '1';
-      box.style.cssText = 'position:absolute;overflow:hidden;border-radius:6%;box-shadow:0 0 0 2px rgba(255,255,255,.85);pointer-events:none;background:#000';
+      box.style.cssText = 'position:absolute;border-radius:6%;pointer-events:none';
+      const clip = doc.createElement('div');
+      clip.style.cssText = 'position:absolute;inset:0;overflow:hidden;border-radius:inherit';
       const v = doc.createElement('video');
       v.muted = true;
       v.autoplay = true;
       v.playsInline = true;
       v.setAttribute('playsinline', '');
-      v.style.cssText = 'position:absolute;max-width:none;pointer-events:none';
-      box.appendChild(v);
+      v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
+      clip.appendChild(v);
+      box.appendChild(clip);
+      // alça para mover a câmera (o resto da câmera deixa a caneta escrever por cima)
+      const handle = doc.createElement('div');
+      handle.setAttribute('role', 'button');
+      handle.setAttribute('aria-label', 'Mover a câmera');
+      handle.title = 'Arraste para mover a câmera';
+      handle.style.cssText =
+        'position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:44px;height:22px;border-radius:999px;border:2px solid #fff;background:rgba(0,0,0,.6);pointer-events:auto;touch-action:none;cursor:move;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+      handle.innerHTML = '<span style="display:block;width:20px;height:2px;border-radius:2px;background:#fff"></span>';
+      handle.addEventListener('pointerdown', (e) => camDrag.current(e, handle));
+      box.appendChild(handle);
       slot.appendChild(box);
     }
     const r = pipRect;
-    Object.assign(box.style, { left: `${r.x * 100}%`, top: `${r.y * 100}%`, width: `${r.w * 100}%`, height: `${r.h * 100}%` });
+    // a câmera fica no mesmo lugar em que aparece na live (dentro do trecho que vai para a live)
+    Object.assign(box.style, { left: `${c.x + r.x * c.w}px`, top: `${c.y + r.y * c.h}px`, width: `${r.w * c.w}px`, height: `${r.h * c.h}px` });
     const v = box.querySelector('video')!;
     if (outline) {
       Object.assign(box.style, { background: 'rgba(20,33,61,.06)', boxShadow: 'inset 0 0 0 2px rgba(20,33,61,.25)' });
-      v.srcObject = null;
+      if (v.srcObject) v.srcObject = null;
       v.style.display = 'none';
       return;
     }
     Object.assign(box.style, { background: '#000', boxShadow: '0 0 0 2px rgba(255,255,255,.85)' });
     v.style.display = '';
+    v.style.transform = mirror ? 'scaleX(-1)' : '';
     if (v.srcObject !== src) {
       v.srcObject = src;
       void v.play().catch(() => {});
     }
-    if (track) {
-      // câmera daqui: preenche o quadradinho (como na live)
-      Object.assign(v.style, { inset: '0', width: '100%', height: '100%', left: '0', top: '0', objectFit: 'cover', transform: mirror ? 'scaleX(-1)' : '' });
-    } else {
-      // quem só controla: o recorte da câmera na imagem da live
-      Object.assign(v.style, { objectFit: 'fill', transform: '', width: `${100 / r.w}%`, height: `${100 / r.h}%`, left: `${(-r.x / r.w) * 100}%`, top: `${(-r.y / r.h) * 100}%` });
-    }
   };
+  // a folha muda de tamanho (girar o iPad, tela cheia): a câmera e a moldura acompanham
+  useEffect(() => {
+    const f = trFrame.current;
+    if (!f) return;
+    const ro = new ResizeObserver(() => window.setTimeout(() => placeCam.current(), 60));
+    ro.observe(f);
+    return () => ro.disconnect();
+  }, [trMounted]);
   useEffect(() => {
     placeCam.current();
   });
   // a live desenha as camadas da folha do caderno (sem as linhas do papel)
   const tracoLayers = () => {
     if (sceneRef.current !== 'pdf') return null;
-    const l = trApi.current?.layers();
-    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev } : null;
+    const c = canvasRef.current;
+    const l = trApi.current?.layers(c ? c.width / c.height : 16 / 9);
+    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev, crop: l.crop } : null;
   };
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const stage = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
+  /**
+   * Fora da tela cheia o estúdio é pequeno: o caderno é desenhado em tamanho grande (1280 de largura) e só reduzido
+   * na tela — assim a folha que vai para a live sai nítida e as barras do caderno não tomam o espaço da página.
+   */
+  const trWrap = useRef<HTMLDivElement>(null);
+  const [trSize, setTrSize] = useState<{ w: number; h: number; k: number } | null>(null);
+  useEffect(() => {
+    const el = trWrap.current;
+    if (!el) return;
+    const fit = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      if (!w || !h) return;
+      const k = full || w >= 1000 ? 1 : w / 1280;
+      setTrSize((o) => (o && o.w === w && o.h === h && o.k === k ? o : { w, h, k }));
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [full, trMounted]);
   const [camPortrait, setCamPortrait] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [pop, setPop] = useState<'mic' | 'cam' | null>(null);
@@ -842,7 +936,8 @@ export function Studio({
     );
     const t = window.setInterval(() => setCamPortrait(Boolean(comp.current?.cameraPortrait)), 800);
     const onFs = () => {
-      if (!document.fullscreenElement) setFull(false);
+      // no caderno a tela cheia é só do estúdio (não do navegador): sai apenas pelo botão
+      if (!document.fullscreenElement && sceneRef.current !== 'pdf') setFull(false);
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => {
@@ -855,6 +950,12 @@ export function Studio({
   async function enterFull() {
     setPop(null);
     setFull(true);
+    // no caderno: sem a tela cheia do navegador (no iPad ela fecha ao arrastar para baixo, no meio da aula);
+    // o estúdio ocupa a tela inteira e só sai pelo botão
+    if (sceneRef.current === 'pdf') {
+      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+      return;
+    }
     try {
       await stage.current?.requestFullscreen?.({ navigationUI: 'hide' });
     } catch {
@@ -1405,6 +1506,23 @@ export function Studio({
     document.documentElement.classList.toggle('studio-full', full);
     return () => document.documentElement.classList.remove('studio-full');
   }, [full]);
+  // tela cheia: a página por trás não rola nem recarrega ao arrastar (só os painéis do estúdio rolam)
+  useEffect(() => {
+    if (!full) return;
+    const root = document.documentElement.style;
+    const prev = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
+    root.overflow = 'hidden';
+    root.overscrollBehavior = 'none';
+    document.body.style.overflow = 'hidden';
+    const stop = (e: TouchEvent) => {
+      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
+    };
+    document.addEventListener('touchmove', stop, { capture: true, passive: false });
+    return () => {
+      [root.overflow, root.overscrollBehavior, document.body.style.overflow] = prev;
+      document.removeEventListener('touchmove', stop, { capture: true });
+    };
+  }, [full]);
   /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
   async function pickAnyCam(v: string) {
     const [dev, id] = v.split('|');
@@ -1602,22 +1720,31 @@ export function Studio({
             <div
               className="relative"
               style={
-                full
+                full && scene !== 'pdf'
                   ? {
                       width: 'min(100%, calc(100dvh * 16 / 9))',
                       aspectRatio: '16 / 9',
                     }
-                  : { position: 'absolute', inset: 0 }
+                  : full
+                    ? { width: '100%', height: '100%' }
+                    : { position: 'absolute', inset: 0 }
               }
             >
               {/* caderno da live: o editor do Traço, como ele é (a live desenha as camadas da folha dele) */}
               {trMounted && (
-                <iframe
-                  ref={trFrame}
-                  title="Caderno da live"
-                  src={`/traco/estudio.html?live=${encodeURIComponent(liveId)}`}
-                  className={cn('absolute inset-0 z-[5] size-full border-0 bg-[#edf0f4]', scene !== 'pdf' && 'invisible')}
-                />
+                <div ref={trWrap} className={cn('absolute inset-0 z-[5] overflow-hidden', scene !== 'pdf' && 'invisible')}>
+                  <iframe
+                    ref={trFrame}
+                    title="Caderno da live"
+                    src={`/traco/estudio.html?live=${encodeURIComponent(liveId)}`}
+                    className="absolute top-0 left-0 border-0 bg-[#edf0f4]"
+                    style={
+                      trSize && trSize.k !== 1
+                        ? { width: 1280, height: trSize.h / trSize.k, transform: `scale(${trSize.k})`, transformOrigin: '0 0' }
+                        : { width: '100%', height: '100%' }
+                    }
+                  />
+                </div>
               )}
               <canvas
                 ref={canvasRef}
@@ -1657,7 +1784,7 @@ export function Studio({
                 className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching || scene === 'pdf') && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
-              {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
+              {scene === 'both' && (camTrack.current || light) && (
                 <div ref={pipArea} className="pointer-events-none absolute inset-0 z-[6]">
                   <div
                     role="button"
@@ -1668,9 +1795,7 @@ export function Studio({
                     onPointerCancel={pipUp}
                     className={cn(
                       'absolute cursor-move touch-none rounded-[6%]',
-                      // escrevendo: a caneta passa por cima da câmera e escreve (o quadradinho, mesmo sem imagem, "pegava"
-                      // a caneta e a escrita sumia ali); para mover a câmera, use a alça
-                      scene === 'pdf' ? 'pointer-events-none' : 'pointer-events-auto',
+                      'pointer-events-auto',
                       // aparelho que só controla: contorno para ver onde está a câmera do principal
                       light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
@@ -1683,7 +1808,7 @@ export function Studio({
                     }}
                   >
                     {/* aparelho que só controla: enquanto escreve/mexe, a câmera continua ao vivo aqui (recorte da imagem da live) */}
-                    {light && mirrorStream && scene !== 'pdf' && (
+                    {light && mirrorStream && (
                       <div className={cn('pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]', !(touching || !viewing) && 'invisible')}>
                         <video
                           ref={(v) => {
@@ -1703,20 +1828,6 @@ export function Studio({
                             top: `${(-pipRect.y / pipRect.h) * 100}%`,
                           }}
                         />
-                      </div>
-                    )}
-                    {scene === 'pdf' && (
-                      <div
-                        role="button"
-                        aria-label="Mover a câmera"
-                        title="Arraste para mover a câmera"
-                        onPointerDown={(e) => pipDown(e, 'move')}
-                        onPointerMove={pipMove}
-                        onPointerUp={pipUp}
-                        onPointerCancel={pipUp}
-                        className="pointer-events-auto absolute -top-3 left-1/2 grid h-6 w-12 -translate-x-1/2 cursor-move touch-none place-items-center rounded-full border-2 border-white bg-black/60 shadow"
-                      >
-                        <span className="block h-0.5 w-5 rounded-full bg-white" />
                       </div>
                     )}
                     {pipSel && (
