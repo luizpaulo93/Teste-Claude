@@ -2,13 +2,29 @@
 
 import {
   AppWindow,
+  Eraser,
+  Hand,
+  Highlighter,
+  MousePointerClick,
+  PenLine,
+  Lasso,
+  Shapes,
+  Minus,
+  MoveUpRight,
+  Square,
+  Circle,
+  Trash2,
+  Undo2,
   RefreshCw,
+  X,
   MessageSquare,
   Maximize2,
   Minimize2,
   Camera,
+  ChevronLeft,
   ChevronsLeft,
   ChevronsRight,
+  ChevronRight,
   CircleStop,
   FileText,
   FlipHorizontal2,
@@ -24,14 +40,17 @@ import {
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
+import { claimStudio, pollStudio, rtcSend, setStudioScene, startStudio, stopStudio, getInk, inkOps, getInkPrefs, saveInkPrefs, setStage, studioCommand, studioScan, type StudioDevice } from '../../../live-actions';
 import { StudioLink, type LinkMsg } from '@/lib/live/studio-link';
+import { InkLayer, newStrokeId, packOps, shapePoints, unpackOps, unpackStroke, type InkOps, type InkTool, type PackedOps, type ShapeKind, type Stroke } from '@/lib/live/ink';
 import { confirmDialog } from '@/components/confirm';
 import { toast } from '@/components/toast';
 import { buttonClass, Select } from '@/components/ui';
-import { Spinner } from '@/components/ui-client';
+import { Modal, Spinner } from '@/components/ui-client';
 import { Broadcaster, checkSupport, type BroadcastStatus, type ResumeState } from '@/lib/live/broadcaster';
 import { Compositor, type Fit, type Scene } from '@/lib/live/compositor';
+import { PdfPresenter, type PdfPos, type PdfView } from '@/lib/live/pdf-presenter';
+import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { cn } from '@/lib/utils';
@@ -130,12 +149,12 @@ function camName(d: MediaDeviceInfo, i: number, all: MediaDeviceInfo[]) {
   return same.length > 1 ? `${base} ${n + 1}` : base;
 }
 
-/** a situação da live mudou em algo que a tela usa? (a consulta é a cada segundo; refazer o estúdio à toa trava a caneta) */
-const sameRemote = (a: NonNullable<StudioPoll>, b: NonNullable<StudioPoll>) =>
-  a.status === b.status &&
-  a.rev === b.rev &&
-  a.res === b.res &&
-  JSON.stringify([a.holder, a.stage]) === JSON.stringify([b.holder, b.stage]);
+// Escrita no PDF: cores e espessuras (em larguras de página)
+const INK_COLORS = ['#111111', '#1d4ed8', '#dc2626', '#16a34a', '#facc15', '#ec4899'];
+/** tamanho escolhido na régua (0,1 a 7) → espessura em larguras de página */
+const INK_UNIT = { pen: 0.001, marker: 0.005, eraser: 0.004, laser: 0.0015, shape: 0.001 } as const;
+type Sized = keyof typeof INK_UNIT;
+type InkPtr = { id: number; type: string; tool: InkTool; laser?: string; erased?: string[]; before?: Stroke[]; lasso?: number[]; from?: { x: number; y: number }; held?: number };
 
 const clock = (s: number) =>
   `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -240,299 +259,19 @@ export function Studio({
   const [mirror, setMirror] = useState(false);
   const fit: Fit = 'cover';
   const [pip, setPip] = useState(true);
-  // ---------------- caderno da live (editor Traço numa página própria, dentro do estúdio)
-  const trFrame = useRef<HTMLIFrameElement>(null);
-  /** o caderno é carregado na primeira vez que a cena do caderno aparece (e fica aberto: trocar de cena é na hora) */
-  const [trMounted, setTrMounted] = useState(false);
-  useEffect(() => {
-    if (scene === 'pdf') setTrMounted(true);
-  }, [scene]);
-  type TracoApi = {
-    open: (id: string) => Promise<void>;
-    goPage: (nb: string, pg: string) => Promise<void>;
-    notebook: () => string | null;
-    remote: (m: unknown) => void;
-    layers: (aspect?: number) => {
-      bg: HTMLCanvasElement;
-      hl: HTMLCanvasElement;
-      ink: HTMLCanvasElement;
-      live: HTMLCanvasElement;
-      camSlot: HTMLElement;
-      rev: { bg: number; ink: number; live: number };
-      hlOn: boolean;
-      liveOn: boolean;
-      crop: { x: number; y: number; w: number; h: number };
-      cropCss: { x: number; y: number; w: number; h: number; W: number; H: number };
-    } | null;
-    flush: () => Promise<unknown>;
-    materials: (list: { id: string; title: string; path: string }[]) => void;
-  };
-  const trApi = useRef<TracoApi | null>(null);
-  /** caderno aberto (os outros aparelhos abrem o mesmo) */
-  const [trNb, setTrNb] = useState('');
-  const trNbRef = useRef('');
-  trNbRef.current = trNb;
-  /** página aberta no caderno (também vai pela cena da live: os aparelhos se acertam mesmo se uma mensagem se perder) */
-  const [trPg, setTrPg] = useState('');
-  const trPgRef = useRef('');
-  trPgRef.current = trPg;
-  /** quando a página/caderno foi trocado aqui (uma cena atrasada que chega logo depois não desfaz a troca) */
-  const trLocalAt = useRef(0);
-  // ponte: o caderno (dentro do estúdio) chama estas funções
-  const bridgeFns = useRef({
-    exit: () => {},
-    full: () => {},
-  });
-  bridgeFns.current.exit = () => void exitFull();
-  bridgeFns.current.full = () => void (full ? exitFull() : enterFull());
-  useEffect(() => {
-    const w = window as Window & { __tracoBridge?: unknown };
-    w.__tracoBridge = {
-      // traço em andamento, alterações, página, enquadramento: na hora, para os outros aparelhos
-      send: (m: unknown) => link.current?.sendNow({ t: 'tr', m }),
-      exit: () => bridgeFns.current.exit(),
-      full: () => bridgeFns.current.full(),
-      notebook: () => trNbRef.current || null,
-      opened: (id: string) => {
-        if (trNbRef.current !== id) {
-          trLocalAt.current = performance.now();
-          setTrNb(id);
-        }
-        window.setTimeout(() => placeCam.current(), 50);
-      },
-      page: (nb: string, pg: string) => {
-        trLocalAt.current = performance.now();
-        if (trNbRef.current !== nb) setTrNb(nb);
-        if (trPgRef.current !== pg) setTrPg(pg);
-      },
-      view: () => placeCam.current(),
-      attach: (api: TracoApi) => {
-        trApi.current = api;
-      },
-    };
-    return () => {
-      delete w.__tracoBridge;
-    };
-  }, []);
-  /** a câmera da live dentro da folha, entre o papel e a tinta (a escrita fica por cima dela) */
-  const placeCam = useRef<() => void>(() => {});
-  const camStream = useRef<{ track: MediaStreamTrack; stream: MediaStream } | null>(null);
-  /**
-   * Câmera no caderno em duas camadas: atrás da escrita (a caneta escreve por cima) ou na frente (dá para mover e
-   * mudar o tamanho). Tocar na câmera com o dedo (ou clicar com o mouse) traz para a frente; tocar no caderno fora
-   * dela devolve para trás. Enquanto está na frente, a live também a mostra por cima da escrita.
-   */
-  const camFront = useRef(false);
-  const setCamFront = (v: boolean, tell = true) => {
-    if (camFront.current === v) return;
-    camFront.current = v;
-    if (comp.current) comp.current.camFront = v;
-    if (tell) link.current?.sendNow({ t: 'pip', front: v });
-    placeCam.current();
-  };
-  /** arrasto da câmera direto na tela (sem refazer a página do estúdio a cada movimento) */
-  const camDrag = useRef<(e: PointerEvent, box: HTMLElement, mode: 'move' | 'size') => void>(() => {});
-  camDrag.current = (e, box, mode) => {
-    const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
-    const cp = comp.current;
-    if (!l || !cp) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const el = e.currentTarget instanceof Element ? e.currentTarget : box;
-    try {
-      el.setPointerCapture(e.pointerId);
-    } catch {}
-    const c = l.cropCss;
-    const x0 = e.clientX;
-    const y0 = e.clientY;
-    const r0 = cp.pipRect();
-    pipAt.current = performance.now();
-    let raf = 0;
-    let last = { x: r0.x, y: r0.y, w: cp.pipW };
-    const show = () => {
-      raf = 0;
-      const r = cp.pipRect();
-      Object.assign(box.style, { left: `${c.x + r.x * c.w}px`, top: `${c.y + r.y * c.h}px`, width: `${r.w * c.w}px`, height: `${r.h * c.h}px` });
-      link.current?.sendNow({ t: 'pip', b: last });
-    };
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return;
-      pipAt.current = performance.now();
-      const dx = (ev.clientX - x0) / c.w;
-      const dy = (ev.clientY - y0) / c.h;
-      if (mode === 'move') {
-        cp.pipX = Math.min(Math.max(0, r0.x + dx), 1 - r0.w);
-        cp.pipY = Math.min(Math.max(0, r0.y + dy), 1 - r0.h);
-      } else cp.pipW = Math.min(0.6, Math.max(0.12, r0.w + dx));
-      const r = cp.pipRect();
-      last = { x: r.x, y: r.y, w: cp.pipW };
-      if (!raf) raf = requestAnimationFrame(show);
-    };
-    const up = (ev: PointerEvent) => {
-      if (ev.pointerId !== e.pointerId) return;
-      el.removeEventListener('pointermove', move as EventListener);
-      el.removeEventListener('pointerup', up as EventListener);
-      el.removeEventListener('pointercancel', up as EventListener);
-      if (raf) cancelAnimationFrame(raf);
-      show();
-      setPipBox(last);
-      savePip(last);
-      pipAt.current = performance.now();
-    };
-    el.addEventListener('pointermove', move as EventListener);
-    el.addEventListener('pointerup', up as EventListener);
-    el.addEventListener('pointercancel', up as EventListener);
-  };
-  /** toques no caderno: na câmera (dedo ou mouse) ela vem para a frente; fora dela, volta para trás */
-  const camTap = useRef<(e: PointerEvent) => void>(() => {});
-  camTap.current = (e) => {
-    const slot = trApi.current?.layers()?.camSlot;
-    const box = slot?.ownerDocument.querySelector<HTMLElement>('div[data-cam]');
-    if (!box || !box.isConnected) return;
-    const t = e.target as Element | null;
-    if (camFront.current) {
-      if (t && box.contains(t)) return; // a própria câmera cuida (mover / tamanho)
-      setCamFront(false);
-      return;
-    }
-    if (e.pointerType === 'pen') return; // a caneta escreve por cima da câmera
-    const r = box.getBoundingClientRect();
-    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
-    // não deixa o toque chegar ao caderno: vira o arrasto da câmera
-    e.stopImmediatePropagation();
-    setCamFront(true);
-    camDrag.current(e, box, 'move');
-  };
-  placeCam.current = () => {
-    const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
-    const slot = l?.camSlot;
-    if (!l || !slot) return;
-    const doc = slot.ownerDocument;
-    const c = l.cropCss;
-    // moldura discreta: o trecho da folha que vai para a live (só na tela do professor)
-    let frame = slot.querySelector<HTMLDivElement>('div[data-frame]');
-    if (scene === 'pdf') {
-      if (!frame) {
-        frame = doc.createElement('div');
-        frame.dataset.frame = '1';
-        frame.style.cssText = 'position:absolute;pointer-events:none;border:1.5px dashed rgba(35,71,217,.28);border-radius:4px';
-        slot.prepend(frame);
-      }
-      Object.assign(frame.style, { left: `${c.x}px`, top: `${c.y}px`, width: `${c.w}px`, height: `${c.h}px` });
-    } else frame?.remove();
-    let box = slot.querySelector<HTMLDivElement>('div[data-cam]');
-    const track = camTrack.current;
-    const src: MediaStream | null = track && track.readyState === 'live' ? (camStream.current?.track === track ? camStream.current.stream : new MediaStream([track])) : null;
-    if (track && src && camStream.current?.track !== track) camStream.current = { track, stream: src };
-    // quem só escreve (não transmite): só o contorno de onde a câmera está — sem receber vídeo, como no TraçoApp
-    const outline = !src && light;
-    if (scene !== 'pdf' || !pip || (!src && !outline)) {
-      box?.remove();
-      return;
-    }
-    if (!box) {
-      box = doc.createElement('div');
-      box.dataset.cam = '1';
-      box.style.cssText = 'position:absolute;border-radius:6%;pointer-events:none';
-      const clip = doc.createElement('div');
-      clip.style.cssText = 'position:absolute;inset:0;overflow:hidden;border-radius:inherit';
-      const v = doc.createElement('video');
-      v.muted = true;
-      v.autoplay = true;
-      v.playsInline = true;
-      v.setAttribute('playsinline', '');
-      v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
-      clip.appendChild(v);
-      box.appendChild(clip);
-      // na frente: arrastar move; o cantinho de baixo muda o tamanho
-      const grip = doc.createElement('div');
-      grip.dataset.grip = '1';
-      grip.setAttribute('aria-label', 'Mudar o tamanho da câmera');
-      grip.style.cssText =
-        'position:absolute;right:-9px;bottom:-9px;width:26px;height:26px;border-radius:999px;border:2px solid #fff;background:#2347d9;touch-action:none;cursor:nwse-resize;box-shadow:0 1px 4px rgba(0,0,0,.3)';
-      grip.addEventListener('pointerdown', (e) => camDrag.current(e, box!, 'size'));
-      box.appendChild(grip);
-      box.addEventListener('pointerdown', (e) => {
-        if ((e.target as Element).closest('[data-grip]')) return;
-        camDrag.current(e, box!, 'move');
-      });
-      // o toque que traz a câmera para a frente é visto antes do caderno (fase de captura)
-      const win = doc.defaultView as (Window & { __camTap?: boolean }) | null;
-      if (win && !win.__camTap) {
-        win.__camTap = true;
-        win.addEventListener('pointerdown', (e) => camTap.current(e), { capture: true });
-      }
-      slot.appendChild(box);
-    }
-    const r = comp.current?.pipRect() ?? pipRect;
-    // atrás da escrita (no lugar dela, entre o papel e a tinta) ou na frente de tudo
-    const front = camFront.current;
-    const home = front ? (slot.closest('.board') ?? slot) : slot;
-    if (box.parentElement !== home) home.appendChild(box);
-    Object.assign(box.style, { zIndex: front ? '6' : '', pointerEvents: front ? 'auto' : 'none', touchAction: 'none', cursor: front ? 'move' : '' });
-    const grip = box.querySelector<HTMLElement>('[data-grip]');
-    if (grip) grip.style.display = front ? '' : 'none';
-    // a câmera fica no mesmo lugar em que aparece na live (dentro do trecho que vai para a live)
-    Object.assign(box.style, { left: `${c.x + r.x * c.w}px`, top: `${c.y + r.y * c.h}px`, width: `${r.w * c.w}px`, height: `${r.h * c.h}px` });
-    const v = box.querySelector('video')!;
-    if (outline) {
-      Object.assign(box.style, { background: 'rgba(20,33,61,.06)', boxShadow: 'inset 0 0 0 2px rgba(20,33,61,.25)' });
-      if (v.srcObject) v.srcObject = null;
-      v.style.display = 'none';
-      return;
-    }
-    Object.assign(box.style, { background: '#000', boxShadow: front ? '0 0 0 3px #2347d9, 0 6px 18px rgba(0,0,0,.25)' : '0 0 0 2px rgba(255,255,255,.85)' });
-    v.style.display = '';
-    v.style.transform = mirror ? 'scaleX(-1)' : '';
-    if (v.srcObject !== src) {
-      v.srcObject = src;
-      void v.play().catch(() => {});
-    }
-  };
-  // a folha muda de tamanho (girar o iPad, tela cheia): a câmera e a moldura acompanham
-  useEffect(() => {
-    const f = trFrame.current;
-    if (!f) return;
-    const ro = new ResizeObserver(() => window.setTimeout(() => placeCam.current(), 60));
-    ro.observe(f);
-    return () => ro.disconnect();
-  }, [trMounted]);
-  useEffect(() => {
-    placeCam.current();
-  });
-  // a live desenha as camadas da folha do caderno (sem as linhas do papel)
-  const tracoLayers = () => {
-    if (sceneRef.current !== 'pdf') return null;
-    const c = canvasRef.current;
-    const l = trApi.current?.layers(c ? c.width / c.height : 16 / 9);
-    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev, crop: l.crop, hlOn: l.hlOn, liveOn: l.liveOn } : null;
-  };
-  const sceneRef = useRef(scene);
-  sceneRef.current = scene;
+  const pdf = useRef<PdfPresenter | null>(null);
+  const [pdfId, setPdfId] = useState('');
+  const [pdfView, setPdfView] = useState<PdfView | null>(null);
+  /** PDF mexeu: quem não transmite redesenha no próximo quadro da tela (parado fica econômico) */
+  const kick = useRef(() => {});
+  const kickRaf = useRef(0);
+  const [pdfBusy, setPdfBusy] = useState(false);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const lastTap = useRef(0);
+  const [pageInput, setPageInput] = useState('');
+  const [choosing, setChoosing] = useState(false);
   const stage = useRef<HTMLDivElement>(null);
   const [full, setFull] = useState(false);
-  /**
-   * Fora da tela cheia o estúdio é pequeno: o caderno é desenhado em tamanho grande (1280 de largura) e só reduzido
-   * na tela — assim a folha que vai para a live sai nítida e as barras do caderno não tomam o espaço da página.
-   */
-  const trWrap = useRef<HTMLDivElement>(null);
-  const [trSize, setTrSize] = useState<{ w: number; h: number; k: number } | null>(null);
-  useEffect(() => {
-    const el = trWrap.current;
-    if (!el) return;
-    const fit = () => {
-      const w = el.clientWidth;
-      const h = el.clientHeight;
-      if (!w || !h) return;
-      const k = full || w >= 1000 ? 1 : w / 1280;
-      setTrSize((o) => (o && o.w === w && o.h === h && o.k === k ? o : { w, h, k }));
-    };
-    fit();
-    const ro = new ResizeObserver(fit);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [full, trMounted]);
   const [camPortrait, setCamPortrait] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [pop, setPop] = useState<'mic' | 'cam' | null>(null);
@@ -643,53 +382,127 @@ export function Studio({
     return () => window.clearInterval(t);
   }, [light]);
   /** foto pequena da imagem da live (aparelho principal) */
-  const snapAt = useRef(0);
   const snapshot = () => {
     const c = canvasRef.current;
-    if (!c || performance.now() - snapAt.current < 3000) return;
-    snapAt.current = performance.now();
+    if (!c) return '';
     const t = document.createElement('canvas');
     t.width = 480;
     t.height = Math.round((480 * c.height) / c.width);
     t.getContext('2d')?.drawImage(c, 0, 0, t.width, t.height);
-    // (toDataURL codificava na hora e segurava a tela; toBlob codifica em segundo plano)
-    t.toBlob(
-      (b) => {
-        if (!b) return;
-        const fr = new FileReader();
-        fr.onload = () => {
-          if (typeof fr.result === 'string') pendingPreview.current = fr.result;
-        };
-        fr.readAsDataURL(b);
-      },
-      'image/jpeg',
-      0.55,
-    );
+    return t.toDataURL('image/jpeg', 0.55);
   };
   useEffect(() => {
-    // Quem só escreve no caderno trabalha como no TraçoApp: só escreve e manda os traços. A prévia da live
-    // (atrás do caderno, ninguém vê) para, e a imagem da live deixa de vir para cá — quem transmite desenha a
-    // folha e gera o vídeo; aqui sobra tudo para a caneta.
-    if (!onAir) {
-      if (light && scene === 'pdf') comp.current?.pause();
-      else comp.current?.setFps(light ? 4 : 30);
-    }
-  }, [light, onAir, scene]);
-  // pede (e repete a cada 5 s, para valer depois de reconexões) a imagem da live só quando ela aparece aqui
-  useEffect(() => {
-    const want = !(light && !onAir && scene === 'pdf' && full);
-    const tell = () => link.current?.sendNow({ t: 'mirror', on: want });
-    tell();
-    const t = window.setInterval(tell, 5000);
-    return () => window.clearInterval(t);
-  }, [light, onAir, scene]);
+    if (!onAir) comp.current?.setFps(light ? 4 : 30);
+    kick.current = () => {
+      if (!light || onAir || kickRaf.current) return;
+      kickRaf.current = requestAnimationFrame(() => {
+        kickRaf.current = 0;
+        comp.current?.draw();
+      });
+    };
+  }, [light, onAir]);
   /** aparelhos abertos no estúdio (nome, câmeras, microfones) */
   const [devices, setDevices] = useState<StudioDevice[]>([]);
   const reported = useRef({ key: '', at: 0 });
   const [scanning, setScanning] = useState(false);
 
-  /** menu lateral da tela cheia: recolhido ou aberto */
+  // ---- escrita por cima do PDF
+  const ink = useRef(new InkLayer());
+  const [inkTool, setInkTool] = useState<InkTool>('hand');
+  /** caneta só no celular e no iPad (no Mac/Windows o estúdio fica como era; a escrita feita no iPad aparece igual) */
+  const [canInk, setCanInk] = useState(false);
+  useEffect(() => {
+    try {
+      const touch = window.matchMedia('(pointer: coarse)').matches;
+      // iPad se apresenta como Mac; a tela de toque denuncia
+      const ipad = navigator.maxTouchPoints > 1 && /Macintosh|iPad/.test(navigator.userAgent);
+      setCanInk(touch || ipad || localStorage.getItem('studio-ink') === '1');
+      // já usou a Apple Pencil aqui: a mão nunca escreve (só move e dá zoom)
+      pencilSeen.current = localStorage.getItem('studio-pencil') === '1';
+    } catch {}
+  }, []);
+  const [inkColor, setInkColor] = useState('#111111');
+  // tamanho de cada ferramenta (0,1 a 7)
+  const [inkW, setInkW] = useState<Record<Sized, number>>({ pen: 4, marker: 4, eraser: 4, laser: 3, shape: 3 });
+  const [shapeKind, setShapeKind] = useState<ShapeKind>('line');
+  const [shapeDash, setShapeDash] = useState(false);
+  /**
+   * Tamanhos, cor e forma escolhidos ficam guardados na conta do professor: a próxima live (em qualquer
+   * aparelho) abre do mesmo jeito. Este aparelho guarda uma cópia para abrir na hora.
+   */
+  const prefsReady = useRef(false);
+  const applyPrefs = (v: unknown) => {
+    if (!v || typeof v !== 'object') return;
+    const p = v as { sizes?: Record<string, unknown>; color?: unknown; shape?: unknown; dash?: unknown };
+    if (p.sizes && typeof p.sizes === 'object')
+      setInkW((o) => ({ ...o, ...Object.fromEntries(Object.entries(p.sizes!).filter(([k, n]) => k in o && typeof n === 'number' && n >= 0.1 && n <= 7)) }));
+    if (typeof p.color === 'string' && INK_COLORS.includes(p.color)) setInkColor(p.color);
+    if (typeof p.shape === 'string' && ['line', 'arrow', 'rect', 'ellipse'].includes(p.shape)) setShapeKind(p.shape as ShapeKind);
+    if (typeof p.dash === 'boolean') setShapeDash(p.dash);
+  };
+  useEffect(() => {
+    try {
+      applyPrefs(JSON.parse(localStorage.getItem('studio-ink-prefs') ?? 'null'));
+      const old = JSON.parse(localStorage.getItem('studio-ink-sizes') ?? 'null');
+      if (old && !localStorage.getItem('studio-ink-prefs')) applyPrefs({ sizes: old });
+    } catch {}
+    let off = false;
+    void getInkPrefs()
+      .then((p) => {
+        if (!off && p) applyPrefs(p);
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (!off) prefsReady.current = true;
+      });
+    return () => {
+      off = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const prefsTimer = useRef(0);
+  useEffect(() => {
+    const p = { sizes: inkW, color: inkColor, shape: shapeKind, dash: shapeDash };
+    if (!prefsReady.current) return;
+    try {
+      localStorage.setItem('studio-ink-prefs', JSON.stringify(p));
+    } catch {}
+    window.clearTimeout(prefsTimer.current);
+    prefsTimer.current = window.setTimeout(() => void saveInkPrefs(p).catch(() => null), 1200);
+  }, [inkW, inkColor, shapeKind, shapeDash]);
+  const setSize = (k: Sized, n: number) => setInkW((o) => ({ ...o, [k]: Math.min(7, Math.max(0.1, Math.round(n * 10) / 10)) }));
+  /** opções recolhidas da barra: cores ou tamanho */
+  const [inkPop, setInkPop] = useState<'color' | 'size' | null>(null);
+  /** barras laterais da tela cheia: recolhidas ou abertas */
+  const [barOpen, setBarOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(true);
+  const writingRef = useRef(false);
+  /** modo escrita: tela cheia com as ferramentas (fora dele o PDF só move e dá zoom) */
+  const [writing, setWriting] = useState(false);
+  const inkPtr = useRef<InkPtr | null>(null);
+  const pencilSeen = useRef(false);
+  /** último evento da Apple Pencil (a mão encostando logo depois é a palma, não um gesto) */
+  const lastPen = useRef(0);
+  /** posição do PDF quando um gesto de dedos começou */
+  const viewSnap = useRef<{ cx: number; cy: number; zoom: number } | null>(null);
+  /** quando cada dedo encostou (dois dedos só são gesto se encostarem quase juntos) */
+  const downAt = useRef(new Map<number, number>());
+  const viewSnapAt = useRef(0);
+  /** até quando um traço cancelado pelo navegador pode ser retomado */
+  const resumeUntil = useRef(0);
+  /** quando a Pencil levantou pela última vez (movimentos logo depois são resíduo, não escrita) */
+  const penUpAt = useRef(0);
+  /** toque da Pencil que acabou de terminar (movimentos atrasados dele não viram traço novo) */
+  const lastPenId = useRef(-1);
+  const penBusy = () => inkPtr.current?.type === 'pen' || performance.now() - lastPen.current < 700;
+  const undoStack = useRef<InkOps[]>([]);
+  const inkQueue = useRef<InkOps>({});
+  const inkTimer = useRef(0);
+  const inkRevSeen = useRef(-1);
+  /** laço da seleção sendo desenhado (aparece na camada rápida, não vai para a live) */
+  const lasso = useRef<number[] | null>(null);
+  const [selBox, setSelBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const selDrag = useRef<{ mode: 'move' | 'size'; sx: number; sy: number; before: Stroke[]; last: { dx: number; dy: number; s: number }; box: { x0: number; y0: number; w: number } } | null>(null);
   const stageClaimed = useRef(false);
   // som travado pelo sistema (iPad/iPhone que assumiu a live sem ninguém tocar na tela)
   const [soundLocked, setSoundLocked] = useState(false);
@@ -747,11 +560,23 @@ export function Studio({
 
   // Mesa de cenas + permissão + lista de dispositivos
   useEffect(() => {
-    if (canvasRef.current) {
-      comp.current = new Compositor(canvasRef.current, 30);
-      (window as Window & { __comp?: Compositor }).__comp = comp.current;
-    }
-    if (comp.current) comp.current.traco = tracoLayers;
+    if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
+    pdf.current = new PdfPresenter();
+    // a tela do estúdio só é refeita quando muda a página (o zoom é lido com atraso): rolar e dar zoom não pesam
+    let zoomT = 0;
+    pdf.current.onChange = () => {
+      const v = pdf.current!.view;
+      setPdfView((o) => (o && o.page === v.page && o.pages === v.pages ? o : v));
+      window.clearTimeout(zoomT);
+      zoomT = window.setTimeout(() => setPdfView((o) => (o && pdf.current && Math.abs(o.zoom - pdf.current.view.zoom) > 1e-3 ? pdf.current.view : o)), 200);
+      kick.current();
+    };
+    pdf.current.onView = (v) => {
+      sendView.current(v);
+      kick.current();
+    };
+    pdf.current.ink = ink.current;
+    if (comp.current) comp.current.pdf = pdf.current;
     void checkSupport().then(setSupport);
     (async () => {
       try {
@@ -778,6 +603,7 @@ export function Studio({
       document.removeEventListener('visibilitychange', onVisible);
       navigator.mediaDevices.removeEventListener?.('devicechange', onChange);
       comp.current?.destroy();
+      pdf.current?.destroy();
       camTrack.current?.stop();
       screenTrack.current?.stop();
       micStream.current?.getTracks().forEach((t) => t.stop());
@@ -1002,8 +828,7 @@ export function Studio({
     );
     const t = window.setInterval(() => setCamPortrait(Boolean(comp.current?.cameraPortrait)), 800);
     const onFs = () => {
-      // no caderno a tela cheia é só do estúdio (não do navegador): sai apenas pelo botão
-      if (!document.fullscreenElement && sceneRef.current !== 'pdf') setFull(false);
+      if (!document.fullscreenElement && !writingRef.current) setFull(false);
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => {
@@ -1016,12 +841,6 @@ export function Studio({
   async function enterFull() {
     setPop(null);
     setFull(true);
-    // no caderno: sem a tela cheia do navegador (no iPad ela fecha ao arrastar para baixo, no meio da aula);
-    // o estúdio ocupa a tela inteira e só sai pelo botão
-    if (sceneRef.current === 'pdf') {
-      if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
-      return;
-    }
     try {
       await stage.current?.requestFullscreen?.({ navigationUI: 'hide' });
     } catch {
@@ -1049,29 +868,123 @@ export function Studio({
   }
 
   /** Abre um PDF da live no Estúdio */
-  // Na tela da transmissão (cena da câmera): arrastar escolhe a parte da imagem que aparece no recorte.
-  // Na cena do caderno, a folha é do caderno (ele fica por cima do quadro).
+  async function openPdf(id: string) {
+    const m = materials.find((x) => x.id === id);
+    setPdfId(id);
+    if (!m || !pdf.current) return;
+    setPdfBusy(true);
+    try {
+      const url = await getFileUrl(m.file_path);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error();
+      await pdf.current.load(await res.arrayBuffer());
+      setPdfView(pdf.current.view);
+      setScene('pdf');
+    } catch {
+      toast.error('Não foi possível abrir este PDF.');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  // Na tela da transmissão: um dedo move o PDF, dois dedos dão zoom (pinça), dois toques alternam largura/página
   const onDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     // tocar na tela fecha o popup de microfone/câmera
     if (pop) {
       setPop(null);
+      if (!(writing && e.pointerType === 'pen')) return;
+    }
+    if (scene === 'camera') {
+      // câmera: arrastar escolhe a parte da imagem que aparece no recorte
+      e.currentTarget.setPointerCapture(e.pointerId);
+      pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
       return;
     }
-    if (scene !== 'camera') return;
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (scene !== 'pdf') return;
+    if (inkDown(e)) return;
+    // escrevendo com a Pencil (caneta, laser…): os dedos só valem em dupla. Com a ferramenta "mão", um dedo move.
+    const strict = writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch';
+    // onde o PDF estava antes do gesto: se era a mão chegando antes da Pencil, volta para cá
+    // toque antigo que ficou sem o "soltar" (o navegador perdeu o evento): esquece, senão todo toque novo vira pinça
+    for (const [id, t] of downAt.current)
+      if (performance.now() - t > 20_000) {
+        downAt.current.delete(id);
+        pointers.current.delete(id);
+      }
+    if (!pointers.current.size) {
+      viewSnap.current = pdf.current?.pos ?? null;
+      viewSnapAt.current = performance.now();
+    }
+    downAt.current.set(e.pointerId, performance.now());
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* o navegador recusou a captura: o traço segue mesmo assim */
+    }
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1 && !strict) {
+      const now = Date.now();
+      if (now - lastTap.current < 300) pdf.current?.toggleFit();
+      lastTap.current = now;
+    }
   };
   const onMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (inkMove(e)) return;
     const ps = pointers.current;
     const prev = ps.get(e.pointerId);
-    if (!prev || scene !== 'camera' || ps.size !== 1) return;
-    const rc = e.currentTarget.getBoundingClientRect();
-    comp.current?.moveCamera((e.clientX - prev.x) / rc.width, (e.clientY - prev.y) / rc.height);
+    if (prev && scene === 'camera' && ps.size === 1) {
+      const rc = e.currentTarget.getBoundingClientRect();
+      comp.current?.moveCamera((e.clientX - prev.x) / rc.width, (e.clientY - prev.y) / rc.height);
+      ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      return;
+    }
+    if (!prev || scene !== 'pdf' || !pdf.current) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    if (ps.size === 1) {
+      // escrevendo com a Pencil, um dedo sozinho não move o PDF (palma e toques sem querer): use dois dedos
+      if (!(writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch')) pdf.current.pan((e.clientX - prev.x) / r.width, (e.clientY - prev.y) / r.height);
+    } else if (ps.size === 2) {
+      const [oid, other] = [...ps.entries()].find(([id]) => id !== e.pointerId)!;
+      // escrevendo com a Pencil: gesto de dois dedos só vale se os dois encostaram quase juntos
+      // (palma apoiada e depois outro contato não é pinça)
+      if (writing && inkTool !== 'hand' && pencilSeen.current && e.pointerType === 'touch' && Math.abs((downAt.current.get(oid) ?? 0) - (downAt.current.get(e.pointerId) ?? 0)) > 600) {
+        ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        return;
+      }
+      const d0 = Math.hypot(prev.x - other.x, prev.y - other.y);
+      const d1 = Math.hypot(e.clientX - other.x, e.clientY - other.y);
+      const mx = ((e.clientX + other.x) / 2 - r.left) / r.width;
+      const my = ((e.clientY + other.y) / 2 - r.top) / r.height;
+      if (d0 > 0) pdf.current.zoomAt(d1 / d0, mx, my);
+      // arrastar com os dois dedos também move
+      pdf.current.pan((e.clientX - prev.x) / 2 / r.width, (e.clientY - prev.y) / 2 / r.height);
+    }
     ps.set(e.pointerId, { x: e.clientX, y: e.clientY });
   };
   const onUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (inkUp(e)) return;
     pointers.current.delete(e.pointerId);
+    downAt.current.delete(e.pointerId);
   };
+
+  // Rolagem (mouse/trackpad): rola o PDF e passa de página no fim; Ctrl + rolagem (ou pinça no trackpad) dá zoom
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      if (scene !== 'pdf' || !pdf.current?.pages) return;
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      if (e.ctrlKey) pdf.current.zoomAt(Math.exp(-e.deltaY / 300), (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+      else pdf.current.pan(-e.deltaX / r.width, -e.deltaY / r.height);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, [scene]);
+
+  useEffect(() => {
+    if (pdfView) setPageInput(String(pdfView.page));
+  }, [pdfView?.page]);
 
   // Câmera escolhida
   useEffect(() => {
@@ -1178,8 +1091,12 @@ export function Studio({
 
   function pickScene(s: Scene) {
     if (s === 'pdf') {
-      // o caderno da live (PDFs da aula e páginas em branco ficam dentro dele)
       setScene('pdf');
+      if (!materials.length) toast('Suba um PDF em "PDFs da live" (abaixo) para mostrar aqui.');
+      // já tem PDF aberto: volta para ele. Senão: mais de um pergunta qual abrir; só um abre direto
+      else if (pdfView?.pages) return;
+      else if (materials.length > 1) setChoosing(true);
+      else void openPdf(materials[0].id);
       return;
     }
     if (s !== 'camera' && !screenTrack.current) {
@@ -1274,10 +1191,11 @@ export function Studio({
       if (r.preview && needPreview.current) setPreviewSrc(r.preview);
       // principal: alguém não recebe a imagem direta → prepara a foto para o próximo envio
       const isStage = caster.current || (r.status === 'live' && r.holder?.fresh ? r.holder.device : r.stage?.present ? r.stage.device : '') === device.current.id;
-      if (isStage && r.previewWanted) snapshot();
-      setRemote((o) => (o && sameRemote(o, r) ? o : r));
+      if (isStage && r.previewWanted) pendingPreview.current = snapshot();
+      setRemote(r);
       // (a lista só muda quando um aparelho entra/sai ou troca de câmera: a tela não é refeita à toa)
       setDevices((o) => (JSON.stringify(o) === JSON.stringify(r.devices) ? o : r.devices));
+      inkRefetch.current(r.inkRev);
       if (r.cmd) void onCmd.current(r.cmd);
       const l = link.current;
       if (l) {
@@ -1333,87 +1251,89 @@ export function Studio({
     if (r.status === 'live' && !caster.current && r.res && r.res !== res) setRes(r.res);
     if (r.rev <= sync.current.rev) return;
     const st = r.state;
+    // PDF que outro aparelho acabou de subir: busca a lista nova antes
+    if (st.pdfId && !materials.some((m) => m.id === st.pdfId)) {
+      router.refresh();
+      return;
+    }
     sync.current.rev = r.rev;
     await applyScene(st);
   };
 
   type SceneState = {
+    pdfPos?: PdfPos;
     scene?: Scene;
+    pdfId?: string;
+    page?: number;
     pip?: boolean;
     muted?: boolean;
     mirror?: boolean;
     pipBox?: { x: number; y: number; w: number };
     pipAspect?: number;
-    trNb?: string;
-    trPg?: string;
   };
-  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect, x.trNb, x.trPg]);
-  const sceneNow = (): SceneState => ({ scene, pip, muted, mirror, pipBox, ...(trNb ? { trNb } : {}), ...(trPg ? { trPg } : {}), ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
+  const sceneKey = (x: SceneState) => JSON.stringify([x.scene, x.pdfId, x.page, x.pip, x.muted, x.mirror, x.pipBox, x.pipAspect]);
+  const sceneNow = (): SceneState => ({ scene, pdfId, page: pdfView?.page ?? 0, pip, muted, mirror, pipBox, ...(camTrack.current && pipAspect ? { pipAspect } : {}) });
   /** Aplica a cena de outro aparelho (sem mandar de volta). */
   async function applyScene(st: SceneState) {
+    if (st.pdfId && !materials.some((m) => m.id === st.pdfId)) return router.refresh();
     sync.current.applying = true;
     try {
-      // caderno aberto em outro aparelho: abre o mesmo aqui
-      const fresh = performance.now() - trLocalAt.current > 3000;
-      if (fresh && st.trNb && st.trNb !== trNbRef.current) {
-        setTrNb(st.trNb);
-        if (!st.trPg) void trApi.current?.open(st.trNb);
-      }
-      if (fresh && st.trPg && st.trPg !== trPgRef.current) {
-        setTrPg(st.trPg);
-        void trApi.current?.goPage(st.trNb || trNbRef.current, st.trPg);
-      }
+      if (st.pdfId && st.pdfId !== pdfId) await openPdf(st.pdfId);
       if (st.scene && st.scene !== scene) setScene(st.scene);
+      if (st.page && pdf.current?.pages && st.page !== pdf.current.view.page) await pdf.current.goTo(st.page);
       if (typeof st.pip === 'boolean' && st.pip !== pip) setPip(st.pip);
       if (typeof st.muted === 'boolean' && st.muted !== muted) setMuted(st.muted);
       if (typeof st.mirror === 'boolean' && st.mirror !== mirror) setMirror(st.mirror);
       // arrastando a câmera aqui: a posição que chega de fora (atrasada) não puxa o quadradinho de volta
       if (st.pipBox && !pipDrag.current && performance.now() - pipAt.current > 2500 && sceneKey({ pipBox: st.pipBox }) !== sceneKey({ pipBox })) setPipBox(st.pipBox);
+      if (st.pdfPos && pdf.current?.pages) pdf.current.setView(st.pdfPos);
       if (st.pipAspect && comp.current && !camTrack.current) {
         comp.current.camAspect = st.pipAspect;
         setPipRect(comp.current.pipRect());
       }
-      sync.current.sent = sceneKey({ ...sceneNow(), ...st });
+      sync.current.sent = sceneKey({ ...sceneNow(), ...st, page: st.page ?? pdfView?.page ?? 0 });
     } finally {
       window.setTimeout(() => (sync.current.applying = false), 300);
     }
   }
 
   // Mensagens da ligação direta
+  const sendView = useRef<(v: PdfPos) => void>(() => {});
+  const lastView = useRef(0);
+  const viewTimer = useRef(0);
+  const viewDbTimer = useRef(0);
+  sendView.current = (v) => {
+    if (sync.current.applying) return;
+    void v;
+    // pelo servidor: quem só controla manda a posição final ~1 s depois; quem transmite também (os outros seguem)
+    if (!viewDbTimer.current)
+      viewDbTimer.current = window.setTimeout(async () => {
+        viewDbTimer.current = 0;
+        if (!pdf.current || sync.current.applying) return;
+        const r = await setStudioScene(liveId, { pdfPos: pdf.current.pos }).catch(() => null);
+        if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
+      }, caster.current ? 1000 : 600);
+    if (!link.current?.connected) return;
+    // junta os movimentos e manda a posição final a cada 1 s (nos dois sentidos)
+    if (viewTimer.current) return;
+    viewTimer.current = window.setTimeout(() => {
+      viewTimer.current = 0;
+      if (pdf.current && !sync.current.applying) link.current?.post({ t: 'pdfv', v: pdf.current.pos });
+    }, caster.current ? 1000 : 150);
+    lastView.current = performance.now();
+  };
   const devicesNow = () => ({
     cams: [...cams.map((c, i) => ({ id: c.deviceId, name: camName(c, i, cams) })), { id: 'none', name: 'Sem câmera' }],
     mics: [...(android ? [{ id: AUTO_MIC, name: AUTO_MIC_NAME }] : []), ...mics.map((m, i) => ({ id: m.deviceId, name: micName(m, i) })), { id: 'none', name: 'Sem microfone' }],
     cam,
     mic,
   });
-  onLinkMsg.current = (m, from) => {
-    if (m.t === 'tr') {
-      trApi.current?.remote(m.m);
-      // quem transmite repassa para os outros aparelhos (cada um fala só com quem transmite)
-      if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
-      return;
-    }
-    if (m.t === 'pip') {
-      // câmera sendo movida em outro aparelho: acompanha na hora (e a live também)
-      const cp = comp.current;
-      if (typeof m.front === 'boolean') setCamFront(m.front, false);
-      const b = m.b as { x: number; y: number; w: number } | undefined;
-      if (cp && b && typeof b.x === 'number') {
-        pipAt.current = performance.now();
-        cp.pipX = b.x;
-        cp.pipY = b.y;
-        cp.pipW = b.w;
-        placeCam.current();
-      }
-      if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
-      return;
-    }
-    if (m.t === 'mirror') {
-      link.current?.setMirrorFor(from, Boolean(m.on));
-      return;
-    }
+  onLinkMsg.current = (m) => {
     if (m.t === 'scene') void applyScene(m.s as SceneState);
+    else if (m.t === 'pdfv' && pdf.current) pdf.current.setView(m.v as PdfPos);
     else if (m.t === 'devices') setHostDev(m.d as typeof hostDev);
+    else if (m.t === 'ink' && m.pdfId === pdfId) ink.current.apply(unpackOps(m.ops as PackedOps));
+    else if (m.t === 'laser') ink.current.laserFrom(String(m.id), String(m.color), m.pts as number[], Number(m.size) || undefined);
     else if (m.t === 'cam' && caster.current) setCam(String(m.id));
     else if (m.t === 'mic' && caster.current) setMic(String(m.id));
   };
@@ -1421,6 +1341,7 @@ export function Studio({
   onLinkOpen.current = (d) => {
     if (!caster.current || !link.current) return;
     link.current.post({ t: 'scene', s: sceneNow() }, d);
+    if (pdf.current?.pages) link.current.post({ t: 'pdfv', v: pdf.current.pos }, d);
     link.current.post({ t: 'devices', d: devicesNow() }, d);
   };
   // câmeras/microfones de quem transmite mudaram: avisa os outros aparelhos
@@ -1448,19 +1369,19 @@ export function Studio({
       sync.current.sent = key;
       const r = await setStudioScene(liveId, {
         scene,
+        pdfId: pdfId || undefined,
+        page: pdfView?.page || undefined,
         pip,
         muted,
         mirror,
         pipBox,
-        ...(trNb ? { trNb } : {}),
-        ...(trPg ? { trPg } : {}),
         ...(camTrack.current && pipAspect ? { pipAspect } : {}),
       }).catch(() => null);
       if (r) sync.current.rev = Math.max(sync.current.rev, r.rev);
     }, 400);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scene, pip, muted, mirror, pipBox, pipAspect, trNb, trPg, liveId]);
+  }, [scene, pdfId, pdfView?.page, pip, muted, mirror, pipBox, pipAspect, liveId]);
 
   // Câmeras e microfones deste aparelho para os outros verem (só quando muda, ou a cada 15 s)
   const reportRef = useRef<() => Omit<StudioDevice, 'device'> | null>(() => null);
@@ -1582,38 +1503,230 @@ export function Studio({
     } else if (c.t === 'start' && !caster.current && !liveOn) await goLive();
   };
 
-  // caderno na tela: arrastar para baixo não recarrega nem rola a página do estúdio (puxar para atualizar do iPad)
-  useEffect(() => {
-    if (scene !== 'pdf') return;
-    const st = document.documentElement.style;
-    const prev = st.overscrollBehavior;
-    st.overscrollBehavior = 'none';
-    return () => {
-      st.overscrollBehavior = prev;
-    };
-  }, [scene]);
+  /** Barra de escrita: ferramentas, cor e espessura, desfazer, limpar página e tela cheia */
+  async function openWriting() {
+    setInkTool('pen');
+    setInkPop(null);
+    writingRef.current = true;
+    setWriting(true);
+    setBarOpen(true);
+    // sem a tela cheia do navegador: no iPad ela fecha ao puxar a tela para baixo. O modo escrita ocupa a
+    // página inteira e só fecha no X.
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {});
+    setPop(null);
+    setFull(true);
+  }
+  function closeWriting() {
+    writingRef.current = false;
+    setWriting(false);
+    setInkTool('hand');
+    setInkPop(null);
+    ink.current.selected.clear();
+    setSelBox(null);
+    void exitFull();
+  }
   // tela inteira sem a tela cheia do navegador: os menus do app saem da frente
   useEffect(() => {
     document.documentElement.classList.toggle('studio-full', full);
     return () => document.documentElement.classList.remove('studio-full');
   }, [full]);
-  // tela cheia: a página por trás não rola nem recarrega ao arrastar (só os painéis do estúdio rolam)
+  // saiu da tela cheia (gesto do sistema, Esc): o modo escrita fecha junto
   useEffect(() => {
-    if (!full) return;
-    const root = document.documentElement.style;
-    const prev = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
-    root.overflow = 'hidden';
-    root.overscrollBehavior = 'none';
-    document.body.style.overflow = 'hidden';
-    const stop = (e: TouchEvent) => {
-      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
+    if (!full && writing) {
+      writingRef.current = false;
+      setWriting(false);
+      setInkTool('hand');
+      setInkPop(null);
+      ink.current.selected.clear();
+    }
+  }, [full, writing]);
+
+  /**
+   * Ferramentas do modo escrita, no estilo dos apps de anotação do iPad: uma pílula flutuante no alto,
+   * com ferramentas, cores e espessuras à vista (sem menus). Se não couber, rola para o lado.
+   */
+  function inkBar() {
+    const tools: { k: InkTool; label: string; icon: typeof Hand }[] = [
+      { k: 'hand', label: 'Mover o PDF', icon: Hand },
+      { k: 'pen', label: 'Caneta', icon: PenLine },
+      { k: 'marker', label: 'Marca-texto', icon: Highlighter },
+      { k: 'shape', label: 'Formas', icon: Shapes },
+      { k: 'laser', label: 'Laser', icon: MousePointerClick },
+      { k: 'eraser', label: 'Borracha', icon: Eraser },
+      { k: 'select', label: 'Selecionar escrita', icon: Lasso },
+    ];
+    const kinds: { k: ShapeKind; label: string; icon: typeof Hand }[] = [
+      { k: 'line', label: 'Reta', icon: Minus },
+      { k: 'arrow', label: 'Seta', icon: MoveUpRight },
+      { k: 'rect', label: 'Retângulo', icon: Square },
+      { k: 'ellipse', label: 'Elipse', icon: Circle },
+    ];
+    const btn = (on: boolean) =>
+      cn('relative grid size-10 shrink-0 place-items-center rounded-full transition', on ? 'bg-white text-black shadow' : 'text-white hover:bg-white/15');
+    const sep = <span className="my-1 h-px w-6 shrink-0 bg-white/20" />;
+    const ToolIcon = tools.find((t) => t.k === inkTool)?.icon ?? PenLine;
+    const paints = inkTool === 'pen' || inkTool === 'marker' || inkTool === 'shape' || inkTool === 'laser';
+    // cada ferramenta tem o seu tamanho (um não mexe no outro)
+    const sized: Sized | null = inkTool === 'pen' ? 'pen' : inkTool === 'shape' ? 'shape' : inkTool === 'marker' ? 'marker' : inkTool === 'eraser' ? 'eraser' : inkTool === 'laser' ? 'laser' : null;
+    const pick = (t: InkTool) => {
+      setInkTool(t);
+      setInkPop(null);
+      if (t !== 'select') {
+        ink.current.selected.clear();
+        setSelBox(null);
+      }
     };
-    document.addEventListener('touchmove', stop, { capture: true, passive: false });
-    return () => {
-      [root.overflow, root.overscrollBehavior, document.body.style.overflow] = prev;
-      document.removeEventListener('touchmove', stop, { capture: true });
-    };
-  }, [full]);
+    return (
+      <>
+      <div
+        role="toolbar"
+        aria-label="Ferramentas de escrita"
+        data-scroll
+        className="no-scrollbar absolute top-1/2 left-2 z-30 flex max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col items-center gap-0.5 overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/85 p-1 shadow-2xl backdrop-blur-xl"
+      >
+        <button
+          type="button"
+          onClick={() => {
+            setBarOpen((v) => !v);
+            setInkPop(null);
+          }}
+          aria-label={barOpen ? 'Recolher ferramentas' : 'Mostrar ferramentas'}
+          aria-expanded={barOpen}
+          title={barOpen ? 'Recolher' : 'Ferramentas'}
+          className={btn(false)}
+        >
+          {barOpen ? <ChevronsLeft className="size-[18px]" /> : tools.find((t) => t.k === inkTool) ? <ToolIcon className="size-[18px]" /> : <ChevronsRight className="size-[18px]" />}
+        </button>
+        {barOpen && (
+          <>
+        {tools.map((t) => (
+          <button key={t.k} type="button" onClick={() => pick(t.k)} aria-label={t.label} aria-pressed={inkTool === t.k} title={t.label} className={btn(inkTool === t.k)}>
+            <t.icon className="size-[18px]" />
+          </button>
+        ))}
+        {inkTool === 'shape' && (
+          <>
+            {sep}
+            {kinds.map((k) => (
+              <button
+                key={k.k}
+                type="button"
+                onClick={() => setShapeKind(k.k)}
+                aria-label={k.label}
+                aria-pressed={shapeKind === k.k}
+                title={k.label}
+                className={cn('grid size-9 shrink-0 place-items-center rounded-full text-white transition', shapeKind === k.k ? 'bg-brand' : 'hover:bg-white/15')}
+              >
+                <k.icon className="size-4" />
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShapeDash((v) => !v)}
+              aria-label={shapeDash ? 'Linha tracejada' : 'Linha cheia'}
+              aria-pressed={shapeDash}
+              title={shapeDash ? 'Tracejada (toque para linha cheia)' : 'Cheia (toque para tracejada)'}
+              className={cn('grid size-9 shrink-0 place-items-center rounded-full text-white transition', shapeDash ? 'bg-brand' : 'hover:bg-white/15')}
+            >
+              <span className={cn('block w-5 border-t-2 border-white', shapeDash && 'border-dashed')} />
+            </button>
+          </>
+        )}
+        {(paints || sized) && sep}
+        {paints && (
+          <button
+            type="button"
+            onClick={() => setInkPop((p) => (p === 'color' ? null : 'color'))}
+            aria-label="Cores"
+            aria-expanded={inkPop === 'color'}
+            title="Cores"
+            className={btn(false)}
+          >
+            <span className="block size-6 rounded-full ring-2 ring-white/80" style={{ background: inkTool === 'laser' ? laserColor : strokeStyle(inkTool === 'marker' ? 'marker' : 'pen').color }} />
+          </button>
+        )}
+        {sized && (
+          <button
+            type="button"
+            onClick={() => setInkPop((p) => (p === 'size' ? null : 'size'))}
+            aria-label="Tamanho"
+            aria-expanded={inkPop === 'size'}
+            title="Tamanho"
+            className={cn(btn(false), 'h-auto flex-col gap-0.5 py-1.5 text-[10px] font-bold tabular-nums')}
+          >
+            <span className="block rounded-full bg-white" style={{ width: 4 + inkW[sized] * 1.6, height: 4 + inkW[sized] * 1.6 }} />
+            {inkW[sized].toFixed(1).replace('.', ',')}
+          </button>
+        )}
+        {sep}
+        <button type="button" onClick={undoInk} aria-label="Desfazer" title="Desfazer" className={btn(false)}>
+          <Undo2 className="size-[18px]" />
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            if (await confirmDialog('Apagar a escrita desta página?')) clearPage();
+          }}
+          aria-label="Limpar a página"
+          title="Limpar a página"
+          className={btn(false)}
+        >
+          <Trash2 className="size-[18px]" />
+        </button>
+          </>
+        )}
+        <button type="button" onClick={closeWriting} aria-label="Fechar escrita" title="Fechar escrita" className={cn(btn(false), 'bg-white/10')}>
+          <X className="size-[18px]" />
+        </button>
+      </div>
+      {inkPop === 'color' && paints && (
+        <div data-scroll className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
+          {INK_COLORS.map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => {
+                setInkColor(c);
+                setInkPop(null);
+              }}
+              aria-label={`Cor ${c}`}
+              aria-pressed={inkColor === c}
+              className="grid size-9 place-items-center rounded-full"
+            >
+              <span className={cn('block rounded-full transition-all', inkColor === c ? 'size-7 ring-2 ring-white ring-offset-2 ring-offset-neutral-900' : 'size-6 ring-1 ring-white/30')} style={{ background: c }} />
+            </button>
+          ))}
+        </div>
+      )}
+      {inkPop === 'size' && sized && (
+        <div data-scroll className="absolute top-1/2 left-16 z-40 flex w-72 max-w-[calc(100%-5rem)] -translate-y-1/2 animate-scale-in items-center gap-3 rounded-full border border-white/10 bg-neutral-900/90 px-4 py-2.5 text-white shadow-2xl backdrop-blur-xl">
+          <span className="block size-1.5 shrink-0 rounded-full bg-white" />
+          <input
+            type="range"
+            min={0.1}
+            max={7}
+            step={0.1}
+            value={inkW[sized]}
+            onChange={(e) => setSize(sized, Number(e.target.value))}
+            onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+            onPointerMove={(e) => {
+              if (!e.buttons && e.pointerType === 'mouse') return;
+              if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              setSize(sized, 0.1 + Math.min(1, Math.max(0, (e.clientX - r.left - 10) / Math.max(1, r.width - 20))) * 6.9);
+            }}
+            style={{ touchAction: 'none' }}
+            aria-label={sized === 'eraser' ? 'Tamanho da borracha' : sized === 'marker' ? 'Tamanho do marca-texto' : sized === 'laser' ? 'Tamanho do laser' : sized === 'shape' ? 'Tamanho da forma' : 'Tamanho da caneta'}
+            className="h-8 min-w-0 flex-1 accent-white"
+          />
+          <span className="block size-4 shrink-0 rounded-full bg-white" />
+          <span className="w-8 shrink-0 text-right text-xs font-bold tabular-nums">{inkW[sized].toFixed(1).replace('.', ',')}</span>
+        </div>
+      )}
+      </>
+    );
+  }
+
   /** Escolheu uma câmera na lista de todos os aparelhos: troca nele ou passa a live para ele. */
   async function pickAnyCam(v: string) {
     const [dev, id] = v.split('|');
@@ -1665,6 +1778,592 @@ export function Studio({
     window.setTimeout(() => setScanning(false), 2500);
   }
 
+  // ---------------- escrita: enviar, receber, desfazer
+  /** junta mudanças para mandar de uma vez (ao servidor, a cada ~0,6 s) */
+  function queueInk(ops: InkOps) {
+    const q = inkQueue.current;
+    const adds = new Map((q.add ?? []).map((x) => [x.id, x]));
+    for (const id of ops.remove ?? []) adds.delete(id);
+    for (const x of ops.add ?? []) adds.set(x.id, x);
+    inkQueue.current = { add: [...adds.values()], remove: [...new Set([...(q.remove ?? []), ...(ops.remove ?? [])])] };
+    if (!inkTimer.current)
+      inkTimer.current = window.setTimeout(async () => {
+        inkTimer.current = 0;
+        const send = inkQueue.current;
+        inkQueue.current = {};
+        if (!pdfId || (!send.add?.length && !send.remove?.length)) return;
+        const job = inkOps(liveId, pdfId, packOps(send)).catch(() => null);
+        inkFlight.current = job;
+        const r = await job;
+        if (inkFlight.current === job) inkFlight.current = null;
+        // versões gravadas daqui: não precisa buscar de volta
+        if (r && 'rev' in r && r.rev) {
+          ownRevs.current.add(r.rev);
+          if (r.rev === inkRevSeen.current + 1) inkRevSeen.current = r.rev;
+        }
+      }, caster.current ? 800 : 500);
+  }
+  /** mudança feita aqui: guarda para desfazer, manda para os outros aparelhos */
+  function commitInk(ops: InkOps | null, before: Stroke[]) {
+    if (!ops || (!ops.add?.length && !ops.remove?.length)) return;
+    for (const a of ops.add ?? []) localAdds.current.set(a.id, performance.now());
+    undoStack.current.push(ink.current.invert(ops, before));
+    if (undoStack.current.length > 60) undoStack.current.shift();
+    // quem transmite manda na hora para quem controla (o servidor guarda logo depois)
+    if (caster.current || !light) link.current?.post({ t: 'ink', pdfId, ops: packOps(ops) });
+    queueInk(ops);
+  }
+  function undoInk() {
+    const inv = undoStack.current.pop();
+    if (!inv) return;
+    ink.current.apply(inv);
+    if (caster.current || !light) link.current?.post({ t: 'ink', pdfId, ops: packOps(inv) });
+    queueInk(inv);
+  }
+  function clearPage() {
+    if (!pdf.current?.pages) return;
+    const r = pdf.current.pageRange(pdf.current.page);
+    const ids = ink.current.idsInRange(r.top, r.bottom);
+    if (!ids.length) return;
+    const before = [...ink.current.strokes];
+    const ops = { remove: ids };
+    ink.current.apply(ops);
+    commitInk(ops, before);
+  }
+  // escrita do PDF aberto (ao abrir o estúdio ou trocar de PDF)
+  useEffect(() => {
+    ink.current.strokes = [];
+    ink.current.selected.clear();
+    undoStack.current = [];
+    setSelBox(null);
+    if (!pdfId) return;
+    let off = false;
+    void getInk(liveId, pdfId).then((r) => {
+      if (off) return;
+      ink.current.strokes = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
+    });
+    return () => {
+      off = true;
+    };
+  }, [pdfId, liveId]);
+  // escrita feita em outro aparelho (pelo servidor)
+  /** traços feitos aqui há pouco: uma busca no servidor que ainda não os tem não pode apagá-los da tela */
+  const localAdds = useRef(new Map<string, number>());
+  /** gravação em andamento e versões que este aparelho gravou (não precisam ser buscadas de volta) */
+  const inkFlight = useRef<Promise<unknown> | null>(null);
+  const ownRevs = useRef(new Set<number>());
+  const inkRefetch = useRef<(rev: number) => void | Promise<void>>(() => {});
+  inkRefetch.current = async (rev) => {
+    if (!pdfId || rev <= inkRevSeen.current) return;
+    if (inkRevSeen.current < 0) {
+      inkRevSeen.current = rev;
+      return;
+    }
+    // espera a gravação daqui terminar: se todas as versões novas são nossas, não há o que buscar
+    // (recarregar tudo a cada traço travava a escrita conforme a aula enchia)
+    if (inkFlight.current) await inkFlight.current;
+    if (rev <= inkRevSeen.current) return;
+    let mine = true;
+    for (let k = inkRevSeen.current + 1; k <= rev; k++) if (!ownRevs.current.has(k)) mine = false;
+    for (const k of ownRevs.current) if (k <= rev) ownRevs.current.delete(k);
+    inkRevSeen.current = rev;
+    if (mine) return;
+    void getInk(liveId, pdfId).then((r) => {
+      const keep = ink.current.current;
+      const now = performance.now();
+      for (const [id, t] of localAdds.current) if (now - t > 30_000) localAdds.current.delete(id);
+      const next = r.strokes.map(unpackStroke).filter((x): x is Stroke => Boolean(x));
+      const have = new Set(next.map((x) => x.id));
+      for (const o of ink.current.strokes) if (!have.has(o.id) && localAdds.current.has(o.id)) next.push(o);
+      // já tem tudo (chegou antes pela conexão direta entre os aparelhos): não redesenha o PDF à toa
+      const cur = ink.current.strokes;
+      const curIds = new Set(cur.map((x) => x.id));
+      const same = cur.length === next.length && next.every((x) => curIds.has(x.id)) && !inkQueue.current.add?.length && !inkQueue.current.remove?.length;
+      if (!same) ink.current.strokes = next;
+      // o que ainda não foi enviado daqui continua
+      ink.current.apply(inkQueue.current);
+      ink.current.current = keep;
+    });
+  };
+  // quem só controla desenha a prévia rápido enquanto escreve (senão fica a 4 quadros)
+  useEffect(() => {
+    if (light && !onAir) comp.current?.setFps(inkTool !== 'hand' ? 24 : 4);
+  }, [inkTool, light, onAir]);
+  // caixa da seleção acompanha zoom e rolagem
+  useEffect(() => {
+    if (inkTool !== 'select') return setSelBox(null);
+    const t = window.setInterval(() => {
+      const b = ink.current.selectionBox();
+      const p = pdf.current;
+      if (!b || !p?.pages) return setSelBox((o) => (o ? null : o));
+      const a = p.toFrame(b.x0, b.y0);
+      const c = p.toFrame(b.x1, b.y1);
+      const nb = { x: a.fx, y: a.fy, w: c.fx - a.fx, h: c.fy - a.fy };
+      setSelBox((o) => (o && Math.abs(o.x - nb.x) + Math.abs(o.y - nb.y) + Math.abs(o.w - nb.w) < 0.001 ? o : nb));
+    }, 80);
+    return () => window.clearInterval(t);
+  }, [inkTool]);
+
+  /**
+   * Palma da mão no iPad: enquanto a Pencil escreve, o toque da mão em qualquer lugar da página não
+   * seleciona texto, não rola e não aperta botões. No PDF, nenhum toque abre a lupa/seleção do Safari.
+   */
+  useEffect(() => {
+    if (!writing) return;
+    // a mão encostando não seleciona texto nem abre a lupa em lugar nenhum da página
+    const st = document.documentElement.style as CSSStyleDeclaration & { webkitUserSelect: string; webkitTouchCallout: string };
+    const prev = [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout];
+    st.userSelect = 'none';
+    st.webkitUserSelect = 'none';
+    st.webkitTouchCallout = 'none';
+    window.getSelection()?.removeAllRanges();
+    const finger = (t: Touch) => (t as Touch & { touchType?: string }).touchType !== 'stylus';
+    const onTouch = (e: TouchEvent) => {
+      const onCanvas = e.target === canvasRef.current;
+      if (!e.cancelable) return;
+      if (onCanvas && scene === 'pdf') e.preventDefault();
+      else if (pencilSeen.current && penBusy() && [...e.changedTouches].some(finger) && !(e.target as Element | null)?.closest?.('[data-scroll]')) e.preventDefault();
+    };
+    // o clique vem depois do toque: lembra se foi a mão (a Pencil continua apertando botões)
+    let palmDown = false;
+    const onDown = (e: PointerEvent) => {
+      // barras, régua e chat respondem ao dedo sempre (a proteção contra a palma vale para o resto da tela)
+      const control = Boolean((e.target as Element | null)?.closest?.('[data-scroll]'));
+      palmDown = !control && e.pointerType === 'touch' && pencilSeen.current && penBusy();
+      if (palmDown && e.target !== canvasRef.current) e.stopPropagation();
+    };
+    const onClick = (e: MouseEvent) => {
+      if (palmDown) {
+        palmDown = false;
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    // a página não rola nem "puxa para atualizar" enquanto escreve (só as barras e o chat rolam)
+    const root = document.documentElement.style;
+    const lock = [root.overflow, root.overscrollBehavior, document.body.style.overflow];
+    root.overflow = 'hidden';
+    root.overscrollBehavior = 'none';
+    // nenhum gesto do navegador (zoom da página, arrastar para voltar) começa pela mão apoiada: quando um
+    // gesto desses começa, o navegador para de entregar a caneta por alguns instantes
+    const prevTouch = root.touchAction;
+    root.touchAction = 'none';
+    const noGesture = (e: Event) => e.preventDefault();
+    document.addEventListener('gesturestart', noGesture, { capture: true, passive: false });
+    document.addEventListener('gesturechange', noGesture, { capture: true, passive: false });
+    document.body.style.overflow = 'hidden';
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.cancelable && !(e.target as Element | null)?.closest?.('[data-scroll], input, select, textarea, [role=dialog]')) e.preventDefault();
+    };
+    document.addEventListener('touchmove', onTouchMove, { capture: true, passive: false });
+    document.addEventListener('touchstart', onTouch, { capture: true, passive: false });
+    document.addEventListener('pointerdown', onDown, true);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      [st.userSelect, st.webkitUserSelect, st.webkitTouchCallout] = prev;
+      [root.overflow, root.overscrollBehavior, document.body.style.overflow] = lock;
+      root.touchAction = prevTouch;
+      document.removeEventListener('gesturestart', noGesture, { capture: true });
+      document.removeEventListener('gesturechange', noGesture, { capture: true });
+      document.removeEventListener('touchmove', onTouchMove, { capture: true });
+      document.removeEventListener('touchstart', onTouch, { capture: true });
+      document.removeEventListener('pointerdown', onDown, true);
+      document.removeEventListener('click', onClick, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [writing, scene]);
+
+  /** cor e espessura de cada ferramenta */
+  const strokeStyle = (tool: 'pen' | 'marker') => ({
+    color: tool === 'marker' && inkColor === '#111111' ? '#facc15' : inkColor,
+    size: inkW[tool] * INK_UNIT[tool],
+  });
+  const laserColor = inkColor === '#111111' ? '#ef4444' : inkColor;
+  const laserSize = inkW.laser * INK_UNIT.laser;
+  const laserSent = useRef(0);
+
+  /**
+   * Camada rápida: o traço que está sendo escrito aparece aqui na hora (a cada quadro da tela, 60/120 Hz),
+   * sem esperar o próximo quadro da transmissão. A live recebe o mesmo traço no quadro seguinte.
+   */
+  const fastRef = useRef<HTMLCanvasElement>(null);
+  const fastRaf = useRef(0);
+  const fastClear = useRef(0);
+  /** pontos que o navegador prevê (só na camada rápida: tira a sensação de atraso) */
+  const predicted = useRef<number[]>([]);
+  /** área do quadro dentro do elemento (o canvas fica centralizado, sem distorcer) */
+  const frameRect = (el: HTMLCanvasElement) => {
+    const r = el.getBoundingClientRect();
+    const s = Math.min(r.width / el.width, r.height / el.height) || 1;
+    const w = el.width * s;
+    const h = el.height * s;
+    return { left: r.left + (r.width - w) / 2, top: r.top + (r.height - h) / 2, width: w, height: h, ox: (r.width - w) / 2, oy: (r.height - h) / 2, r };
+  };
+  function drawFast() {
+    fastRaf.current = 0;
+    const c = fastRef.current;
+    const el = canvasRef.current;
+    const p = pdf.current;
+    if (!c || !el || !p) return;
+    const f = frameRect(el);
+    const dpr = Math.min(3, window.devicePixelRatio || 1);
+    const W = Math.round(f.r.width * dpr);
+    const H = Math.round(f.r.height * dpr);
+    if (c.width !== W || c.height !== H) {
+      c.width = W;
+      c.height = H;
+    }
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, W, H);
+    const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy };
+    const L = lasso.current;
+    if (L && L.length >= 4) {
+      // laço da seleção: traço livre tracejado
+      ctx.save();
+      ctx.setLineDash([6 * dpr, 5 * dpr]);
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.strokeStyle = '#2563eb';
+      ctx.fillStyle = 'rgba(37,99,235,0.08)';
+      ctx.beginPath();
+      for (let i = 0; i < L.length; i += 2) {
+        const x = view.x + (L[i] - view.cx) * view.k;
+        const y = view.y + (L[i + 1] - view.cy) * view.k;
+        if (i) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    // laser sendo escrito: aparece na hora, como a caneta
+    if (inkPtr.current?.laser) ink.current.drawLasers(ctx, { ...view, w: f.width * dpr, h: f.height * dpr });
+    const cur = ink.current.current;
+    // marca-texto é transparente: desenhado duas vezes ficaria mais escuro, então fica só na prévia normal
+    if (!cur || cur.tool !== 'pen') return;
+    const s = predicted.current.length ? { ...cur, pts: cur.pts.concat(predicted.current) } : cur;
+    const k = (f.width * dpr) / p.viewWidth;
+    ink.current.drawStroke(ctx, s, { x: f.ox * dpr, y: f.oy * dpr, k, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr }, true);
+  }
+  const fastDraw = () => {
+    window.clearTimeout(fastClear.current);
+    if (!fastRaf.current) fastRaf.current = requestAnimationFrame(drawFast);
+  };
+  /** fim do traço: a prévia normal já tem o traço inteiro, a camada rápida some */
+  const fastDone = () => {
+    predicted.current = [];
+    // quem só controla redesenha na hora; quem transmite mostra no próximo quadro
+    if (light && !onAir) {
+      comp.current?.draw();
+      if (inkTool === 'hand') comp.current?.setFps(4);
+    }
+    window.clearTimeout(fastClear.current);
+    fastClear.current = window.setTimeout(fastDraw, light && !onAir ? 0 : 90);
+  };
+  useEffect(() => () => cancelAnimationFrame(fastRaf.current), []);
+  /**
+   * Letra nítida: com o PDF parado, a caneta é redesenhada na resolução da tela (a imagem da live tem 720p
+   * e, ampliada no iPad, deixa a letra borrada). Enquanto o PDF rola ou dá zoom esta camada fica vazia
+   * (nada é desenhado por quadro: a rolagem não pesa) e volta assim que para.
+   */
+  const sharpRef = useRef<HTMLCanvasElement>(null);
+  const sharpOn = writing && scene === 'pdf' && (!viewing || touching);
+  const pipHole = (scene === 'both' || (scene === 'pdf' && pip)) && Boolean(camTrack.current || light) ? pipRect : null;
+  useEffect(() => {
+    const c = sharpRef.current;
+    const ctx = c?.getContext('2d');
+    if (!c || !ctx) return;
+    if (!sharpOn) {
+      ctx.clearRect(0, 0, c.width, c.height);
+      return;
+    }
+    let raf = 0;
+    let viewKey = '';
+    let ver = -1;
+    let drawn = 0;
+    let movedAt = 0;
+    let empty = true;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const el = canvasRef.current;
+      const p = pdf.current;
+      if (!el || !p?.pages) return;
+      const f = frameRect(el);
+      const dpr = Math.min(3, window.devicePixelRatio || 1);
+      const W = Math.round(f.r.width * dpr);
+      const H = Math.round(f.r.height * dpr);
+      const vk = `${W}|${H}|${f.ox}|${f.oy}|${f.width}|${p.viewWidth}|${p.cx}|${p.cy}`;
+      const now = performance.now();
+      if (vk !== viewKey) {
+        // mexendo: some na hora (a imagem da live, que anda junto com o PDF, fica à mostra)
+        viewKey = vk;
+        movedAt = now;
+        ver = -1;
+        if (!empty) {
+          ctx.clearRect(0, 0, c.width, c.height);
+          empty = true;
+        }
+        return;
+      }
+      if (now - movedAt < 140) return;
+      const n = ink.current.count;
+      const full = ver !== ink.current.version || n < drawn;
+      if (!full && n === drawn) return;
+      if (c.width !== W || c.height !== H) {
+        c.width = W;
+        c.height = H;
+      }
+      const view = { x: f.ox * dpr, y: f.oy * dpr, k: (f.width * dpr) / p.viewWidth, cx: p.cx, cy: p.cy, w: f.width * dpr, h: f.height * dpr };
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(view.x, view.y, view.w, view.h);
+      // a câmera fica por cima da escrita
+      if (pipHole) ctx.rect(view.x + pipHole.x * view.w, view.y + pipHole.y * view.h, pipHole.w * view.w, pipHole.h * view.h);
+      ctx.clip('evenodd');
+      if (full) {
+        ctx.clearRect(0, 0, W, H);
+        ink.current.drawPens(ctx, view, true);
+      } else ink.current.drawPens(ctx, view, true, drawn);
+      ctx.restore();
+      ver = ink.current.version;
+      drawn = n;
+      empty = false;
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharpOn, pipHole?.x, pipHole?.y, pipHole?.w, pipHole?.h]);
+
+  /** toque/caneta no PDF com uma ferramenta de escrita. Devolve true se tratou o evento. */
+  function inkDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!writing || scene !== 'pdf' || !pdf.current?.pages) return false;
+    // mãozinha: nada escreve. A Pencil e o dedo movem a folha; dois dedos dão zoom.
+    if (inkTool === 'hand') return false;
+    if (e.pointerType === 'pen') {
+      if (!pencilSeen.current)
+        try {
+          localStorage.setItem('studio-pencil', '1');
+        } catch {}
+      pencilSeen.current = true;
+      lastPen.current = performance.now();
+      // mão que encostou antes da caneta: não é gesto (não impede a escrita, e o que ela mexeu no PDF volta)
+      if (pointers.current.size && viewSnap.current && performance.now() - viewSnapAt.current < 1500) pdf.current.restore(viewSnap.current);
+      viewSnap.current = null;
+      pointers.current.clear();
+      downAt.current.clear();
+      // traço anterior que ficou sem o "soltar" (o Safari perdeu o evento): fecha e começa outro
+      const old = inkPtr.current;
+      if (old) {
+        window.clearTimeout(old.held);
+        inkPtr.current = null;
+        if (old.type !== 'pen') {
+          // estava "escrevendo" com a mão encostada antes da Pencil: era a palma, descarta
+          ink.current.cancel();
+          lasso.current = null;
+          fastDone();
+        } else if (old.tool === 'pen' || old.tool === 'marker' || old.tool === 'shape') {
+          commitInk(ink.current.end(), old.before ?? []);
+          fastDone();
+        }
+      }
+    } else if (e.pointerType === 'touch' && pencilSeen.current) {
+      // com a Pencil: mão enquanto escreve é a palma (ignora); fora disso, dedos movem/dão zoom
+      return penBusy();
+    }
+    const tool: InkTool = inkTool;
+    if (inkPtr.current) {
+      // segundo dedo: deixa de escrever e vira pinça/rolagem
+      if (inkPtr.current.type === 'pen') return true; // palma da mão encostando: ignora
+      ink.current.cancel();
+      inkPtr.current = null;
+      fastDone();
+      return false;
+    }
+    if (pointers.current.size) return false;
+    const r = frameRect(e.currentTarget);
+    const d = pdf.current.toDoc((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* o navegador recusou a captura: o traço segue mesmo assim */
+    }
+    const st: InkPtr = { id: e.pointerId, type: e.pointerType, tool, before: [...ink.current.strokes] };
+    if (tool === 'pen' || tool === 'marker') {
+      const k = strokeStyle(tool);
+      ink.current.begin(tool, k.color, k.size, d.x, d.y, undefined, pdf.current.viewWidth / r.width);
+      // quem só controla: prévia rápida enquanto escreve (mesmo com a ferramenta "mover" e a Pencil)
+      if (light && !onAir) comp.current?.setFps(24);
+      fastDraw();
+    } else if (tool === 'shape') {
+      st.from = d;
+      ink.current.beginShape(strokeStyle('pen').color, inkW.shape * INK_UNIT.shape, d.x, d.y, shapeDash);
+      if (light && !onAir) comp.current?.setFps(24);
+      fastDraw();
+    } else if (tool === 'laser') {
+      st.laser = newStrokeId();
+      ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
+      fastDraw();
+    } else if (tool === 'eraser') {
+      st.erased = ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth);
+    } else if (tool === 'select') {
+      st.lasso = [d.x, d.y];
+      lasso.current = st.lasso;
+      ink.current.selected.clear();
+      setSelBox(null);
+      fastDraw();
+    }
+    inkPtr.current = st;
+    if (viewing) touched();
+    return true;
+  }
+  function inkMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.pointerType === 'pen' && inkTool !== 'hand') lastPen.current = performance.now();
+    // a Pencil continua encostada mas o traço foi encerrado (o Safari cancelou o toque no meio): retoma daqui
+    // (ou o navegador nem avisou que a Pencil encostou: ela está pressionando há mais de 0,12 s sem traço aberto)
+    if (
+      !inkPtr.current &&
+      writing &&
+      inkTool !== 'hand' &&
+      e.pointerType === 'pen' &&
+      e.pressure > 0 &&
+      scene === 'pdf' &&
+      (performance.now() < resumeUntil.current || ((e.buttons & 1) === 1 && (e.pointerId !== lastPenId.current || performance.now() - penUpAt.current > 120)))
+    ) {
+      resumeUntil.current = 0;
+      inkDown(e);
+      return true;
+    }
+    const st = inkPtr.current;
+    if (st && st.type === 'pen' && e.pointerType === 'pen' && st.id !== e.pointerId && e.pressure > 0) st.id = e.pointerId;
+    if (!st || st.id !== e.pointerId || !pdf.current) return Boolean(st && e.pointerType === 'touch' && st.type === 'pen');
+    if (st.held) {
+      // toque cancelado pelo navegador e a Pencil continua na tela: o mesmo traço segue, sem buraco
+      if (!(e.pressure > 0)) return true;
+      window.clearTimeout(st.held);
+      st.held = 0;
+    }
+    const r = frameRect(e.currentTarget);
+    // a caneta manda vários pontos por quadro: usa todos (traço liso)
+    const evs = (e.nativeEvent.getCoalescedEvents?.() ?? []).length ? e.nativeEvent.getCoalescedEvents() : [e.nativeEvent];
+    for (const ev of evs) {
+      const d = pdf.current.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
+      if (st.tool === 'pen' || st.tool === 'marker') ink.current.extend(d.x, d.y);
+      else if (st.tool === 'shape' && st.from) ink.current.setShape(shapePoints(shapeKind, st.from.x, st.from.y, d.x, d.y));
+      else if (st.tool === 'laser' && st.laser) ink.current.laser(st.laser, laserColor, laserSize, d.x, d.y);
+      else if (st.tool === 'eraser') st.erased!.push(...ink.current.erase(d.x, d.y, inkW.eraser * INK_UNIT.eraser * pdf.current.viewWidth));
+      else if (st.tool === 'select' && st.lasso) st.lasso.push(d.x, d.y);
+    }
+    if (st.tool === 'select' || st.tool === 'shape' || st.tool === 'laser') fastDraw();
+    if (st.tool === 'pen') {
+      // onde a caneta vai estar no próximo quadro (Chrome/Android); o Safari não prevê
+      const pr = e.nativeEvent.getPredictedEvents?.() ?? [];
+      predicted.current = pr.slice(0, 2).flatMap((ev) => {
+        const d = pdf.current!.toDoc((ev.clientX - r.left) / r.width, (ev.clientY - r.top) / r.height);
+        return [d.x, d.y];
+      });
+      fastDraw();
+    }
+    // laser: quem transmite manda para quem controla (e vice-versa), ~8 vezes por segundo
+    if (st.tool === 'laser' && st.laser && performance.now() - laserSent.current > 120) {
+      laserSent.current = performance.now();
+      const l = ink.current.lasers.get(st.laser);
+      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
+    }
+    if (viewing) touched();
+    return true;
+  }
+  function inkUp(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (e.pointerType === 'pen' && inkTool !== 'hand') {
+      lastPen.current = performance.now();
+      // toque cancelado pelo navegador (não foi a Pencil levantando): pode retomar nos próximos instantes
+      resumeUntil.current = e.type === 'pointercancel' ? performance.now() + 400 : 0;
+      penUpAt.current = performance.now();
+      lastPenId.current = e.pointerId;
+    }
+    const st = inkPtr.current;
+    if (!st || st.id !== e.pointerId) return false;
+    if (e.type === 'pointercancel' && st.type === 'pen' && (st.tool === 'pen' || st.tool === 'marker') && !st.held) {
+      // o navegador cancelou o toque no meio da letra: espera um instante; se a Pencil seguir, o traço continua
+      st.held = window.setTimeout(() => {
+        if (inkPtr.current !== st) return;
+        inkPtr.current = null;
+        commitInk(ink.current.end(), st.before ?? []);
+        fastDone();
+      }, 300);
+      return true;
+    }
+    window.clearTimeout(st.held);
+    inkPtr.current = null;
+    if (st.tool === 'shape') {
+      // toque sem arrastar não vira forma
+      const c = ink.current.current;
+      const tiny = !c || Math.hypot(c.pts[c.pts.length - 2] - c.pts[0], c.pts[c.pts.length - 1] - c.pts[1]) < 0.004;
+      if (tiny && shapeKind !== 'ellipse' && shapeKind !== 'rect') ink.current.cancel();
+      else if (c && (shapeKind === 'rect' || shapeKind === 'ellipse') && Math.max(...c.pts.filter((_, i) => i % 2 === 0)) - Math.min(...c.pts.filter((_, i) => i % 2 === 0)) < 0.004)
+        ink.current.cancel();
+      else commitInk(ink.current.end(), st.before ?? []);
+      fastDone();
+    } else if (st.tool === 'pen' || st.tool === 'marker') {
+      commitInk(ink.current.end(), st.before ?? []);
+      fastDone();
+    } else if (st.tool === 'eraser' && st.erased?.length) commitInk({ remove: st.erased }, st.before ?? []);
+    else if (st.tool === 'select' && st.lasso) {
+      ink.current.selectLasso(st.lasso);
+      lasso.current = null;
+      fastDraw();
+    } else if (st.tool === 'laser' && st.laser) {
+      ink.current.laserEnd(st.laser);
+      fastDone();
+      const l = ink.current.lasers.get(st.laser);
+      if (l) link.current?.post({ t: 'laser', id: st.laser, color: l.color, size: l.size, pts: l.pts });
+    }
+    return true;
+  }
+  // mover/aumentar o que foi selecionado
+  const selDown = (e: React.PointerEvent<HTMLDivElement>, mode: 'move' | 'size') => {
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const b = ink.current.selectionBox();
+    if (!b) return;
+    selDrag.current = { mode, sx: e.clientX, sy: e.clientY, before: [...ink.current.strokes], last: { dx: 0, dy: 0, s: 1 }, box: { x0: b.x0, y0: b.y0, w: b.x1 - b.x0 } };
+  };
+  const selMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = selDrag.current;
+    const p = pdf.current;
+    const c = canvasRef.current;
+    if (!d || !p || !c) return;
+    const r = c.getBoundingClientRect();
+    const dx = ((e.clientX - d.sx) / r.width) * p.viewWidth;
+    const dy = ((e.clientY - d.sy) / r.width) * p.viewWidth;
+    if (d.mode === 'move') {
+      ink.current.transform(dx - d.last.dx, dy - d.last.dy);
+      d.last = { ...d.last, dx, dy };
+    } else {
+      const sc = Math.max(0.2, (d.box.w + dx) / d.box.w);
+      ink.current.transform(0, 0, sc / d.last.s, d.box.x0, d.box.y0);
+      d.last = { ...d.last, s: sc };
+    }
+  };
+  /** apaga o que está selecionado */
+  const deleteSel = () => {
+    const ids = [...ink.current.selected];
+    if (!ids.length) return;
+    const before = [...ink.current.strokes];
+    const ops = { remove: ids };
+    ink.current.apply(ops);
+    ink.current.selected.clear();
+    setSelBox(null);
+    commitInk(ops, before);
+  };
+  const selUp = () => {
+    const d = selDrag.current;
+    selDrag.current = null;
+    if (!d) return;
+    const moved = ink.current.strokes.filter((x) => ink.current.selected.has(x.id));
+    commitInk({ remove: moved.map((x) => x.id), add: moved }, d.before);
+  };
+
   // Assumir sozinho: o aparelho da live parou de enviar (caiu a internet, fechou o app) e este está pronto
   const autoTried = useRef('');
   useEffect(() => {
@@ -1685,13 +2384,6 @@ export function Studio({
     return () => window.removeEventListener('beforeunload', h);
   }, [onAir]);
 
-  /** Iniciar: a live começa no aparelho principal (o da câmera em uso), mesmo se o botão for tocado em outro */
-  async function startLive() {
-    if (light && stageDev) {
-      void studioCommand(liveId, stageDev, { t: 'start' });
-      toast(`Iniciando no ${stageLabel || 'outro aparelho'}…`);
-    } else await goLive();
-  }
   async function goLive() {
     if (!camTrack.current && !screenTrack.current) return toast.error('Escolha a câmera ou espelhe a tela.');
     if (caster.current) return;
@@ -1753,23 +2445,14 @@ export function Studio({
         },
       });
       caster.current = b;
-      try {
-        await b.start();
-      } catch (err) {
-        // não ficou no ar: libera o botão para tentar de novo (antes o erro sumia e o botão não fazia mais nada)
-        caster.current = null;
-        b.abort();
-        throw err;
-      }
+      await b.start();
       if (comp.current) {
         comp.current.setFps(30);
         comp.current.onFrame = (c) => b.pushFrame(c);
       }
-      void setStudioScene(liveId, { res, scene, pip, muted, ...(trNb ? { trNb } : {}) });
+      void setStudioScene(liveId, { res, scene, pdfId: pdfId || undefined, page: pdfView?.page, pip, muted });
       toast(resume ? 'Transmitindo deste aparelho' : 'Transmissão iniciada');
       router.refresh();
-    } catch (err) {
-      toast.error(`A live não iniciou: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -1809,6 +2492,30 @@ export function Studio({
 
   const blocked = !support?.ok || !ready;
 
+  const pdfList = (
+    <ul className="space-y-1.5">
+      {materials.map((m) => (
+        <li key={m.id}>
+          <button
+            type="button"
+            onClick={() => {
+              setChoosing(false);
+              void openPdf(m.id);
+            }}
+            className={cn(
+              'flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition hover:bg-surface-2',
+              pdfId === m.id ? 'border-brand bg-brand/10' : 'border-line',
+            )}
+          >
+            <FileText className="size-5 shrink-0 text-danger" />
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{m.title}</span>
+            {pdfId === m.id && <span className="text-[11px] text-brand">aberto</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+
   return (
     <div
       className={cn(
@@ -1827,32 +2534,14 @@ export function Studio({
             <div
               className="relative"
               style={
-                full && scene !== 'pdf'
+                full
                   ? {
                       width: 'min(100%, calc(100dvh * 16 / 9))',
                       aspectRatio: '16 / 9',
                     }
-                  : full
-                    ? { width: '100%', height: '100%' }
-                    : { position: 'absolute', inset: 0 }
+                  : { position: 'absolute', inset: 0 }
               }
             >
-              {/* caderno da live: o editor do Traço, como ele é (a live desenha as camadas da folha dele) */}
-              {trMounted && (
-                <div ref={trWrap} className={cn('absolute inset-0 z-[5] overflow-hidden', scene !== 'pdf' && 'invisible')}>
-                  <iframe
-                    ref={trFrame}
-                    title="Caderno da live"
-                    src={`/traco/estudio.html?live=${encodeURIComponent(liveId)}`}
-                    className="absolute top-0 left-0 border-0 bg-[#edf0f4]"
-                    style={
-                      trSize && trSize.k !== 1
-                        ? { width: 1280, height: trSize.h / trSize.k, transform: `scale(${trSize.k})`, transformOrigin: '0 0' }
-                        : { width: '100%', height: '100%' }
-                    }
-                  />
-                </div>
-              )}
               <canvas
                 ref={canvasRef}
                 width={1280}
@@ -1870,14 +2559,49 @@ export function Studio({
                 onPointerCancel={onUp}
                 className={cn(
                   'size-full object-contain',
-                  scene === 'camera' && fit === 'cover' && 'cursor-grab touch-none active:cursor-grabbing',
-                  // caderno: na tela pequena você vê a imagem da live (o que o aluno vê); na tela cheia, o caderno para escrever
-                  scene === 'pdf' && trMounted && (full || light ? 'invisible' : 'relative z-[7]'),
+                  (scene === 'pdf' || (scene === 'camera' && fit === 'cover')) && 'cursor-grab touch-none active:cursor-grabbing',
                 )}
+                data-zoom={pdfView?.zoom.toFixed(2)}
                 aria-label="Prévia da transmissão"
               />
+              <canvas ref={sharpRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
+              <canvas ref={fastRef} aria-hidden className="pointer-events-none absolute inset-0 size-full" />
+              {/* seleção da escrita: arrastar move, alça muda o tamanho (não aparece na live) */}
+              {scene === 'pdf' && inkTool === 'select' && selBox && (
+                <div
+                  role="button"
+                  aria-label="Mover o que foi selecionado"
+                  onPointerDown={(e) => selDown(e, 'move')}
+                  onPointerMove={selMove}
+                  onPointerUp={selUp}
+                  onPointerCancel={selUp}
+                  className="absolute z-10 cursor-move touch-none border-2 border-dashed border-brand"
+                  style={{ left: `${selBox.x * 100}%`, top: `${selBox.y * 100}%`, width: `${selBox.w * 100}%`, height: `${selBox.h * 100}%` }}
+                >
+                  <div
+                    role="button"
+                    aria-label="Mudar o tamanho do que foi selecionado"
+                    onPointerDown={(e) => selDown(e, 'size')}
+                    onPointerMove={selMove}
+                    onPointerUp={selUp}
+                    onPointerCancel={selUp}
+                    className="absolute -right-3 -bottom-3 grid size-7 cursor-nwse-resize touch-none place-items-center rounded-full border-2 border-white bg-brand shadow"
+                  >
+                    <Maximize2 className="size-3.5 text-white" />
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="Excluir seleção"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={deleteSel}
+                    className="absolute -top-11 left-1/2 grid size-9 -translate-x-1/2 place-items-center rounded-full bg-red-600 text-white shadow-lg"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </div>
+              )}
               {/* reserva: foto da imagem da live (1 por segundo) quando a ligação direta não conecta */}
-              {light && !mirrorOk && previewSrc && !touching && scene !== 'pdf' && (
+              {light && !mirrorOk && previewSrc && !touching && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={previewSrc} alt="Imagem da live" className="pointer-events-none absolute inset-0 size-full bg-black object-contain" />
               )}
@@ -1888,16 +2612,11 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn(
-                  'pointer-events-none absolute inset-0 size-full bg-black object-contain',
-                  scene === 'pdf' && 'z-[7]',
-                  (!viewing || touching || (scene === 'pdf' && full)) && 'hidden',
-                  viewing && !mirrorOk && previewSrc && 'opacity-0',
-                )}
+                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching) && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
-              {(scene === 'both' || (scene === 'pdf' && !full && pip)) && (camTrack.current || light) && (
-                <div ref={pipArea} className="pointer-events-none absolute inset-0 z-[8]">
+              {(scene === 'both' || (scene === 'pdf' && pip)) && (camTrack.current || light) && (
+                <div ref={pipArea} className="pointer-events-none absolute inset-0">
                   <div
                     role="button"
                     aria-label="Quadradinho da câmera"
@@ -1906,8 +2625,7 @@ export function Studio({
                     onPointerUp={pipUp}
                     onPointerCancel={pipUp}
                     className={cn(
-                      'absolute cursor-move touch-none rounded-[6%]',
-                      'pointer-events-auto',
+                      'pointer-events-auto absolute cursor-move touch-none rounded-[6%]',
                       // aparelho que só controla: contorno para ver onde está a câmera do principal
                       light && !pipSel && 'ring-1 ring-white/60',
                       pipSel && 'ring-2 ring-brand ring-offset-1 ring-offset-transparent',
@@ -1960,7 +2678,7 @@ export function Studio({
               )}
             </div>
             {onAir && (
-              <span className={'absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white'}>
+              <span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-1 text-[11px] font-bold text-white">
                 <span className="size-1.5 animate-pulse rounded-full bg-white" /> AO VIVO · {clock(status?.seconds ?? 0)}
               </span>
             )}
@@ -1992,14 +2710,12 @@ export function Studio({
             <div
               data-scroll
               className={cn(
-                'absolute z-30 flex items-center gap-1.5',
+                'absolute right-2 z-30 flex items-center gap-1.5',
                 full
-                  ? 'no-scrollbar top-1/2 right-2 max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/70 p-1 backdrop-blur-xl'
-                  : scene === 'pdf'
-                    ? 'bottom-2 left-2' // no caderno: embaixo, à esquerda (em cima ficam os botões do caderno)
-                    : status?.state === 'reconnecting'
-                      ? 'top-10 right-2'
-                      : 'top-2 right-2',
+                  ? 'no-scrollbar top-1/2 max-h-[calc(100%-1rem)] -translate-y-1/2 flex-col overflow-y-auto rounded-[26px] border border-white/10 bg-neutral-900/70 p-1 backdrop-blur-xl'
+                  : status?.state === 'reconnecting'
+                    ? 'top-10'
+                    : 'top-2',
                 full && !menuOpen && '[&>*:not(:first-child)]:hidden',
               )}
             >
@@ -2015,6 +2731,17 @@ export function Studio({
                   className="grid size-9 shrink-0 place-items-center rounded-full text-white hover:bg-white/15"
                 >
                   {menuOpen ? <ChevronsRight className="size-4" /> : <ChevronsLeft className="size-4" />}
+                </button>
+              )}
+              {scene === 'pdf' && materials.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setChoosing(true)}
+                  aria-label="Trocar de PDF"
+                  title="Trocar de PDF"
+                  className="flex items-center gap-1 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur transition hover:bg-black/75"
+                >
+                  <FileText className="size-3.5" /> Trocar
                 </button>
               )}
               {
@@ -2046,18 +2773,6 @@ export function Studio({
                       className={cn('grid size-9 place-items-center rounded-full text-white backdrop-blur', chatOpen ? 'bg-brand' : 'bg-black/55')}
                     >
                       <MessageSquare className="size-4" />
-                    </button>
-                  )}
-                  {!full && scene === 'pdf' && (
-                    // caderno: escrever é na tela cheia (na tela pequena você vê o que o aluno vê)
-                    <button
-                      type="button"
-                      onClick={() => void enterFull()}
-                      aria-label="Escrever no caderno (tela cheia)"
-                      title="Escrever no caderno"
-                      className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
-                    >
-                      <Maximize2 className="size-4" />
                     </button>
                   )}
                   {full && (
@@ -2193,17 +2908,23 @@ export function Studio({
               </div>
             )}
 
+            {/* escrita na tela cheia: barra na lateral */}
+            {full && writing && scene === 'pdf' && !!pdfView?.pages && inkBar()}
+            {full && !writing && canInk && scene === 'pdf' && !!pdfView?.pages && (
+              <button
+                type="button"
+                onClick={() => void openWriting()}
+                aria-label="Escrever"
+                className="absolute top-1/2 left-2 z-30 grid size-11 -translate-y-1/2 place-items-center rounded-full bg-black/75 text-white backdrop-blur"
+              >
+                <PenLine className="size-5" />
+              </button>
+            )}
 
             {/* Controles na tela cheia */}
             {full && (
-              <div
-                className={cn(
-                  'absolute inset-x-0 bottom-0 z-[7] flex flex-wrap items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
-                  // caderno: só iniciar/encerrar, no canto (as cenas ficam fora da tela cheia; nada cobre o caderno)
-                  scene === 'pdf' ? 'pointer-events-none justify-start [&>*]:pointer-events-auto' : 'justify-center bg-gradient-to-t from-black/70 to-transparent pt-6',
-                )}
-              >
-                {SCENES.filter((x) => scene !== 'pdf' && (canShare || !x.desktop)).map((x) => (
+              <div className="absolute inset-x-0 bottom-0 flex flex-wrap items-center justify-center gap-2 bg-gradient-to-t from-black/70 to-transparent px-3 pt-6 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
                   <button
                     key={x.key}
                     type="button"
@@ -2217,6 +2938,29 @@ export function Studio({
                     <x.icon className="size-4" /> {x.label}
                   </button>
                 ))}
+                {scene === 'pdf' && pdfView && pdfView.pages > 0 && (
+                  <span className="flex items-center gap-1 rounded-full bg-black/55 px-1 py-1 text-xs font-semibold text-white backdrop-blur">
+                    <button
+                      type="button"
+                      onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
+                      aria-label="Página anterior"
+                      className="grid size-7 place-items-center rounded-full"
+                    >
+                      <ChevronLeft className="size-4" />
+                    </button>
+                    <span className="tabular-nums">
+                      {pdfView.page}/{pdfView.pages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
+                      aria-label="Próxima página"
+                      className="grid size-7 place-items-center rounded-full"
+                    >
+                      <ChevronRight className="size-4" />
+                    </button>
+                  </span>
+                )}
                 {onAir ? (
                   <button
                     type="button"
@@ -2229,8 +2973,8 @@ export function Studio({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void (liveOn ? takeOver() : startLive())}
-                    disabled={busy || (!light && blocked)}
+                    onClick={() => void (liveOn ? takeOver() : goLive())}
+                    disabled={busy || blocked}
                     className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
                     {busy ? <Spinner /> : <Radio className="size-4" />} {liveOn ? 'Assumir' : 'Iniciar'}
@@ -2240,10 +2984,11 @@ export function Studio({
             )}
           </div>
           {/* Na tela cheia, as janelas aparecem dentro da própria tela da live */}
-          {full && confirmEnd && (
+          {full && (confirmEnd || choosing) && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
               <div className="w-full max-w-sm space-y-4 rounded-3xl border border-line-strong bg-surface p-5 shadow-2xl">
-                <>
+                {confirmEnd ? (
+                  <>
                     <p className="text-base font-bold text-ink">Encerrar a transmissão?</p>
                     <p className="text-sm text-muted">A gravação vira aula na pasta Live.</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -2259,7 +3004,18 @@ export function Studio({
                         {busy ? <Spinner /> : <CircleStop className="size-4" />} Encerrar
                       </button>
                     </div>
-                </>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <p className="text-base font-bold text-ink">Qual PDF mostrar?</p>
+                      <button type="button" onClick={() => setChoosing(false)} aria-label="Fechar" className={buttonClass('ghost', 'icon', 'size-8')}>
+                        <X className="size-4" />
+                      </button>
+                    </div>
+                    <div className="max-h-[50dvh] overflow-y-auto">{pdfList}</div>
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -2282,6 +3038,12 @@ export function Studio({
             </aside>
           )}
         </div>
+
+        {scene === 'pdf' && canInk && !!pdfView?.pages && !full && (
+          <button type="button" onClick={() => void openWriting()} className={buttonClass('secondary', 'md', 'mx-auto flex w-fit')}>
+            <PenLine className="size-4" /> Escrever
+          </button>
+        )}
 
         {mobile && !full && (
           <button type="button" onClick={enterFull} className={buttonClass('secondary', 'md', 'w-full')}>
@@ -2307,16 +3069,85 @@ export function Studio({
             </button>
           ))}
         </div>
-        {/* Caderno da live (editor Traço) */}
+        {/* PDF na live */}
         {scene === 'pdf' && (
           <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
-            <p className="text-xs text-muted">
-              Escreva no caderno acima. PDFs da aula, páginas novas e outros cadernos entram pelo <b>+</b> do caderno; o que aparece nele vai para a live.
-            </p>
-            <label className="flex items-center gap-2 text-xs text-ink-2">
-              <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
-            </label>
-            <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
+            {materials.length ? (
+              <Select
+                value={pdfId}
+                onChange={(e) => void openPdf(e.target.value)}
+                aria-label="PDF para mostrar"
+                className={materials.length > 1 ? 'hidden' : ''}
+              >
+                <option value="" disabled>
+                  Escolha o PDF
+                </option>
+                {materials.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.title}
+                  </option>
+                ))}
+              </Select>
+            ) : (
+              <p className="text-xs text-muted">Suba o PDF em “PDFs da live”, abaixo.</p>
+            )}
+            {pdfBusy && (
+              <p className="flex items-center gap-2 text-xs text-muted">
+                <Spinner /> Abrindo o PDF…
+              </p>
+            )}
+            {pdfView && pdfView.pages > 0 && (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void pdf.current?.goTo(pdfView.page - 1)}
+                    disabled={pdfView.page <= 1}
+                    aria-label="Página anterior"
+                    className={buttonClass('secondary', 'icon', 'size-11')}
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <form
+                    className="flex items-center gap-1.5 text-sm font-semibold text-ink"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const n = parseInt(pageInput, 10);
+                      if (n) void pdf.current?.goTo(n);
+                      (document.activeElement as HTMLElement | null)?.blur();
+                    }}
+                  >
+                    Página
+                    <input
+                      value={pageInput}
+                      onChange={(e) => setPageInput(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      onBlur={() => {
+                        const n = parseInt(pageInput, 10);
+                        if (n && n !== pdfView.page) void pdf.current?.goTo(n);
+                        else setPageInput(String(pdfView.page));
+                      }}
+                      inputMode="numeric"
+                      aria-label="Ir para a página"
+                      className="h-9 w-14 rounded-lg border border-line-strong bg-bg-elev text-center tabular-nums"
+                    />
+                    <span className="tabular-nums">de {pdfView.pages}</span>
+                  </form>
+                  <button
+                    type="button"
+                    onClick={() => void pdf.current?.goTo(pdfView.page + 1)}
+                    disabled={pdfView.page >= pdfView.pages}
+                    aria-label="Próxima página"
+                    className={buttonClass('secondary', 'icon', 'size-11')}
+                  >
+                    <ChevronRight className="size-5" />
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-ink-2">
+                  <input type="checkbox" checked={pip} onChange={(e) => setPip(e.target.checked)} className="size-4 accent-[#3b82f6]" /> Minha câmera no canto
+                </label>
+                <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />
+              </>
+            )}
           </div>
         )}
 
@@ -2369,7 +3200,13 @@ export function Studio({
         ) : (
           <button
             type="button"
-            onClick={() => void startLive()}
+            onClick={() => {
+              // a live começa no aparelho principal (o da câmera em uso)
+              if (light && stageDev) {
+                void studioCommand(liveId, stageDev, { t: 'start' });
+                toast(`Iniciando no ${stageLabel || 'outro aparelho'}…`);
+              } else void goLive();
+            }}
             disabled={busy || (!light && blocked)}
             className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}
           >
@@ -2554,6 +3391,9 @@ export function Studio({
           />
         </div>
       )}
+      <Modal open={choosing && !full} onClose={() => setChoosing(false)} title="Qual PDF mostrar?" size="sm">
+        {pdfList}
+      </Modal>
     </div>
   );
 }

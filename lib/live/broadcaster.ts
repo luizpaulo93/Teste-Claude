@@ -363,17 +363,6 @@ export class Broadcaster {
       this.skipped++; // codificador atrasado: pula este quadro
       return;
     }
-    // Chrome/Edge: o quadro sai do canvas pela captura do próprio navegador (sem copiar a imagem na hora,
-    // o que segurava a página a cada quadro)
-    if (this.capOk && typeof MediaStreamTrackProcessor !== 'undefined' && typeof canvas.captureStream === 'function') {
-      try {
-        if (this.cap?.canvas !== canvas) this.startCapture(canvas);
-        this.cap!.track.requestFrame();
-        return;
-      } catch {
-        this.capOk = false;
-      }
-    }
     this.encFrames++;
     const out = new VideoFrame(canvas, { timestamp: ts });
     const key = ts - this.lastKeyAt >= SEGMENT_US;
@@ -381,39 +370,6 @@ export class Broadcaster {
     if (key) this.applyRate();
     this.venc.encode(out, { keyFrame: key });
     out.close();
-  }
-
-  private capOk = true;
-  private cap?: { canvas: HTMLCanvasElement; track: CanvasCaptureMediaStreamTrack };
-  private lastCapTs = 0;
-  private startCapture(canvas: HTMLCanvasElement) {
-    this.cap?.track.stop();
-    const track = canvas.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
-    const reader = (new MediaStreamTrackProcessor({ track }).readable as unknown as ReadableStream<VideoFrame>).getReader();
-    this.readers.push(reader);
-    this.cap = { canvas, track };
-    void (async () => {
-      while (this.running && this.cap?.track === track) {
-        const { value: frame, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
-        if (done || !frame) break;
-        if (!this.running || !this.venc || this.venc.state !== 'configured') {
-          frame.close();
-          continue;
-        }
-        let ts = this.now();
-        if (ts <= this.lastCapTs) ts = this.lastCapTs + 1;
-        this.lastCapTs = ts;
-        this.encFrames++;
-        const out = new VideoFrame(frame, { timestamp: ts });
-        frame.close();
-        const key = ts - this.lastKeyAt >= SEGMENT_US;
-        if (key) this.lastKeyAt = ts;
-        if (key) this.applyRate();
-        this.venc.encode(out, { keyFrame: key });
-        out.close();
-      }
-      track.stop();
-    })();
   }
 
   /** Troca a câmera/tela no meio da transmissão (o vídeo continua no mesmo tamanho). */

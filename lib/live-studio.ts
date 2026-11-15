@@ -40,17 +40,6 @@ export interface StudioScene {
   pipAspect?: number;
   /** posição exata do PDF (os aparelhos que só controlam seguem sem precisar do espelho) */
   pdfPos?: { cx: number; cy: number; zoom: number };
-  /**
-   * Páginas em branco criadas na live: por PDF (acrescentadas depois da última página) e por quadro em branco
-   * ("quadro-1", "quadro-2"…, que não têm arquivo: só páginas em branco).
-   */
-  extra?: Record<string, number>;
-  /** papel das páginas em branco: em branco, pautado ou quadriculado (size = distância entre as linhas) */
-  paper?: { type: 'blank' | 'lined' | 'grid' | 'dots'; size: number };
-  /** caderno aberto no estúdio (editor Traço): todos os aparelhos abrem o mesmo */
-  trNb?: string;
-  /** página aberta no caderno */
-  trPg?: string;
 }
 
 interface Row {
