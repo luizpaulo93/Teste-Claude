@@ -415,7 +415,7 @@ export class StudioEditor extends Editor {
     const top = b.insetTop;
     let x = 0, y = top, w = b.W, hh = b.H - top - b.insetBottom;
     if (w / hh > aspect) { const w2 = hh * aspect; x = (w - w2) / 2; w = w2; }
-    else { const h2 = w / aspect; y = top + (hh - h2) / 2; hh = h2; }
+    else { hh = w / aspect; } // a live começa no alto da tela (logo abaixo da barra), não no meio
     if (!raw && this.page) {
       // a live mostra só a folha: se a moldura passa da borda da página (a mesa cinza), ela desliza para dentro dela
       const v = b.view, pw = this.page.w * v.s, ph = this.page.h * v.s;

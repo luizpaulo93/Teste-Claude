@@ -677,7 +677,7 @@ export function Studio({
   }, [light, onAir, scene]);
   // pede (e repete a cada 5 s, para valer depois de reconexões) a imagem da live só quando ela aparece aqui
   useEffect(() => {
-    const want = !(light && !onAir && scene === 'pdf');
+    const want = !(light && !onAir && scene === 'pdf' && full);
     const tell = () => link.current?.sendNow({ t: 'mirror', on: want });
     tell();
     const t = window.setInterval(tell, 5000);
@@ -1685,6 +1685,13 @@ export function Studio({
     return () => window.removeEventListener('beforeunload', h);
   }, [onAir]);
 
+  /** Iniciar: a live começa no aparelho principal (o da câmera em uso), mesmo se o botão for tocado em outro */
+  async function startLive() {
+    if (light && stageDev) {
+      void studioCommand(liveId, stageDev, { t: 'start' });
+      toast(`Iniciando no ${stageLabel || 'outro aparelho'}…`);
+    } else await goLive();
+  }
   async function goLive() {
     if (!camTrack.current && !screenTrack.current) return toast.error('Escolha a câmera ou espelhe a tela.');
     if (caster.current) return;
@@ -1746,7 +1753,14 @@ export function Studio({
         },
       });
       caster.current = b;
-      await b.start();
+      try {
+        await b.start();
+      } catch (err) {
+        // não ficou no ar: libera o botão para tentar de novo (antes o erro sumia e o botão não fazia mais nada)
+        caster.current = null;
+        b.abort();
+        throw err;
+      }
       if (comp.current) {
         comp.current.setFps(30);
         comp.current.onFrame = (c) => b.pushFrame(c);
@@ -1754,6 +1768,8 @@ export function Studio({
       void setStudioScene(liveId, { res, scene, pip, muted, ...(trNb ? { trNb } : {}) });
       toast(resume ? 'Transmitindo deste aparelho' : 'Transmissão iniciada');
       router.refresh();
+    } catch (err) {
+      toast.error(`A live não iniciou: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setBusy(false);
     }
@@ -1855,8 +1871,8 @@ export function Studio({
                 className={cn(
                   'size-full object-contain',
                   scene === 'camera' && fit === 'cover' && 'cursor-grab touch-none active:cursor-grabbing',
-                  // no caderno, a prévia fica atrás dele: fora da tela (o navegador não gasta para mostrá-la; a live segue igual)
-                  scene === 'pdf' && trMounted && 'invisible',
+                  // caderno: na tela pequena você vê a imagem da live (o que o aluno vê); na tela cheia, o caderno para escrever
+                  scene === 'pdf' && trMounted && (full || light ? 'invisible' : 'relative z-[7]'),
                 )}
                 aria-label="Prévia da transmissão"
               />
@@ -1872,11 +1888,16 @@ export function Studio({
                 playsInline
                 muted
                 aria-label="Imagem da live"
-                className={cn('pointer-events-none absolute inset-0 size-full bg-black object-contain', (!viewing || touching || scene === 'pdf') && 'hidden', viewing && !mirrorOk && previewSrc && 'opacity-0')}
+                className={cn(
+                  'pointer-events-none absolute inset-0 size-full bg-black object-contain',
+                  scene === 'pdf' && 'z-[7]',
+                  (!viewing || touching || (scene === 'pdf' && full)) && 'hidden',
+                  viewing && !mirrorOk && previewSrc && 'opacity-0',
+                )}
               />
               {/* Quadradinho da câmera: arraste para qualquer lugar; toque para mudar o tamanho (não aparece na live) */}
-              {scene === 'both' && (camTrack.current || light) && (
-                <div ref={pipArea} className="pointer-events-none absolute inset-0 z-[6]">
+              {(scene === 'both' || (scene === 'pdf' && !full && pip)) && (camTrack.current || light) && (
+                <div ref={pipArea} className="pointer-events-none absolute inset-0 z-[8]">
                   <div
                     role="button"
                     aria-label="Quadradinho da câmera"
@@ -2027,6 +2048,18 @@ export function Studio({
                       <MessageSquare className="size-4" />
                     </button>
                   )}
+                  {!full && scene === 'pdf' && (
+                    // caderno: escrever é na tela cheia (na tela pequena você vê o que o aluno vê)
+                    <button
+                      type="button"
+                      onClick={() => void enterFull()}
+                      aria-label="Escrever no caderno (tela cheia)"
+                      title="Escrever no caderno"
+                      className="grid size-9 place-items-center rounded-full bg-black/55 text-white backdrop-blur"
+                    >
+                      <Maximize2 className="size-4" />
+                    </button>
+                  )}
                   {full && (
                     <button
                       type="button"
@@ -2166,10 +2199,11 @@ export function Studio({
               <div
                 className={cn(
                   'absolute inset-x-0 bottom-0 z-[7] flex flex-wrap items-center gap-2 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]',
-                  scene === 'pdf' ? 'pointer-events-none justify-end [&>*]:pointer-events-auto' : 'justify-center bg-gradient-to-t from-black/70 to-transparent pt-6',
+                  // caderno: só iniciar/encerrar, no canto (as cenas ficam fora da tela cheia; nada cobre o caderno)
+                  scene === 'pdf' ? 'pointer-events-none justify-start [&>*]:pointer-events-auto' : 'justify-center bg-gradient-to-t from-black/70 to-transparent pt-6',
                 )}
               >
-                {SCENES.filter((x) => canShare || !x.desktop).map((x) => (
+                {SCENES.filter((x) => scene !== 'pdf' && (canShare || !x.desktop)).map((x) => (
                   <button
                     key={x.key}
                     type="button"
@@ -2195,8 +2229,8 @@ export function Studio({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => void (liveOn ? takeOver() : goLive())}
-                    disabled={busy || blocked}
+                    onClick={() => void (liveOn ? takeOver() : startLive())}
+                    disabled={busy || (!light && blocked)}
                     className="flex items-center gap-1.5 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50"
                   >
                     {busy ? <Spinner /> : <Radio className="size-4" />} {liveOn ? 'Assumir' : 'Iniciar'}
@@ -2335,13 +2369,7 @@ export function Studio({
         ) : (
           <button
             type="button"
-            onClick={() => {
-              // a live começa no aparelho principal (o da câmera em uso)
-              if (light && stageDev) {
-                void studioCommand(liveId, stageDev, { t: 'start' });
-                toast(`Iniciando no ${stageLabel || 'outro aparelho'}…`);
-              } else void goLive();
-            }}
+            onClick={() => void startLive()}
             disabled={busy || (!light && blocked)}
             className={buttonClass('primary', 'lg', 'w-full !bg-red-600 hover:!bg-red-700')}
           >
