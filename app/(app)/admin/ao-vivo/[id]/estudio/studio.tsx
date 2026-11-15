@@ -259,6 +259,8 @@ export function Studio({
       live: HTMLCanvasElement;
       camSlot: HTMLElement;
       rev: { bg: number; ink: number; live: number };
+      hlOn: boolean;
+      liveOn: boolean;
       crop: { x: number; y: number; w: number; h: number };
       cropCss: { x: number; y: number; w: number; h: number; W: number; H: number };
     } | null;
@@ -315,45 +317,91 @@ export function Studio({
   /** a câmera da live dentro da folha, entre o papel e a tinta (a escrita fica por cima dela) */
   const placeCam = useRef<() => void>(() => {});
   const camStream = useRef<{ track: MediaStreamTrack; stream: MediaStream } | null>(null);
-  /** arrastar a câmera pela alça (dentro do caderno) */
-  const camDrag = useRef<(e: PointerEvent, handle: HTMLElement) => void>(() => {});
-  camDrag.current = (e, handle) => {
+  /**
+   * Câmera no caderno em duas camadas: atrás da escrita (a caneta escreve por cima) ou na frente (dá para mover e
+   * mudar o tamanho). Tocar na câmera com o dedo (ou clicar com o mouse) traz para a frente; tocar no caderno fora
+   * dela devolve para trás. Enquanto está na frente, a live também a mostra por cima da escrita.
+   */
+  const camFront = useRef(false);
+  const setCamFront = (v: boolean, tell = true) => {
+    if (camFront.current === v) return;
+    camFront.current = v;
+    if (comp.current) comp.current.camFront = v;
+    if (tell) link.current?.sendNow({ t: 'pip', front: v });
+    placeCam.current();
+  };
+  /** arrasto da câmera direto na tela (sem refazer a página do estúdio a cada movimento) */
+  const camDrag = useRef<(e: PointerEvent, box: HTMLElement, mode: 'move' | 'size') => void>(() => {});
+  camDrag.current = (e, box, mode) => {
     const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
-    if (!l) return;
+    const cp = comp.current;
+    if (!l || !cp) return;
     e.preventDefault();
     e.stopPropagation();
+    const el = e.currentTarget instanceof Element ? e.currentTarget : box;
     try {
-      handle.setPointerCapture(e.pointerId);
+      el.setPointerCapture(e.pointerId);
     } catch {}
     const c = l.cropCss;
     const x0 = e.clientX;
     const y0 = e.clientY;
-    const b0 = { ...pipBox, x: pipRect.x, y: pipRect.y };
-    const w = pipRect.w;
-    const h = pipRect.h;
+    const r0 = cp.pipRect();
     pipAt.current = performance.now();
+    let raf = 0;
+    let last = { x: r0.x, y: r0.y, w: cp.pipW };
+    const show = () => {
+      raf = 0;
+      const r = cp.pipRect();
+      Object.assign(box.style, { left: `${c.x + r.x * c.w}px`, top: `${c.y + r.y * c.h}px`, width: `${r.w * c.w}px`, height: `${r.h * c.h}px` });
+      link.current?.sendNow({ t: 'pip', b: last });
+    };
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return;
       pipAt.current = performance.now();
-      pipSet({ ...b0, x: b0.x + (ev.clientX - x0) / c.w, y: b0.y + (ev.clientY - y0) / c.h });
+      const dx = (ev.clientX - x0) / c.w;
+      const dy = (ev.clientY - y0) / c.h;
+      if (mode === 'move') {
+        cp.pipX = Math.min(Math.max(0, r0.x + dx), 1 - r0.w);
+        cp.pipY = Math.min(Math.max(0, r0.y + dy), 1 - r0.h);
+      } else cp.pipW = Math.min(0.6, Math.max(0.12, r0.w + dx));
+      const r = cp.pipRect();
+      last = { x: r.x, y: r.y, w: cp.pipW };
+      if (!raf) raf = requestAnimationFrame(show);
     };
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== e.pointerId) return;
-      handle.removeEventListener('pointermove', move);
-      handle.removeEventListener('pointerup', up);
-      handle.removeEventListener('pointercancel', up);
-      cancelAnimationFrame(pipRaf.current);
-      pipRaf.current = 0;
-      const last = pipNext.current ?? b0;
-      pipNext.current = null;
-      const fixed = { x: Math.min(Math.max(0, last.x), 1 - w), y: Math.min(Math.max(0, last.y), 1 - h), w: last.w };
-      setPipBox(fixed);
-      savePip(fixed);
+      el.removeEventListener('pointermove', move as EventListener);
+      el.removeEventListener('pointerup', up as EventListener);
+      el.removeEventListener('pointercancel', up as EventListener);
+      if (raf) cancelAnimationFrame(raf);
+      show();
+      setPipBox(last);
+      savePip(last);
       pipAt.current = performance.now();
     };
-    handle.addEventListener('pointermove', move);
-    handle.addEventListener('pointerup', up);
-    handle.addEventListener('pointercancel', up);
+    el.addEventListener('pointermove', move as EventListener);
+    el.addEventListener('pointerup', up as EventListener);
+    el.addEventListener('pointercancel', up as EventListener);
+  };
+  /** toques no caderno: na câmera (dedo ou mouse) ela vem para a frente; fora dela, volta para trás */
+  const camTap = useRef<(e: PointerEvent) => void>(() => {});
+  camTap.current = (e) => {
+    const slot = trApi.current?.layers()?.camSlot;
+    const box = slot?.ownerDocument.querySelector<HTMLElement>('div[data-cam]');
+    if (!box || !box.isConnected) return;
+    const t = e.target as Element | null;
+    if (camFront.current) {
+      if (t && box.contains(t)) return; // a própria câmera cuida (mover / tamanho)
+      setCamFront(false);
+      return;
+    }
+    if (e.pointerType === 'pen') return; // a caneta escreve por cima da câmera
+    const r = box.getBoundingClientRect();
+    if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) return;
+    // não deixa o toque chegar ao caderno: vira o arrasto da câmera
+    e.stopImmediatePropagation();
+    setCamFront(true);
+    camDrag.current(e, box, 'move');
   };
   placeCam.current = () => {
     const l = trApi.current?.layers(canvasRef.current ? canvasRef.current.width / canvasRef.current.height : 16 / 9);
@@ -396,19 +444,34 @@ export function Studio({
       v.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none';
       clip.appendChild(v);
       box.appendChild(clip);
-      // alça para mover a câmera (o resto da câmera deixa a caneta escrever por cima)
-      const handle = doc.createElement('div');
-      handle.setAttribute('role', 'button');
-      handle.setAttribute('aria-label', 'Mover a câmera');
-      handle.title = 'Arraste para mover a câmera';
-      handle.style.cssText =
-        'position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:44px;height:22px;border-radius:999px;border:2px solid #fff;background:rgba(0,0,0,.6);pointer-events:auto;touch-action:none;cursor:move;display:grid;place-items:center;box-shadow:0 1px 4px rgba(0,0,0,.3)';
-      handle.innerHTML = '<span style="display:block;width:20px;height:2px;border-radius:2px;background:#fff"></span>';
-      handle.addEventListener('pointerdown', (e) => camDrag.current(e, handle));
-      box.appendChild(handle);
+      // na frente: arrastar move; o cantinho de baixo muda o tamanho
+      const grip = doc.createElement('div');
+      grip.dataset.grip = '1';
+      grip.setAttribute('aria-label', 'Mudar o tamanho da câmera');
+      grip.style.cssText =
+        'position:absolute;right:-9px;bottom:-9px;width:26px;height:26px;border-radius:999px;border:2px solid #fff;background:#2347d9;touch-action:none;cursor:nwse-resize;box-shadow:0 1px 4px rgba(0,0,0,.3)';
+      grip.addEventListener('pointerdown', (e) => camDrag.current(e, box!, 'size'));
+      box.appendChild(grip);
+      box.addEventListener('pointerdown', (e) => {
+        if ((e.target as Element).closest('[data-grip]')) return;
+        camDrag.current(e, box!, 'move');
+      });
+      // o toque que traz a câmera para a frente é visto antes do caderno (fase de captura)
+      const win = doc.defaultView as (Window & { __camTap?: boolean }) | null;
+      if (win && !win.__camTap) {
+        win.__camTap = true;
+        win.addEventListener('pointerdown', (e) => camTap.current(e), { capture: true });
+      }
       slot.appendChild(box);
     }
-    const r = pipRect;
+    const r = comp.current?.pipRect() ?? pipRect;
+    // atrás da escrita (no lugar dela, entre o papel e a tinta) ou na frente de tudo
+    const front = camFront.current;
+    const home = front ? (slot.closest('.board') ?? slot) : slot;
+    if (box.parentElement !== home) home.appendChild(box);
+    Object.assign(box.style, { zIndex: front ? '6' : '', pointerEvents: front ? 'auto' : 'none', touchAction: 'none', cursor: front ? 'move' : '' });
+    const grip = box.querySelector<HTMLElement>('[data-grip]');
+    if (grip) grip.style.display = front ? '' : 'none';
     // a câmera fica no mesmo lugar em que aparece na live (dentro do trecho que vai para a live)
     Object.assign(box.style, { left: `${c.x + r.x * c.w}px`, top: `${c.y + r.y * c.h}px`, width: `${r.w * c.w}px`, height: `${r.h * c.h}px` });
     const v = box.querySelector('video')!;
@@ -418,7 +481,7 @@ export function Studio({
       v.style.display = 'none';
       return;
     }
-    Object.assign(box.style, { background: '#000', boxShadow: '0 0 0 2px rgba(255,255,255,.85)' });
+    Object.assign(box.style, { background: '#000', boxShadow: front ? '0 0 0 3px #2347d9, 0 6px 18px rgba(0,0,0,.25)' : '0 0 0 2px rgba(255,255,255,.85)' });
     v.style.display = '';
     v.style.transform = mirror ? 'scaleX(-1)' : '';
     if (v.srcObject !== src) {
@@ -442,7 +505,7 @@ export function Studio({
     if (sceneRef.current !== 'pdf') return null;
     const c = canvasRef.current;
     const l = trApi.current?.layers(c ? c.width / c.height : 16 / 9);
-    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev, crop: l.crop } : null;
+    return l ? { bg: l.bg, hl: l.hl, ink: l.ink, live: l.live, rev: l.rev, crop: l.crop, hlOn: l.hlOn, liveOn: l.liveOn } : null;
   };
   const sceneRef = useRef(scene);
   sceneRef.current = scene;
@@ -684,7 +747,10 @@ export function Studio({
 
   // Mesa de cenas + permissão + lista de dispositivos
   useEffect(() => {
-    if (canvasRef.current) comp.current = new Compositor(canvasRef.current, 30);
+    if (canvasRef.current) {
+      comp.current = new Compositor(canvasRef.current, 30);
+      (window as Window & { __comp?: Compositor }).__comp = comp.current;
+    }
     if (comp.current) comp.current.traco = tracoLayers;
     void checkSupport().then(setSupport);
     (async () => {
@@ -1327,6 +1393,21 @@ export function Studio({
       if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
       return;
     }
+    if (m.t === 'pip') {
+      // câmera sendo movida em outro aparelho: acompanha na hora (e a live também)
+      const cp = comp.current;
+      if (typeof m.front === 'boolean') setCamFront(m.front, false);
+      const b = m.b as { x: number; y: number; w: number } | undefined;
+      if (cp && b && typeof b.x === 'number') {
+        pipAt.current = performance.now();
+        cp.pipX = b.x;
+        cp.pipY = b.y;
+        cp.pipW = b.w;
+        placeCam.current();
+      }
+      if (caster.current || stageDev === device.current.id) link.current?.sendNow(m, { except: from });
+      return;
+    }
     if (m.t === 'mirror') {
       link.current?.setMirrorFor(from, Boolean(m.on));
       return;
@@ -1501,6 +1582,16 @@ export function Studio({
     } else if (c.t === 'start' && !caster.current && !liveOn) await goLive();
   };
 
+  // caderno na tela: arrastar para baixo não recarrega nem rola a página do estúdio (puxar para atualizar do iPad)
+  useEffect(() => {
+    if (scene !== 'pdf') return;
+    const st = document.documentElement.style;
+    const prev = st.overscrollBehavior;
+    st.overscrollBehavior = 'none';
+    return () => {
+      st.overscrollBehavior = prev;
+    };
+  }, [scene]);
   // tela inteira sem a tela cheia do navegador: os menus do app saem da frente
   useEffect(() => {
     document.documentElement.classList.toggle('studio-full', full);

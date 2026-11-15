@@ -31,7 +31,7 @@ export class StudioEditor extends Editor {
     const b = this.board;
     for (const [name, key] of [["renderBg", "bg"], ["renderInk", "ink"], ["commitStroke", "ink"], ["drawLive", "live"]]) {
       const f = b[name].bind(b);
-      b[name] = (...args) => { this.rev[key]++; return f(...args); };
+      b[name] = (...args) => { this.rev[key]++; if (key === "live") this.liveAt = performance.now(); return f(...args); };
     }
   }
 
@@ -377,6 +377,39 @@ export class StudioEditor extends Editor {
   // camadas da folha, para a imagem da live (papel → câmera → marca-texto → tinta → ao vivo)
   // `aspect`: largura/altura da live. `crop`: o trecho da folha que vai para a live — o que o professor vê entre
   // as barras (sem ferramentas nem barra de cima), no formato da live, mantendo a largura (pontos da tela).
+  // a live só copia o marca-texto e o traço em andamento quando há algo neles
+  hasHl() {
+    const p = this.page;
+    if (!p) return false;
+    if (this.hlKey !== this.rev.ink + "|" + p.id) {
+      this.hlKey = this.rev.ink + "|" + p.id;
+      this.hlOn = p.items.some((it) => it.t === "hl");
+    }
+    return this.hlOn;
+  }
+  // onde está o traço em andamento (pontos do canvas): a live redesenha só esse pedaço. null = a camada toda
+  liveBox() {
+    const b = this.board, v = b.view, d = b.dpr || 1;
+    if (b.laser.length || b.lasso || b.selection || b.cursor) return null;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity, pad = 4;
+    for (const s of b.liveStrokes.values()) {
+      const p = s.p;
+      if (!p || !p.length) continue;
+      const st = s.g || p.length % 3 ? 2 : 3;
+      for (let i = 0; i + 1 < p.length; i += st) {
+        const x = p[i], y = p[i + 1];
+        if (x < x0) x0 = x; if (x > x1) x1 = x;
+        if (y < y0) y0 = y; if (y > y1) y1 = y;
+      }
+      pad = Math.max(pad, (s.w || 4) * 1.5 + 4);
+    }
+    if (x0 === Infinity) return { x: 0, y: 0, w: 0, h: 0 };
+    return { x: ((x0 - pad) * v.s + v.x) * d, y: ((y0 - pad) * v.s + v.y) * d, w: (x1 - x0 + 2 * pad) * v.s * d, h: (y1 - y0 + 2 * pad) * v.s * d };
+  }
+  hasLive() {
+    const b = this.board;
+    return !!(b.liveStrokes.size || b.laser.length || b.lasso || b.selection || b.cursor || b.draw || performance.now() - (this.liveAt || 0) < 400);
+  }
   layers(aspect = 16 / 9, raw = false) {
     const b = this.board;
     const top = b.insetTop;
@@ -396,6 +429,7 @@ export class StudioEditor extends Editor {
     const d = b.dpr || 1;
     return {
       bg: b.cBg, hl: b.cHl, ink: b.cInk, live: b.cLive, camSlot: b.camSlot, root: b.root, layers: b.layers, rev: this.rev,
+      hlOn: this.hasHl(), liveOn: this.hasLive(), liveBox: this.liveBox(),
       crop: { x: x * d, y: y * d, w: w * d, h: hh * d },
       cropCss: { x, y, w, h: hh, W: b.W, H: b.H },
     };

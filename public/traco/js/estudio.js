@@ -24,6 +24,19 @@ addEventListener("resize", fitApp);
 fitApp();
 document.body.classList.add("is-app");
 
+// Arrastar para baixo nunca rola nem recarrega a página do estúdio (no iPad isso tirava o professor do caderno).
+// Só rolam as janelas (de lado a lado, as barras de ferramentas).
+let t0 = null;
+document.addEventListener("touchstart", (e) => { const t = e.touches[0]; t0 = t ? { x: t.clientX, y: t.clientY } : null; }, { capture: true, passive: true });
+document.addEventListener("touchmove", (e) => {
+  if (!e.cancelable) return;
+  const el = e.target && e.target.closest ? e.target : null;
+  if (el && el.closest(".modal-wrap")) return;
+  const t = e.touches[0];
+  if (el && t && t0 && el.closest(".bar, .tools, .tools-main, .tools-opts") && Math.abs(t.clientX - t0.x) > Math.abs(t.clientY - t0.y)) return;
+  e.preventDefault();
+}, { capture: true, passive: false });
+
 async function newNotebook({ name, pdf }) {
   const nb = { id: uid(), owner: "live", name: name || "Caderno", color: "#2347d9", paper: { type: "blank", size: 40 }, orient: "p", pages: [], updated: Date.now() };
   if (pdf) {
