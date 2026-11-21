@@ -11,10 +11,10 @@ export default function SetupPage() {
   if (!problems.length) redirect('/');
   return (
     <main className="mx-auto max-w-xl px-5 py-16">
-      <div className="grid size-12 place-items-center rounded-2xl bg-warning/15 text-warning">
+      <div className="grid size-12 place-items-center rounded-xl bg-warning/15 text-warning">
         <AlertTriangle className="size-6" />
       </div>
-      <h1 className="mt-5 text-2xl font-extrabold text-ink">Falta ajustar a configuração</h1>
+      <h1 className="mt-5 text-2xl font-semibold text-ink">Falta ajustar a configuração</h1>
       {problems.map((p) => (
         <p key={p} className="mt-4 rounded-xl border border-warning/30 bg-warning/10 p-4 text-sm font-semibold text-ink">
           {p}

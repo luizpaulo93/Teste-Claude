@@ -108,31 +108,31 @@ export function LandingNav({ brand }: { brand: string }) {
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:h-[72px] sm:px-6 lg:px-8">
         <a href="#topo" className="flex items-center gap-2.5 text-white">
           <Logo className="size-8" />
-          <span className="text-sm font-extrabold tracking-wide">{brand}</span>
+          <span className="text-[13px] font-semibold tracking-[0.06em] uppercase">{brand}</span>
         </a>
         <nav className="hidden items-center gap-1 lg:flex">
           {LINKS.map((l) => (
-            <a key={l.href} href={l.href} className="rounded-full px-4 py-2 text-sm font-medium text-white/70 transition hover:bg-white/5 hover:text-white">
+            <a key={l.href} href={l.href} className="rounded-md px-3 py-2 text-sm font-medium text-white/65 transition hover:bg-white/5 hover:text-white">
               {l.label}
             </a>
           ))}
         </nav>
         <div className="flex items-center gap-2">
-          <LoginButton size="md" className="rounded-full px-5">
+          <LoginButton size="md" className="px-4 !bg-white !text-black hover:!bg-white/90 !shadow-none">
             Entrar <ArrowRight className="size-4" />
           </LoginButton>
           <button
             type="button"
             onClick={() => setMenu((v) => !v)}
             aria-label="Menu"
-            className="grid size-10 place-items-center rounded-full text-white hover:bg-white/10 lg:hidden"
+            className="grid size-10 place-items-center rounded-lg text-white hover:bg-white/10 lg:hidden"
           >
             {menu ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
         </div>
       </div>
       {menu && (
-        <div className="animate-slide-up border-t border-white/10 bg-[#050912]/95 px-4 pb-4 backdrop-blur-xl lg:hidden">
+        <div className="animate-slide-up border-t border-white/10 bg-[#0a0a0b]/95 px-4 pb-4 backdrop-blur-xl lg:hidden">
           {LINKS.map((l) => (
             <a key={l.href} href={l.href} onClick={() => setMenu(false)} className="block border-b border-white/5 py-3.5 text-sm font-medium text-white/80">
               {l.label}
@@ -194,7 +194,7 @@ export function AnimatedBubbles() {
                 key={o}
                 className={cn(
                   'grid size-7 place-items-center rounded-full border text-[11px] font-bold transition-all duration-300',
-                  on ? 'scale-110 border-blue-400 bg-blue-500 text-white shadow-[0_0_14px_rgba(59,130,246,0.7)]' : 'border-white/15 text-white/45',
+                  on ? 'border-white bg-white text-black' : 'border-white/15 text-white/45',
                 )}
               >
                 {o}

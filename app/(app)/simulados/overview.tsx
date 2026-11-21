@@ -57,17 +57,17 @@ export function RankList({
       <h2 className="flex items-center gap-2 text-base font-bold text-ink sm:text-lg">
         {icon === 'users' ? <Users className="size-4 text-brand" /> : <Trophy className="size-4 text-warning" />} {title}
       </h2>
-      <ol className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <ol className="overflow-hidden rounded-xl border border-line bg-surface">
         {items.map((it, i) => (
           <li key={it.key} className="border-b border-line last:border-b-0">
             <Link href={it.href} className="flex items-center gap-3 px-3.5 py-3 transition hover:bg-surface-2 sm:px-4">
-              <span className={cn('grid size-8 shrink-0 place-items-center rounded-full text-xs font-extrabold', medal(i))}>{i + 1}</span>
+              <span className={cn('grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold', medal(i))}>{i + 1}</span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-semibold text-ink">{it.name}</span>
                 <span className="block truncate text-[11px] text-muted">{it.sub}</span>
               </span>
               <span className="shrink-0 text-right">
-                <span className="block text-base font-extrabold text-ink tabular-nums">{it.value}</span>
+                <span className="block text-base font-semibold text-ink tabular-nums">{it.value}</span>
                 <span className="block text-[10px] text-muted uppercase">{it.unit}</span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-muted" />

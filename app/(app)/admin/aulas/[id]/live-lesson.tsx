@@ -47,7 +47,7 @@ export function LiveLessonEditor({
           {lesson.youtube_id ? (
             <VideoPlayer videoId={lesson.youtube_id} title={title} poster={youtubeThumb(lesson.youtube_id)} />
           ) : (
-            <div className="grid aspect-video place-items-center bg-surface-2 text-sm text-muted sm:rounded-2xl">Sem vídeo</div>
+            <div className="grid aspect-video place-items-center bg-surface-2 text-sm text-muted sm:rounded-xl">Sem vídeo</div>
           )}
         </div>
         <Card className="space-y-4 p-4">

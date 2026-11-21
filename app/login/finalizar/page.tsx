@@ -53,7 +53,7 @@ export default function FinishLogin() {
   return (
     <main className="grid min-h-dvh place-items-center px-5">
       <div className="w-full max-w-sm text-center">
-        <div className="mx-auto mb-6 grid size-14 place-items-center rounded-2xl bg-surface text-ink shadow-glow">
+        <div className="mx-auto mb-6 grid size-14 place-items-center rounded-xl bg-surface text-ink">
           <Logo className="size-8" />
         </div>
         {state === 'working' && (

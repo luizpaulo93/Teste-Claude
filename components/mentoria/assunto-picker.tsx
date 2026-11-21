@@ -56,7 +56,7 @@ export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: 
               }}
               className={cn(
                 'shrink-0 rounded-xl border px-3 py-1.5 text-sm font-semibold',
-                disc === d.key && !term ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2',
+                disc === d.key && !term ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2',
               )}
             >
               {d.name} <span className="text-xs opacity-75">{n}</span>

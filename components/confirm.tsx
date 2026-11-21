@@ -59,7 +59,7 @@ export function ConfirmHost() {
   return createPortal(
     <div className="fixed inset-0 z-[120] flex items-end justify-center p-3 sm:items-center sm:p-4" role="alertdialog" aria-modal="true">
       <div className="absolute inset-0 animate-fade-in bg-black/60 backdrop-blur-sm" onClick={() => close(false)} />
-      <div className="relative w-full max-w-sm animate-slide-up rounded-3xl border border-line-strong bg-surface p-5 shadow-2xl safe-bottom">
+      <div className="relative w-full max-w-sm animate-slide-up rounded-2xl border border-line-strong bg-surface p-5 shadow-2xl safe-bottom">
         <div className="flex items-start gap-3">
           <span className={cn('grid size-10 shrink-0 place-items-center rounded-xl', danger ? 'bg-danger/12 text-danger' : 'bg-brand/12 text-brand')}>
             <AlertTriangle className="size-5" />

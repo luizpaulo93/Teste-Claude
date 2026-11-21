@@ -1,11 +1,13 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans } from 'next/font/google';
+import { Geist, Geist_Mono } from 'next/font/google';
 import { cookies } from 'next/headers';
 import { Toaster } from '@/components/toast';
 import { ConfirmHost } from '@/components/confirm';
 import './globals.css';
 
-const jakarta = Plus_Jakarta_Sans({ subsets: ['latin'], variable: '--font-jakarta', display: 'swap' });
+// Geist no texto e Geist Mono nos números, códigos e rótulos: leitura técnica e limpa (nada de fonte genérica)
+const sans = Geist({ subsets: ['latin'], variable: '--font-geist', display: 'swap' });
+const mono = Geist_Mono({ subsets: ['latin'], variable: '--font-geist-mono', display: 'swap' });
 
 export const metadata: Metadata = {
   title: { default: 'Vértice — Área do Aluno', template: '%s · Vértice' },
@@ -20,15 +22,15 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: dark)', color: '#09090b' },
-    { media: '(prefers-color-scheme: light)', color: '#f6f6f7' },
+    { media: '(prefers-color-scheme: dark)', color: '#0a0a0b' },
+    { media: '(prefers-color-scheme: light)', color: '#fafafa' },
   ],
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = (await cookies()).get('theme')?.value === 'light' ? 'light' : 'dark';
   return (
-    <html lang="pt-BR" data-theme={theme} className={jakarta.variable} suppressHydrationWarning>
+    <html lang="pt-BR" data-theme={theme} className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <body className="min-h-dvh">
         {children}
         <Toaster />

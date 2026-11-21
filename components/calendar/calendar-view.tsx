@@ -185,10 +185,10 @@ export function CalendarView({
         )}
         {bdays.length > 0 && (
           <span
-            className="pointer-events-none absolute top-0 left-1/2 z-20 -translate-x-1/2 text-[10px] leading-none"
+            className="pointer-events-none absolute top-0.5 left-1/2 z-20 -translate-x-1/2 leading-none text-warning"
             title={`Aniversário: ${bdays.map((b) => b.name).join(', ')}`}
           >
-            🎂
+            <Cake className="size-2.5" />
           </span>
         )}
         <div
@@ -215,11 +215,11 @@ export function CalendarView({
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <span className="grid size-10 place-items-center rounded-full bg-brand text-white shadow-glow">
+          <span className="grid size-10 place-items-center rounded-full bg-brand text-white">
             <CalendarDays className="size-5" />
           </span>
           <div>
-            <h1 className="text-xl font-extrabold tracking-tight text-ink sm:text-2xl">Calendário {year}</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">Calendário {year}</h1>
             <p className="text-xs text-muted">Assuntos da semana, simulados, revisões, feriados e aniversários</p>
           </div>
         </div>
@@ -264,7 +264,7 @@ export function CalendarView({
           >
             <ChevronLeft className="size-4" />
           </button>
-          <span className="min-w-40 text-center text-base font-extrabold text-ink sm:text-lg">
+          <span className="min-w-40 text-center text-base font-semibold text-ink sm:text-lg">
             {view === 'year' ? `Ano ${year}` : `${MONTHS[month]} ${year}`}
           </span>
           <button
@@ -295,12 +295,12 @@ export function CalendarView({
                   setView('month');
                 }}
                 className={cn(
-                  'cursor-pointer rounded-2xl border p-3.5 transition',
-                  isNow ? 'border-brand/60 bg-surface-2 shadow-glow' : 'border-line bg-surface shadow-card hover:border-brand/40',
+                  'cursor-pointer rounded-xl border p-3.5 transition',
+                  isNow ? 'border-brand/60 bg-surface-2' : 'border-line bg-surface shadow-card hover:border-brand/40',
                 )}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="text-xs font-extrabold text-ink">{name}</span>
+                  <span className="text-xs font-semibold text-ink">{name}</span>
                   {isNow && <span className="size-2 rounded-full bg-brand" />}
                 </div>
                 <div className="mb-1 grid grid-cols-7 gap-1 text-center">
@@ -320,7 +320,7 @@ export function CalendarView({
                     const bday = bdaysOn(d).length > 0;
                     return (
                       <span key={d} className="relative flex justify-center">
-                        {bday && <span className="pointer-events-none absolute -top-1.5 text-[7px] leading-none">🎂</span>}
+                        {bday && <Cake className="pointer-events-none absolute -top-1 size-2 text-warning" />}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -359,7 +359,7 @@ export function CalendarView({
             }}
             onTouchEnd={() => dragRef.current && endDrag()}
             className={cn(
-              'w-full space-y-2.5 rounded-3xl border border-line bg-surface p-3 shadow-card select-none sm:p-5 md:col-span-7',
+              'w-full space-y-2.5 rounded-2xl border border-line bg-surface p-3 shadow-card select-none sm:p-5 md:col-span-7',
               addMode && 'touch-none',
             )}
           >
@@ -380,17 +380,17 @@ export function CalendarView({
           </div>
 
           {/* Painel do dia */}
-          <section ref={panelRef} className="space-y-4 rounded-3xl border border-line bg-surface p-4 shadow-card sm:p-5 md:sticky md:top-6 md:col-span-5">
+          <section ref={panelRef} className="space-y-4 rounded-2xl border border-line bg-surface p-4 shadow-card sm:p-5 md:sticky md:top-6 md:col-span-5">
             <div className="flex items-center justify-between gap-2 border-b border-line pb-3">
               <div className="min-w-0">
-                <span className="block text-[10px] font-extrabold tracking-wider text-brand uppercase">Dia selecionado</span>
-                <h2 className="truncate text-sm font-extrabold text-ink sm:text-base">
+                <span className="font-mono block text-[10px] font-medium tracking-[0.08em] text-muted uppercase">Dia selecionado</span>
+                <h2 className="truncate text-sm font-semibold text-ink sm:text-base">
                   {shortDate(selected)} de {selected.slice(0, 4)}
                 </h2>
               </div>
             </div>
             {!dayEvents.length && !dayBdays.length ? (
-              <div className="space-y-1 rounded-2xl border border-line bg-surface-2 p-5 text-center">
+              <div className="space-y-1 rounded-xl border border-line bg-surface-2 p-5 text-center">
                 <p className="text-sm font-bold text-ink">Nenhum evento neste dia</p>
                 <p className="text-xs text-muted">Não há aulas especiais, simulados ou eventos em {shortDate(selected)}.</p>
               </div>
@@ -399,14 +399,14 @@ export function CalendarView({
                 {dayBdays.map((b) => (
                   <div
                     key={b.id}
-                    className="flex items-start gap-3 rounded-2xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-transparent p-3.5"
+                    className="flex items-start gap-3 rounded-xl border border-amber-400/40 bg-gradient-to-r from-amber-500/15 to-transparent p-3.5"
                   >
                     <span className="grid size-8 shrink-0 place-items-center rounded-full border border-amber-400/50 bg-amber-500/25 text-amber-500">
                       <Cake className="size-4" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-extrabold tracking-wider text-amber-500 uppercase">🎂 Aniversariante</p>
-                      <p className="truncate text-sm font-extrabold text-ink">{b.name}</p>
+                      <p className="text-[10px] font-semibold tracking-wider text-amber-500 uppercase">Aniversariante</p>
+                      <p className="truncate text-sm font-semibold text-ink">{b.name}</p>
                       <p className="text-xs text-ink-2">Dia de celebrar mais um ano de vida e conquistas!</p>
                     </div>
                   </div>
@@ -415,7 +415,7 @@ export function CalendarView({
                   const pal = EVENT_COLORS[e.color] ?? EVENT_COLORS.blue;
                   const system = e.id.startsWith('h-');
                   return (
-                    <div key={e.id} className={cn('flex items-start justify-between gap-3 rounded-2xl border bg-surface-2 p-3.5', pal.chip.split(' ')[2])}>
+                    <div key={e.id} className={cn('flex items-start justify-between gap-3 rounded-xl border bg-surface-2 p-3.5', pal.chip.split(' ')[2])}>
                       <div className="flex min-w-0 items-start gap-3">
                         <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', pal.dot)} />
                         <div className="min-w-0 space-y-1">
@@ -425,7 +425,7 @@ export function CalendarView({
                             <span className="text-brand">{rangeLabel(e.start_date, e.end_date)}</span>
                             {!e.is_published && <span className="rounded bg-surface-3 px-1.5 text-muted">oculto</span>}
                           </p>
-                          <p className="text-sm leading-snug font-extrabold text-ink">{e.title}</p>
+                          <p className="text-sm leading-snug font-semibold text-ink">{e.title}</p>
                           {e.description && <p className="text-xs leading-relaxed text-ink-2">{e.description}</p>}
                         </div>
                       </div>

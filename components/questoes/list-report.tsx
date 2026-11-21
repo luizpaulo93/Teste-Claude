@@ -40,24 +40,24 @@ export function ListReport({ qs, base = '' }: { qs: ReportQuestion[]; base?: str
 
   return (
     <section id="relatorio" className="mt-10 scroll-mt-20 space-y-4">
-      <h2 className="flex items-center gap-2 text-lg font-extrabold text-ink">
+      <h2 className="flex items-center gap-2 text-lg font-semibold text-ink">
         <TrendingUp className="size-5 text-brand" /> Relatório
       </h2>
       <div className="grid grid-cols-3 gap-2 text-center">
         <Card className="p-3">
-          <p className="text-2xl font-extrabold text-success">{pct(right)}%</p>
+          <p className="text-2xl font-semibold text-success">{pct(right)}%</p>
           <p className="text-[11px] text-muted">
             {right} {right === 1 ? 'acerto' : 'acertos'}
           </p>
         </Card>
         <Card className="p-3">
-          <p className="text-2xl font-extrabold text-danger">{pct(wrong)}%</p>
+          <p className="text-2xl font-semibold text-danger">{pct(wrong)}%</p>
           <p className="text-[11px] text-muted">
             {wrong} {wrong === 1 ? 'erro' : 'erros'}
           </p>
         </Card>
         <Card className="p-3">
-          <p className="text-2xl font-extrabold text-ink">{qs.length - done.length}</p>
+          <p className="text-2xl font-semibold text-ink">{qs.length - done.length}</p>
           <p className="text-[11px] text-muted">sem resposta</p>
         </Card>
       </div>

@@ -133,7 +133,7 @@ export function Builder({
           aria-pressed={pane === 'sel'}
           className={cn(
             'flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[13px] font-bold whitespace-nowrap transition sm:text-sm',
-            pane === 'sel' ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface-2',
+            pane === 'sel' ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-surface-2',
           )}
         >
           <ListChecks className="size-4" /> Selecionadas ({items.length})
@@ -144,7 +144,7 @@ export function Builder({
           aria-pressed={pane === 'pick'}
           className={cn(
             'flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[13px] font-bold whitespace-nowrap transition sm:text-sm',
-            pane === 'pick' ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface-2',
+            pane === 'pick' ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-surface-2',
           )}
         >
           <Plus className="size-4" /> Selecionar questões
@@ -197,7 +197,7 @@ export function Builder({
             />
           ))}
           {!items.length && (
-            <div className="rounded-2xl border border-dashed border-line-strong p-8 text-center">
+            <div className="rounded-xl border border-dashed border-line-strong p-8 text-center">
               <p className="text-sm text-muted">Nenhuma questão na lista.</p>
               <Button size="sm" className="mt-3 md:hidden" onClick={() => setPane('pick')}>
                 <Plus className="size-4" /> Selecionar questões

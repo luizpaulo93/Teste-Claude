@@ -127,7 +127,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
       {test && finished && (
         <Card className="mb-5 p-4 text-center">
           <p className="text-sm text-muted">Resultado</p>
-          <p className="text-3xl font-extrabold text-ink">
+          <p className="text-3xl font-semibold text-ink">
             {right}/{counted.length}
           </p>
           <p className="text-xs text-muted">
@@ -136,14 +136,14 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
         </Card>
       )}
       {retry && (
-        <div className="mb-5 rounded-2xl border border-brand/30 bg-brand/8 p-3 text-sm text-ink-2">
+        <div className="mb-5 rounded-xl border border-brand/30 bg-brand/8 p-3 text-sm text-ink-2">
           <strong className="text-ink">{fin!.open ? `Tentativa ${fin!.attempts}` : `Você já fez ${fin!.attempts} tentativas`}</strong> · só a 1ª conta nas
           estatísticas
           {fin!.ok !== null && fin!.total ? ` (${fin!.ok}/${fin!.total} acertos)` : ''}.
         </div>
       )}
       {test && finished && !resOpen && (
-        <div className="mb-5 flex items-center gap-2 rounded-2xl border border-line bg-surface p-3 text-sm text-ink-2">
+        <div className="mb-5 flex items-center gap-2 rounded-xl border border-line bg-surface p-3 text-sm text-ink-2">
           <Lock className="size-4 shrink-0 text-muted" /> A resolução das questões aparece aqui quando o professor liberar.
         </div>
       )}
@@ -168,7 +168,7 @@ export default async function ListaAluno({ params, searchParams }: { params: Pro
             : null;
           return (
             <section key={q.id} id={`q${i + 1}`} className="scroll-mt-32 space-y-4 lg:scroll-mt-20">
-              <p className="text-xs font-bold tracking-wider text-brand uppercase">
+              <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted uppercase">
                 Questão {i + 1}
                 {source(q) && <span className="font-semibold text-muted normal-case"> · {source(q)}</span>}
                 {q.status === 'anulada' && <span className="text-danger normal-case"> · anulada{q.vestibular === 'ENEM' ? ' pelo INEP' : ''}</span>}

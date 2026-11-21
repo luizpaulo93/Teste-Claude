@@ -50,7 +50,7 @@ export default async function TesteRelatorio({ params }: { params: Promise<{ id:
       <PageHeader eyebrow={list.owner_id ? 'Minha lista · relatório' : 'Teste · relatório'} title={list.title} />
       <Card className="mb-5 p-4 text-center">
         <p className="text-sm text-muted">Resultado da 1ª tentativa</p>
-        <p className="text-3xl font-extrabold text-ink">
+        <p className="text-3xl font-semibold text-ink">
           {ok}/{total}
         </p>
         <p className="text-xs text-muted">

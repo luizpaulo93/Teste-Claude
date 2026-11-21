@@ -9,7 +9,7 @@ export function CategoryFilter({ categories, active }: { categories: { id: strin
       scroll={false}
       className={cn(
         'shrink-0 rounded-full border px-4 py-1.5 text-xs font-semibold transition',
-        on ? 'border-brand bg-brand text-white' : 'border-line-strong text-ink-2 hover:bg-surface-2',
+        on ? 'border-ink bg-ink text-bg' : 'border-line-strong text-ink-2 hover:bg-surface-2',
       )}
     >
       {label}

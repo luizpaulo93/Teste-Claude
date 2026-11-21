@@ -34,8 +34,8 @@ export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
             key={t.href}
             href={t.href}
             className={cn(
-              '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-semibold transition',
-              active ? 'border-brand text-brand' : 'border-transparent text-muted hover:text-ink',
+              '-mb-px flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-[13.5px] font-medium transition-colors',
+              active ? 'border-ink text-ink' : 'border-transparent text-muted hover:text-ink',
             )}
           >
             <t.icon className="size-4" /> {t.label}

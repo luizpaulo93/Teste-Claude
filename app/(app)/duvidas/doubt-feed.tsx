@@ -188,7 +188,7 @@ function DoubtCard({
                 return (
                   <li key={r.id} className="flex gap-3">
                     <Avatar name={r.author_name || 'Aluno'} src={r.author_avatar} size={32} />
-                    <div className={cn('min-w-0 flex-1 rounded-2xl rounded-tl-sm px-3.5 py-2.5', r.author_role === 'admin' ? 'bg-brand-soft' : 'bg-surface')}>
+                    <div className={cn('min-w-0 flex-1 rounded-xl rounded-tl-sm px-3.5 py-2.5', r.author_role === 'admin' ? 'bg-brand-soft' : 'bg-surface')}>
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-bold text-ink">{r.author_name || 'Aluno'}</span>
                         {r.author_role === 'admin' && <ShieldCheck className="size-3.5 text-brand" />}

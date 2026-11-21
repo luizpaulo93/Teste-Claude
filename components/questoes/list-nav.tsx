@@ -153,7 +153,7 @@ export function ListNav({ items, finishId }: { items: NavItem[]; finishId?: stri
         {confirm && finishId ? (
           <div className="space-y-4">
             {blanks.length > 0 ? (
-              <div className="rounded-2xl border border-warning/40 bg-warning/10 p-3.5">
+              <div className="rounded-xl border border-warning/40 bg-warning/10 p-3.5">
                 <p className="flex items-center gap-2 text-sm font-bold text-ink">
                   <AlertTriangle className="size-4 shrink-0 text-warning" />
                   {blanks.length === 1 ? '1 questão em branco' : `${blanks.length} questões em branco`}

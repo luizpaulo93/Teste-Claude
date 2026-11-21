@@ -34,19 +34,18 @@ export function ResultView({
   return (
     <div className="space-y-6">
       <Card className="overflow-hidden">
-        <div className="relative bg-gradient-to-br from-[#0b1a3a] via-brand-strong to-accent p-6 text-white sm:p-8">
-          <div className="absolute inset-0 bg-[image:radial-gradient(circle_at_85%_10%,rgba(255,255,255,0.22),transparent_45%)]" />
+        <div className="hero-fallback relative p-6 text-white sm:p-8">
           <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <Badge className="bg-white/15 text-white">{ENEM_AREAS[simulado.area]}</Badge>
-              <h1 className="mt-3 text-2xl font-extrabold tracking-tight sm:text-3xl">{simulado.title}</h1>
+              <span className="font-mono text-[11px] tracking-[0.08em] text-white/60 uppercase">{ENEM_AREAS[simulado.area]}</span>
+              <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">{simulado.title}</h1>
               <p className="mt-1 text-sm text-white/70">Resultado oficial liberado</p>
             </div>
             <div className="text-left sm:text-right">
               <p className="flex items-center gap-1.5 text-xs font-semibold text-white/70 sm:justify-end">
                 <Trophy className="size-3.5" /> {tri ? 'Nota TRI estimada' : 'Acertos'}
               </p>
-              <p className="text-5xl font-black tracking-tight tabular-nums sm:text-6xl">
+              <p className="num text-5xl font-medium sm:text-6xl">
                 {tri ? score.toFixed(1) : `${result.correct}/${simulado.question_count}`}
               </p>
             </div>
@@ -172,7 +171,7 @@ export function ResultView({
               )}
             >
               <p className="text-[10px] font-bold text-muted">Q{b.q}</p>
-              <p className="mt-0.5 text-sm font-extrabold">
+              <p className="mt-0.5 text-sm font-semibold">
                 <span className={b.ok ? 'text-success' : b.marked === '-' ? 'text-muted' : 'text-danger'}>{b.marked === '-' ? '–' : b.marked}</span>
                 {!b.ok && <span className="text-ink-2"> → {b.official}</span>}
               </p>

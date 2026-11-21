@@ -401,7 +401,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
                           {c.alunos} aluno{c.alunos === 1 ? '' : 's'} · coer. {c.coh}%
                         </span>
                       </span>
-                      <span className="text-sm font-extrabold text-ink tabular-nums">{c.tri}</span>
+                      <span className="text-sm font-semibold text-ink tabular-nums">{c.tri}</span>
                     </Link>
                   </li>
                 ))}
@@ -437,7 +437,7 @@ export default async function PerformancePage({ searchParams }: { searchParams: 
 function Header({ subtitle }: { subtitle?: string }) {
   return (
     <div>
-      <h1 className="text-2xl font-extrabold tracking-tight text-ink">Desempenho</h1>
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">Desempenho</h1>
       {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
     </div>
   );
@@ -451,7 +451,7 @@ function Chip({ href, active, small, children }: { href: string; active: boolean
       className={cn(
         'shrink-0 rounded-full border font-semibold whitespace-nowrap transition',
         small ? 'px-3 py-1 text-xs' : 'px-3.5 py-1.5 text-sm',
-        active ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2 hover:bg-surface-2',
+        active ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2 hover:bg-surface-2',
       )}
     >
       {children}
@@ -465,7 +465,7 @@ function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; val
       <p className="flex items-center gap-1.5 text-xs font-semibold text-muted">
         <span className="text-brand">{icon}</span> {label}
       </p>
-      <p className="mt-1.5 text-2xl font-extrabold tracking-tight text-ink tabular-nums">{value}</p>
+      <p className="mt-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">{value}</p>
     </Card>
   );
 }
@@ -473,7 +473,7 @@ function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; val
 function Medal({ pos }: { pos: number }) {
   const color =
     pos === 1 ? 'bg-amber-400 text-black' : pos === 2 ? 'bg-slate-300 text-black' : pos === 3 ? 'bg-orange-400 text-black' : 'bg-surface-3 text-ink-2';
-  return <span className={cn('grid size-7 shrink-0 place-items-center rounded-full text-xs font-extrabold tabular-nums', color)}>{pos}</span>;
+  return <span className={cn('grid size-7 shrink-0 place-items-center rounded-full text-xs font-semibold tabular-nums', color)}>{pos}</span>;
 }
 
 function RankRow({
@@ -500,7 +500,7 @@ function RankRow({
         <span className="block truncate text-sm font-semibold text-ink">{name}</span>
         <span className="block truncate text-[11px] text-muted">{sub ? `${sub} · ${extra}` : extra}</span>
       </span>
-      <span className="text-sm font-extrabold text-ink tabular-nums">{tri}</span>
+      <span className="text-sm font-semibold text-ink tabular-nums">{tri}</span>
     </>
   );
   return (
@@ -540,7 +540,7 @@ function SemTri({ items, admin }: { items: SemTriItem[]; admin: boolean }) {
             <Link href={it.href} className="block px-4 py-3 transition hover:bg-surface-2" aria-label={`${it.title}: ${it.pct}% de acerto`}>
               <span className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-ink">{it.title}</span>
-                <span className="shrink-0 text-sm font-extrabold text-ink tabular-nums">{it.pct}%</span>
+                <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">{it.pct}%</span>
               </span>
               <span className="mt-1.5 block h-2.5 overflow-hidden rounded-full bg-surface-3">
                 <span

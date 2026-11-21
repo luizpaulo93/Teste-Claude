@@ -66,7 +66,7 @@ export function LiveRoom({
               watermark={watermark}
             />
           ) : (
-            <div className="grid aspect-video place-items-center bg-surface-2 text-center sm:rounded-2xl">
+            <div className="grid aspect-video place-items-center bg-surface-2 text-center sm:rounded-xl">
               <p className="px-6 text-sm text-muted">Transmissão encerrada. A gravação não está disponível.</p>
             </div>
           )}
@@ -78,7 +78,7 @@ export function LiveRoom({
             )}
             {live.status === 'ended' && <span className="rounded-md bg-surface-3 px-2 py-0.5 text-[11px] font-bold text-ink-2">GRAVAÇÃO</span>}
           </div>
-          <h1 className="mt-2 text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
+          <h1 className="mt-2 text-xl font-semibold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
           {adminBar && <div className="mt-3">{adminBar}</div>}
           {live.description && <p className="mt-2 text-sm whitespace-pre-line text-ink-2">{live.description}</p>}
         </div>
@@ -113,7 +113,7 @@ function Countdown({ startsAt, serverNow, label, icon, cover }: { startsAt: stri
     [Math.floor((diff % 60000) / 1000), 'seg'],
   ] as const;
   return (
-    <div className="relative grid aspect-video place-items-center overflow-hidden bg-surface-2 sm:rounded-2xl">
+    <div className="relative grid aspect-video place-items-center overflow-hidden bg-surface-2 sm:rounded-xl">
       {cover ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={cover} alt="" className="absolute inset-0 size-full object-cover opacity-40" />
@@ -121,13 +121,13 @@ function Countdown({ startsAt, serverNow, label, icon, cover }: { startsAt: stri
         <div className="hero-fallback absolute inset-0 opacity-80" />
       )}
       <div className="relative px-4 text-center text-white">
-        <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-white/10 backdrop-blur">{icon}</div>
+        <div className="mx-auto grid size-14 place-items-center rounded-xl bg-white/10 backdrop-blur">{icon}</div>
         <p className="mt-3 text-sm font-semibold text-white/80">{diff > 0 ? `Começa em ${label}` : 'Aguardando o professor iniciar…'}</p>
         {diff > 0 && (
           <div className="mt-4 flex justify-center gap-2 sm:gap-3">
             {parts.map(([v, l]) => (
               <div key={l} className="min-w-14 rounded-xl bg-black/40 px-2 py-2 backdrop-blur sm:min-w-16">
-                <p className="text-2xl font-black tabular-nums sm:text-3xl">{String(v).padStart(2, '0')}</p>
+                <p className="text-2xl font-semibold tabular-nums sm:text-3xl">{String(v).padStart(2, '0')}</p>
                 <p className="text-[10px] tracking-wide text-white/60 uppercase">{l}</p>
               </div>
             ))}
@@ -238,7 +238,7 @@ export function LiveChat({
         }}
         className="scrollbar-thin flex-1 space-y-3 overflow-y-auto px-4 py-3"
       >
-        {!list.length && <p className="pt-6 text-center text-sm text-muted">Nenhuma mensagem ainda. Diga oi! 👋</p>}
+        {!list.length && <p className="pt-6 text-center text-sm text-muted">Nenhuma mensagem ainda.</p>}
         {list.map((m) => {
           const admin = m.author_role === 'admin';
           return (

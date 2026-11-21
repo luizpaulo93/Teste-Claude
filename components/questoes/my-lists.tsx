@@ -25,7 +25,7 @@ const DIF = [
 /** Os dois jeitos de o aluno montar uma lista: aleatória (sorteio com filtros) ou escolhendo as questões. */
 export function ListTypeCards() {
   const [random, setRandom] = useState(false);
-  const card = 'flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface p-4 text-left transition hover:border-brand/40';
+  const card = 'flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface p-4 text-left transition hover:border-brand/40';
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2">

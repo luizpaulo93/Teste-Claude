@@ -539,7 +539,7 @@ export function VideoPlayer({
       onContextMenu={(e) => e.preventDefault()}
       className={cn(
         'group/player relative isolate overflow-hidden bg-black select-none',
-        pseudoFs ? 'fixed inset-0 z-[100] h-[100dvh] w-screen' : 'aspect-video w-full rounded-none sm:rounded-2xl',
+        pseudoFs ? 'fixed inset-0 z-[100] h-[100dvh] w-screen' : 'aspect-video w-full rounded-none sm:rounded-xl',
         isFull && !barVisible && playing && 'cursor-none',
       )}
     >
@@ -662,7 +662,7 @@ export function VideoPlayer({
         <div className="absolute inset-0 z-50 grid place-items-center bg-black/75 p-3 backdrop-blur-sm" onClick={() => setSpeedOpen(false)}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-[270px] rounded-2xl border border-white/15 bg-[#0d1527]/95 p-3 text-white shadow-2xl sm:max-w-xs sm:p-4"
+            className="w-full max-w-[270px] rounded-xl border border-white/15 bg-[#0d1527]/95 p-3 text-white shadow-2xl sm:max-w-xs sm:p-4"
           >
             <div className="mb-2.5 flex items-center justify-between border-b border-white/10 pb-2">
               <span className="text-sm font-bold">Velocidade</span>
@@ -824,7 +824,7 @@ export function VideoPlayer({
                   playerRef.current?.playVideo?.();
                 }}
                 title="Ir para o ao vivo"
-                className="ml-1 flex items-center gap-1.5 rounded-md bg-rose-600/90 px-2.5 py-1 text-[11px] font-extrabold tracking-wider text-white uppercase hover:bg-rose-600"
+                className="ml-1 flex items-center gap-1.5 rounded-md bg-rose-600/90 px-2.5 py-1 text-[11px] font-semibold tracking-wider text-white uppercase hover:bg-rose-600"
               >
                 <span className="size-2 animate-pulse rounded-full bg-white" /> Ao vivo
               </button>

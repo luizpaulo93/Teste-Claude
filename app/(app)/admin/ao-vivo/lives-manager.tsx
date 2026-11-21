@@ -286,7 +286,7 @@ export function AudiencePicker({
               onClick={() => toggle(x.key)}
               className={cn(
                 'rounded-lg border px-2.5 py-1 text-xs font-semibold transition',
-                sel.includes(x.key) ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2',
+                sel.includes(x.key) ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
               {x.label}
@@ -296,7 +296,7 @@ export function AudiencePicker({
       </div>
     ) : null;
   return (
-    <div className="space-y-3 rounded-2xl border border-line p-3.5">
+    <div className="space-y-3 rounded-xl border border-line p-3.5">
       {sel.map((k) => (
         <input key={k} type="hidden" name="audience" value={k} />
       ))}

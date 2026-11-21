@@ -59,7 +59,7 @@ export default async function AdminSimulados({ searchParams }: { searchParams: P
           {sims.map((s) => (
             <Link key={s.id} href={`/admin/simulados/${s.id}`} className="block min-w-0">
               <Card className="flex min-w-0 items-center gap-4 p-4 transition hover:border-brand/40">
-                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-sm font-extrabold text-brand">{s.area}</span>
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-soft text-sm font-semibold text-brand">{s.area}</span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-bold text-ink">{s.title}</p>
                   <p className="text-xs text-muted">

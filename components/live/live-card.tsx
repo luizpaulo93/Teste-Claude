@@ -11,11 +11,11 @@ export function LiveCard({ live, className }: { live: LiveSession; className?: s
     <Link href={`/ao-vivo/${live.id}`} className={cn('group block', className)}>
       <div
         className={cn(
-          'relative aspect-[3/4] overflow-hidden rounded-2xl border bg-surface-2 transition-all duration-300 group-hover:-translate-y-1',
-          live.status === 'live' ? 'border-red-500/60 shadow-[0_0_30px_-6px_rgba(239,68,68,0.6)]' : 'border-line group-hover:shadow-glow',
+          'relative aspect-[3/4] overflow-hidden rounded-xl border bg-surface-2 transition-all duration-300 group-hover:-translate-y-1',
+          live.status === 'live' ? 'border-red-500/70' : 'border-line group-hover:border-line-strong',
         )}
       >
-        <div className={cn('absolute inset-0 bg-gradient-to-b', live.status === 'live' ? 'from-red-600 to-rose-900' : 'from-blue-600 to-indigo-900')} />
+        <div className={cn('absolute inset-0', live.status === 'live' ? 'bg-[#2a0e11]' : 'hero-fallback')} />
         {img && <SafeImg src={img} className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-105" />}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
         <div className="absolute top-2.5 left-2.5">
@@ -34,7 +34,7 @@ export function LiveCard({ live, className }: { live: LiveSession; className?: s
           )}
         </div>
         <div className="absolute inset-x-0 bottom-0 p-3">
-          <p className="line-clamp-3 text-sm leading-tight font-extrabold text-white">{live.title}</p>
+          <p className="line-clamp-3 text-sm leading-tight font-semibold text-white">{live.title}</p>
           <p className="mt-1 flex items-center gap-1 text-[11px] text-white/70">
             {live.status === 'live' ? <Radio className="size-3" /> : <CalendarClock className="size-3" />}
             {live.status === 'live' ? 'Acontecendo agora' : formatDateTime(live.starts_at)}

@@ -76,7 +76,7 @@ export function QuestionCard({
     setOpen((o) => !o);
   }
   return (
-    <div className={cn('rounded-2xl border bg-surface p-3 transition', picked ? 'border-brand/60 bg-brand/5' : 'border-line')}>
+    <div className={cn('rounded-xl border bg-surface p-3 transition', picked ? 'border-brand/60 bg-brand/5' : 'border-line')}>
       <div className="flex gap-3">
         {onPick ? (
           <button
@@ -120,7 +120,7 @@ export function QuestionCard({
           {prev.gabarito && <p className="text-xs font-bold text-success">Gabarito: {prev.gabarito}</p>}
           {prev.resolucao && (
             <div className="rounded-xl border border-line bg-surface p-3">
-              <p className="mb-1.5 text-[11px] font-bold tracking-wider text-brand uppercase">Resolução</p>
+              <p className="font-mono mb-1.5 text-[11px] font-medium tracking-[0.08em] text-muted uppercase">Resolução</p>
               <div className="q-rich text-[13px] text-ink-2" dangerouslySetInnerHTML={{ __html: prev.resolucao }} />
             </div>
           )}
@@ -265,7 +265,7 @@ export function QuestionPicker({
           <QuestionCard key={it.id} item={it} picked={selected.has(it.id)} onPick={() => onToggle(it)} />
         ))}
         {!busy && !items.length && (
-          <p className="rounded-2xl border border-dashed border-line-strong p-6 text-center text-sm text-muted">Nenhuma questão com esses filtros.</p>
+          <p className="rounded-xl border border-dashed border-line-strong p-6 text-center text-sm text-muted">Nenhuma questão com esses filtros.</p>
         )}
         {items.length < total && (
           <Button variant="secondary" onClick={() => setPage((p) => p + 1)} disabled={busy} className="w-full">

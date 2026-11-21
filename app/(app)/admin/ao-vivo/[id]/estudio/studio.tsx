@@ -1680,7 +1680,7 @@ export function Studio({
         </button>
       </div>
       {inkPop === 'color' && paints && (
-        <div data-scroll className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-3xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
+        <div data-scroll className="absolute top-1/2 left-16 z-40 grid -translate-y-1/2 animate-scale-in grid-cols-2 gap-1.5 rounded-2xl border border-white/10 bg-neutral-900/90 p-1.5 shadow-2xl backdrop-blur-xl">
           {INK_COLORS.map((c) => (
             <button
               key={c}
@@ -2527,7 +2527,7 @@ export function Studio({
           ref={stage}
           className={cn(
             'relative mx-auto overflow-hidden bg-black',
-            full ? 'fixed inset-0 z-[90] flex' : cn('rounded-2xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
+            full ? 'fixed inset-0 z-[90] flex' : cn('rounded-xl border border-line', vertical ? 'aspect-[9/16] max-h-[70dvh]' : 'aspect-video w-full'),
           )}
         >
           <div className={full ? 'relative flex h-full min-w-0 flex-1 items-center justify-center' : 'absolute inset-0'}>
@@ -2795,7 +2795,7 @@ export function Studio({
                 data-popup={pop}
                 data-scroll
                 className={cn(
-                  'absolute z-40 w-64 space-y-2 overflow-y-auto rounded-2xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur',
+                  'absolute z-40 w-64 space-y-2 overflow-y-auto rounded-xl border border-line-strong bg-surface/95 p-3 shadow-2xl backdrop-blur',
                   full ? 'top-1/2 right-16 max-h-[calc(100%-1rem)] max-w-[calc(100%-5rem)] -translate-y-1/2' : 'top-12 right-2 max-h-[calc(100%-3.5rem)] max-w-[calc(100%-1rem)]',
                 )}
               >
@@ -2986,7 +2986,7 @@ export function Studio({
           {/* Na tela cheia, as janelas aparecem dentro da própria tela da live */}
           {full && (confirmEnd || choosing) && (
             <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
-              <div className="w-full max-w-sm space-y-4 rounded-3xl border border-line-strong bg-surface p-5 shadow-2xl">
+              <div className="w-full max-w-sm space-y-4 rounded-2xl border border-line-strong bg-surface p-5 shadow-2xl">
                 {confirmEnd ? (
                   <>
                     <p className="text-base font-bold text-ink">Encerrar a transmissão?</p>
@@ -3024,7 +3024,7 @@ export function Studio({
             <aside
               aria-label="Chat da live"
               data-scroll
-              className="absolute top-2 right-16 bottom-2 z-40 w-[min(340px,calc(100%-5rem))] animate-scale-in overflow-hidden rounded-2xl border border-white/15 bg-surface shadow-2xl"
+              className="absolute top-2 right-16 bottom-2 z-40 w-[min(340px,calc(100%-5rem))] animate-scale-in overflow-hidden rounded-xl border border-white/15 bg-surface shadow-2xl"
             >
               <LiveChat
                 liveId={liveId}
@@ -3071,7 +3071,7 @@ export function Studio({
         </div>
         {/* PDF na live */}
         {scene === 'pdf' && (
-          <div className="space-y-2 rounded-2xl border border-line bg-surface p-3">
+          <div className="space-y-2 rounded-xl border border-line bg-surface p-3">
             {materials.length ? (
               <Select
                 value={pdfId}

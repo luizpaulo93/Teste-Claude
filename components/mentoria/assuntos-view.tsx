@@ -61,7 +61,7 @@ export function AssuntosView({
               onClick={() => setDisc(d.key)}
               className={cn(
                 'shrink-0 rounded-xl border px-3.5 py-2 text-left text-sm font-semibold transition',
-                disc === d.key ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2',
+                disc === d.key ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2',
               )}
             >
               {d.name} <span className="text-xs opacity-75">{pct}%</span>
@@ -90,7 +90,7 @@ export function AssuntosView({
       </div>
 
       {blocks.map((b) => (
-        <section key={b} className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <section key={b} className="overflow-hidden rounded-xl border border-line bg-surface">
           <p className="border-b border-line bg-surface-2/60 px-4 py-2 text-xs font-bold text-ink-2">{b}</p>
           <ul className="divide-y divide-line">
             {list
@@ -191,7 +191,7 @@ function AddDialog({ row, today, onClose }: { row: AssuntoRow; today: string; on
                 ) : (
                   <>
                     <span className="text-[10px] font-bold uppercase">{weekday(d)}</span>
-                    <span className="text-sm font-extrabold tabular-nums">{`${d.slice(8)}/${d.slice(5, 7)}`}</span>
+                    <span className="text-sm font-semibold tabular-nums">{`${d.slice(8)}/${d.slice(5, 7)}`}</span>
                   </>
                 )}
               </button>

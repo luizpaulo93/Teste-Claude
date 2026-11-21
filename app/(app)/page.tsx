@@ -47,8 +47,8 @@ export default async function HomePage() {
       {/* Cabeçalho limpo */}
       <section className="flex flex-col justify-between gap-5 sm:flex-row sm:items-start">
         <div className="max-w-2xl space-y-2.5">
-          {name && <p className="text-xs font-bold tracking-[0.2em] text-brand uppercase">Olá, {name}</p>}
-          <h1 className="text-2xl font-extrabold tracking-tight text-balance text-ink sm:text-3xl">{settings.hero_title}</h1>
+          {name && <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted uppercase">Olá, {name}</p>}
+          <h1 className="text-2xl font-semibold tracking-tight text-balance text-ink sm:text-3xl">{settings.hero_title}</h1>
           {settings.hero_subtitle && <p className="max-w-lg text-sm text-muted">{settings.hero_subtitle}</p>}
         </div>
       </section>
@@ -74,20 +74,22 @@ export default async function HomePage() {
           <SectionHeader title="Ao vivo agora" icon={<span className="size-2.5 shrink-0 animate-pulse rounded-full bg-rose-500" />} />
           <Link
             href={`/ao-vivo/${l.id}`}
-            className="group flex items-center justify-between gap-4 rounded-2xl border border-rose-500/50 bg-gradient-to-r from-rose-600/20 via-surface to-surface p-4 shadow-card transition hover:border-rose-500 hover:from-rose-600/30 sm:p-5"
+            className="group flex items-center justify-between gap-4 rounded-xl border border-rose-500/40 bg-surface p-4 transition hover:border-rose-500/80 sm:p-5"
           >
             <span className="flex min-w-0 items-center gap-3.5">
-              <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-rose-600 text-white shadow-lg transition-transform group-hover:scale-105">
-                <Radio className="size-5 animate-pulse" />
+              <span className="grid size-11 shrink-0 place-items-center rounded-lg border border-rose-500/30 bg-rose-500/10 text-rose-500">
+                <Radio className="size-5" />
               </span>
               <span className="min-w-0 space-y-1">
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-md bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold tracking-wider text-white uppercase">Ao vivo</span>
+                  <span className="flex items-center gap-1.5 font-mono text-[10px] font-medium tracking-[0.08em] text-rose-500 uppercase">
+                    <span className="size-1.5 animate-pulse rounded-full bg-rose-500" /> Ao vivo
+                  </span>
                 </span>
-                <span className="block truncate text-sm font-extrabold text-ink sm:text-base">{l.title}</span>
+                <span className="block truncate text-sm font-semibold text-ink sm:text-base">{l.title}</span>
               </span>
             </span>
-            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-rose-600 px-4 py-2.5 text-xs font-bold text-white transition-colors group-hover:bg-rose-500">
+            <span className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-rose-600 px-4 py-2.5 text-xs font-medium text-white transition-colors group-hover:bg-rose-500">
               <span className="hidden sm:inline">Entrar na live</span> <ChevronRight className="size-4" />
             </span>
           </Link>
@@ -100,33 +102,33 @@ export default async function HomePage() {
           <SectionHeader title="Continuar assistindo" />
           <Link
             href={`/aula/${resume.lesson.id}`}
-            className="group flex items-center gap-3.5 rounded-2xl border border-brand/25 bg-surface p-3 shadow-card transition hover:border-brand/70 hover:bg-surface-2 sm:max-w-2xl sm:gap-4 sm:p-3.5"
+            className="group flex items-center gap-3.5 rounded-xl border border-line bg-surface p-3 transition hover:border-line-strong hover:bg-surface-2 sm:max-w-2xl sm:gap-4 sm:p-3.5"
           >
-            <span className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-xl bg-surface-3 sm:w-40">
+            <span className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-lg bg-surface-3 sm:w-40">
               {resume.lesson.thumbnail_url || resume.lesson.youtube_id ? (
                 <Img src={resume.lesson.thumbnail_url || youtubeThumb(resume.lesson.youtube_id)} loading="eager" className="size-full object-cover" />
               ) : (
                 <CoverFallback title="" seed={resume.lesson.id} />
               )}
               <span className="absolute inset-0 grid place-items-center bg-black/30">
-                <span className="grid size-9 place-items-center rounded-full bg-brand text-white transition-transform group-hover:scale-110">
+                <span className="grid size-9 place-items-center rounded-full bg-white/95 text-black transition-transform group-hover:scale-105">
                   <Play className="ml-0.5 size-4 fill-current" />
                 </span>
               </span>
             </span>
             <span className="min-w-0 flex-1 space-y-1.5">
-              {resumeCourse && <span className="block truncate text-[10px] font-bold tracking-wider text-brand uppercase">{resumeCourse.title}</span>}
-              <span className="block truncate text-sm font-extrabold text-ink sm:text-base">{resume.lesson.title}</span>
+              {resumeCourse && <span className="font-mono block truncate text-[10px] font-medium tracking-[0.08em] text-muted uppercase">{resumeCourse.title}</span>}
+              <span className="block truncate text-sm font-semibold text-ink sm:text-base">{resume.lesson.title}</span>
               {resumePct > 0 && (
                 <span className="flex items-center gap-3">
                   <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
                     <span className="block h-full rounded-full bg-brand" style={{ width: `${resumePct}%` }} />
                   </span>
-                  <span className="shrink-0 text-[10px] font-bold text-muted tabular-nums">{resumePct}%</span>
+                  <span className="num shrink-0 text-[11px] text-muted">{resumePct}%</span>
                 </span>
               )}
             </span>
-            <ChevronRight className="size-5 shrink-0 text-brand transition-transform group-hover:translate-x-0.5" />
+            <ChevronRight className="size-5 shrink-0 text-muted transition-transform group-hover:translate-x-0.5 group-hover:text-ink" />
           </Link>
         </section>
       )}
@@ -136,7 +138,7 @@ export default async function HomePage() {
         <Rail
           title={viewer.isMember ? 'Cursos disponíveis' : 'Conteúdo gratuito'}
           action={
-            <Link href="/cursos" className="text-xs font-semibold text-brand">
+            <Link href="/cursos" className="text-xs font-medium text-muted transition-colors hover:text-ink">
               Ver tudo
             </Link>
           }
@@ -157,7 +159,7 @@ export default async function HomePage() {
         <Rail
           title="Agendamentos"
           action={
-            <Link href="/ao-vivo" className="text-xs font-semibold text-brand">
+            <Link href="/ao-vivo" className="text-xs font-medium text-muted transition-colors hover:text-ink">
               Ver todos
             </Link>
           }
@@ -191,14 +193,14 @@ export default async function HomePage() {
                 <Link
                   key={e.id}
                   href={`/calendario?d=${e.start_date}`}
-                  className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
+                  className="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface px-3.5 py-3 transition hover:bg-surface-2 sm:w-72"
                 >
                   <span className={cn('grid size-11 shrink-0 place-items-center rounded-xl text-center leading-none', color.circle)}>
-                    <span className="text-[15px] font-extrabold tabular-nums">{Number(e.start_date.slice(8, 10))}</span>
+                    <span className="num text-[15px] font-medium">{Number(e.start_date.slice(8, 10))}</span>
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-semibold text-ink">{e.title}</span>
-                    <span className="block text-[11px] text-muted uppercase">
+                    <span className="block font-mono text-[11px] text-muted uppercase">
                       {formatDate(e.start_date)}
                       {e.end_date !== e.start_date && ` – ${formatDate(e.end_date)}`}
                     </span>

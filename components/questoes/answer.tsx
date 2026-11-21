@@ -89,7 +89,7 @@ export function Answer({
                 aria-pressed={isMine}
                 aria-label={`Alternativa ${a.letra}`}
                 className={cn(
-                  'flex w-full items-start gap-3 rounded-2xl border p-3 text-left transition disabled:cursor-default',
+                  'flex w-full items-start gap-3 rounded-xl border p-3 text-left transition disabled:cursor-default',
                   compact && 'justify-center p-2.5',
                   isKey
                     ? 'border-success bg-success/10'
@@ -156,7 +156,7 @@ export function Answer({
           {!teacher && shown.correct !== null && (
             <div
               className={cn(
-                'flex items-center gap-2 rounded-2xl p-3 text-sm font-bold',
+                'flex items-center gap-2 rounded-xl p-3 text-sm font-bold',
                 shown.correct ? 'bg-success/12 text-success' : 'bg-danger/12 text-danger',
               )}
             >
@@ -177,8 +177,8 @@ export function Answer({
             </div>
           )}
           {shown.resolucao && (
-            <section className="rounded-2xl border border-line bg-surface p-4">
-              <p className="mb-2 text-xs font-bold tracking-wider text-brand uppercase">Resolução</p>
+            <section className="rounded-xl border border-line bg-surface p-4">
+              <p className="font-mono mb-2 text-xs font-medium tracking-[0.08em] text-muted uppercase">Resolução</p>
               <div className="q-rich text-[15px] text-ink-2" dangerouslySetInnerHTML={{ __html: shown.resolucao }} />
             </section>
           )}

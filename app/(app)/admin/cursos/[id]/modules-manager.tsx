@@ -66,7 +66,7 @@ export function ModulesManager({
         return (
           <Card key={m.id} className="overflow-hidden">
             <div className="flex items-center gap-2 border-b border-line bg-surface-2/50 p-3 sm:p-4">
-              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-extrabold text-brand">{mi + 1}</span>
+              <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-semibold text-brand">{mi + 1}</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate font-bold text-ink">{m.title}</p>
                 <p className="text-xs text-muted">

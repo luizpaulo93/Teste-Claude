@@ -26,13 +26,13 @@ export default async function StudioPage({ params }: { params: Promise<{ id: str
       <Link href="/admin/ao-vivo" className="inline-flex items-center gap-1 text-sm font-semibold text-muted hover:text-ink">
         <ChevronLeft className="size-4" /> Ao vivo
       </Link>
-      <h1 className="text-xl font-extrabold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
+      <h1 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">{live.title}</h1>
       <Studio
         liveId={live.id}
         live={live.status === 'live'}
         materials={live.materials ?? []}
         pdfPanel={
-          <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
+          <div className="space-y-2 rounded-xl border border-line bg-surface p-4">
             <LiveMaterialsAdmin liveId={live.id} materials={live.materials ?? []} />
           </div>
         }

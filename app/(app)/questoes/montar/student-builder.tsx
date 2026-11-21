@@ -71,7 +71,7 @@ export function StudentBuilder() {
               aria-pressed={pane === k}
               className={cn(
                 'flex items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[13px] font-bold whitespace-nowrap transition',
-                pane === k ? 'bg-brand text-white' : 'text-ink-2 hover:bg-surface-2',
+                pane === k ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-surface-2',
               )}
             >
               <Icon className="size-4" /> {l}
@@ -105,7 +105,7 @@ export function StudentBuilder() {
               />
             ))}
             {!items.length && (
-              <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma questão escolhida ainda.</p>
+              <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma questão escolhida ainda.</p>
             )}
           </section>
           <section

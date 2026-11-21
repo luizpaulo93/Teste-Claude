@@ -25,7 +25,7 @@ export function ImportProgress() {
   return (
     <Link
       href="/admin/questoes"
-      className="fixed right-3 bottom-20 z-[80] flex w-60 max-w-[calc(100vw-1.5rem)] items-center gap-2.5 rounded-2xl border border-line-strong bg-surface/95 p-2.5 shadow-2xl backdrop-blur lg:bottom-4"
+      className="fixed right-3 bottom-20 z-[80] flex w-60 max-w-[calc(100vw-1.5rem)] items-center gap-2.5 rounded-xl border border-line-strong bg-surface/95 p-2.5 shadow-2xl backdrop-blur lg:bottom-4"
       aria-label="Importação de questões em andamento"
     >
       <span className="grid size-8 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand">

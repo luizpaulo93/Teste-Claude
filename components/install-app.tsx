@@ -62,7 +62,7 @@ export function InstallApp({ className, compact }: { className?: string; compact
         onClick={click}
         className={cn(
           compact
-            ? 'flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface-2 p-4 text-xs font-semibold text-ink-2'
+            ? 'flex flex-col items-center gap-2 rounded-xl border border-line bg-surface-2 p-4 text-xs font-semibold text-ink-2'
             : 'flex w-full items-center gap-3 rounded-xl border border-brand/30 bg-brand-soft px-3 py-2.5 text-left text-sm font-semibold text-brand transition hover:bg-brand/20',
           className,
         )}
@@ -72,7 +72,7 @@ export function InstallApp({ className, compact }: { className?: string; compact
       </button>
       <Modal open={help} onClose={() => setHelp(false)} title="Instalar no iPhone" size="sm">
         <div className="flex flex-col items-center text-center">
-          <span className="grid size-16 place-items-center rounded-2xl bg-gradient-to-br from-brand to-accent text-white shadow-glow">
+          <span className="grid size-16 place-items-center rounded-xl border border-line bg-surface-2 text-ink">
             <Logo className="size-9" />
           </span>
           <ol className="mt-5 space-y-3 text-left text-sm text-ink-2">

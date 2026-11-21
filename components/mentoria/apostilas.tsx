@@ -63,7 +63,7 @@ export function DayFolder({ groups }: { groups: ApostilaGroup[] }) {
   if (!withFiles.length) return null;
   const n = withFiles.reduce((a, g) => a + g.files.length, 0);
   return (
-    <div className="rounded-2xl border border-amber-500/40 bg-amber-500/5">
+    <div className="rounded-xl border border-amber-500/40 bg-amber-500/5">
       <button type="button" onClick={() => setOpen((o) => !o)} className="flex w-full items-center gap-2.5 p-3.5 text-left">
         {open ? <FolderOpen className="size-5 text-amber-500" /> : <Folder className="size-5 text-amber-500" />}
         <span className="flex-1 text-sm font-bold text-ink">Apostilas deste período</span>
@@ -90,13 +90,13 @@ export function DayFolder({ groups }: { groups: ApostilaGroup[] }) {
 /** Pasta com todos os documentos da mentoria (aluno e mentor veem a mesma). */
 export function ApostilasFolder({ groups, today }: { groups: ApostilaGroup[]; today: string }) {
   const list = groups.filter((g) => g.files.length);
-  if (!list.length) return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda.</p>;
+  if (!list.length) return <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhuma apostila ainda.</p>;
   return (
     <div className="space-y-3">
       {list.map((g) => {
         const now = g.start_on <= today && g.end_on >= today;
         return (
-          <section key={g.id} className={cn('rounded-2xl border bg-surface p-2', now ? 'border-amber-500/50' : 'border-line')}>
+          <section key={g.id} className={cn('rounded-xl border bg-surface p-2', now ? 'border-amber-500/50' : 'border-line')}>
             <div className="flex items-center gap-2 px-2 pt-1.5 pb-1">
               <Folder className="size-4 text-amber-500" />
               <p className="min-w-0 flex-1 truncate text-sm font-bold text-ink">{g.title || 'Apostilas'}</p>

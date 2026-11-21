@@ -166,7 +166,7 @@ export function LessonView(p: Props) {
             {listOpen && (
               <>
                 <div className="fixed inset-0 z-30" onClick={() => setListOpen(false)} />
-                <div className="absolute top-full right-0 z-40 mt-2 flex max-h-[65dvh] w-[min(92vw,420px)] flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+                <div className="absolute top-full right-0 z-40 mt-2 flex max-h-[65dvh] w-[min(92vw,420px)] flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl">
                   <div className="flex items-center gap-2 border-b border-line px-3 py-2">
                     <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-muted tabular-nums">
                       {doneCount} de {total} concluídas
@@ -271,7 +271,7 @@ export function LessonView(p: Props) {
             onNext={goNext}
           />
         ) : (
-          <div className="relative grid aspect-video place-items-center overflow-hidden bg-surface-2 sm:rounded-2xl">
+          <div className="relative grid aspect-video place-items-center overflow-hidden bg-surface-2 sm:rounded-xl">
             {p.lesson.thumbnail_url && (
               // Foto escolhida pelo professor para indicar o tipo de material
               // eslint-disable-next-line @next/next/no-img-element
@@ -294,7 +294,7 @@ export function LessonView(p: Props) {
       {/* Título + ações (enxuto) */}
       <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg leading-snug font-extrabold tracking-tight text-ink sm:text-xl">{p.lesson.title}</h1>
+          <h1 className="text-lg leading-snug font-semibold tracking-tight text-ink sm:text-xl">{p.lesson.title}</h1>
           {currentModule && <p className="mt-0.5 truncate text-xs text-muted">{currentModule.title}</p>}
         </div>
         <button

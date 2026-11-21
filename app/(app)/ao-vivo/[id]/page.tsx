@@ -23,7 +23,7 @@ export default async function LivePage({ params }: { params: Promise<{ id: strin
   if (!live || !(await canSeeLive(viewer, live))) {
     return (
       <Card className="mx-auto mt-10 flex max-w-md flex-col items-center p-10 text-center">
-        <div className="grid size-14 place-items-center rounded-2xl bg-brand-soft text-brand">
+        <div className="grid size-14 place-items-center rounded-xl bg-brand-soft text-brand">
           <Lock className="size-6" />
         </div>
         <p className="mt-4 text-lg font-bold text-ink">Transmissão exclusiva</p>

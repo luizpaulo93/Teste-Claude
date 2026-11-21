@@ -12,12 +12,12 @@ const period = (a: string | null, b: string | null) => [dmy(a), dmy(b)].filter(B
 
 /** Lista dos ciclos anteriores (salvos quando o mentor começou um novo). */
 export function CycleList({ list, base }: { list: Awaited<ReturnType<typeof cyclesOf>>; base: string }) {
-  if (!list.length) return <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior.</p>;
+  if (!list.length) return <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Nenhum ciclo anterior.</p>;
   return (
     <ul className="space-y-2">
       {list.map((c) => (
         <li key={c.id}>
-          <Link href={`${base}/${c.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-4 transition hover:border-brand/50">
+          <Link href={`${base}/${c.id}`} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-4 transition hover:border-brand/50">
             <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-3 text-ink-2">
               <Archive className="size-5" />
             </span>
@@ -72,11 +72,11 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-2xl border border-line bg-surface p-4">
+      <div className="rounded-xl border border-line bg-surface p-4">
         <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase">
           <Archive className="size-3.5" /> Ciclo salvo · {specific ? 'mentoria específica' : 'mentoria completa'}
         </p>
-        <h2 className="mt-1 text-lg font-extrabold text-ink">{cycle.title}</h2>
+        <h2 className="mt-1 text-lg font-semibold text-ink">{cycle.title}</h2>
         <p className="flex items-center gap-1 text-xs text-muted">
           <CalendarRange className="size-3.5" /> {period(cycle.start_date, cycle.end_date) || `salvo em ${formatDate(cycle.created_at)}`}
           {cycle.exam_date && ` · prova em ${formatDate(cycle.exam_date)}`}
@@ -88,7 +88,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
             ['Acerto', q ? `${Math.round((ok / q) * 100)}%` : '-'],
           ].map(([l, v]) => (
             <div key={l} className="rounded-xl bg-surface-2/60 p-2.5">
-              <p className="text-lg font-extrabold text-ink tabular-nums">{v}</p>
+              <p className="text-lg font-semibold text-ink tabular-nums">{v}</p>
               <p className="text-[10px] text-muted">{l}</p>
             </div>
           ))}
@@ -107,7 +107,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
         {days.length ? (
           <div className="space-y-3">
             {days.map((d) => (
-              <div key={d} className="rounded-2xl border border-line bg-surface p-3">
+              <div key={d} className="rounded-xl border border-line bg-surface p-3">
                 <p className="mb-1.5 text-xs font-bold text-ink-2">{formatDate(d)}</p>
                 <ul className="space-y-1.5">
                   {done
@@ -122,7 +122,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
                             <span className="font-semibold text-ink">{x.title}</span>
                             <span className="block text-[11px] text-muted">
                               {x.discipline} · {TASK_KIND[Math.min(4, x.l)]} · {x.c}/{x.q} ({acc}%)
-                              {x.f ? ` · ${FEELS[x.f - 1].emoji} ${FEELS[x.f - 1].label}` : ''}
+                              {x.f ? ` · ${FEELS[x.f - 1].label}` : ''}
                             </span>
                           </span>
                         </li>
@@ -133,7 +133,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
             ))}
           </div>
         ) : (
-          <p className={cn('rounded-2xl border border-dashed border-line-strong p-6 text-center text-sm text-muted')}>Nada registrado neste ciclo.</p>
+          <p className={cn('rounded-xl border border-dashed border-line-strong p-6 text-center text-sm text-muted')}>Nada registrado neste ciclo.</p>
         )}
       </section>
 

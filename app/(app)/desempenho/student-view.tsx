@@ -37,7 +37,7 @@ export function StudentPerformance({ items, cat, turma }: { items: PerfItem[]; c
       aria-pressed={cat === k}
       className={cn(
         'shrink-0 rounded-full border px-4 py-2 text-sm font-semibold transition',
-        cat === k ? 'border-brand bg-brand text-white' : 'border-line bg-surface text-ink-2 hover:border-brand/50',
+        cat === k ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2 hover:border-brand/50',
       )}
     >
       {label}
@@ -54,7 +54,7 @@ export function StudentPerformance({ items, cat, turma }: { items: PerfItem[]; c
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink">Desempenho</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Desempenho</h1>
         <p className="mt-0.5 text-sm text-muted">{turma ? `Sua turma: ${turma}` : 'Seus simulados e testes'}</p>
       </div>
 
@@ -112,7 +112,7 @@ export function StudentPerformance({ items, cat, turma }: { items: PerfItem[]; c
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-2">
                         <span className="min-w-0 flex-1 truncate text-sm font-bold text-ink">{it.title}</span>
-                        <span className="shrink-0 text-sm font-extrabold text-ink tabular-nums">
+                        <span className="shrink-0 text-sm font-semibold text-ink tabular-nums">
                           {it.tri ? Math.round(it.triScore ?? 0) : `${it.pct}%`}
                         </span>
                       </span>
@@ -153,7 +153,7 @@ function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; val
       <p className="flex items-center gap-1.5 text-xs font-semibold text-muted">
         <span className="text-brand">{icon}</span> {label}
       </p>
-      <p className="mt-1.5 text-2xl font-extrabold text-ink tabular-nums">{value}</p>
+      <p className="mt-1.5 text-2xl font-semibold text-ink tabular-nums">{value}</p>
     </Card>
   );
 }

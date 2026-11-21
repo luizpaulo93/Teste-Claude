@@ -124,7 +124,7 @@ export function AppShell({
       <aside data-chrome className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-line bg-bg-elev/80 backdrop-blur-xl lg:flex">
         <Link href="/" className="flex h-16 items-center gap-3 px-6">
           <Logo className="size-8 text-ink" />
-          <span className="truncate text-sm font-extrabold tracking-wide text-ink">{brand}</span>
+          <span className="truncate text-[13px] font-semibold tracking-[0.04em] text-ink uppercase">{brand}</span>
         </Link>
         <nav className="scrollbar-thin flex-1 space-y-1 overflow-y-auto px-3 py-4">
           {items.map((item) => (
@@ -132,14 +132,14 @@ export function AppShell({
           ))}
           {isAdmin && (
             <>
-              <div className="px-3 pt-6 pb-2 text-[11px] font-bold tracking-wider text-muted uppercase">Gestão</div>
+              <div className="px-3 pt-6 pb-2 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted uppercase">Gestão</div>
               <NavLink item={{ href: '/admin', label: 'Painel admin', icon: Shield }} active={inAdmin} />
             </>
           )}
         </nav>
         <div className="border-t border-line p-3">
           <InstallApp className="mb-2" />
-          <Link href="/perfil" className="flex items-center gap-3 rounded-xl p-2 transition hover:bg-surface-2">
+          <Link href="/perfil" className="flex items-center gap-3 rounded-lg p-2 transition hover:bg-surface-2">
             <Avatar name={user.name} src={user.avatar} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
@@ -150,13 +150,13 @@ export function AppShell({
             <button
               type="button"
               onClick={toggle}
-              className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2"
+              className="flex flex-1 items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium text-ink-2 hover:bg-surface-2"
             >
               {theme === 'dark' ? <Sun className="size-4" /> : <Moon className="size-4" />}
               {theme === 'dark' ? 'Tema claro' : 'Tema escuro'}
             </button>
             <div className="flex-1">
-              <SignOutButton className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-semibold text-ink-2 hover:bg-surface-2 hover:text-danger" />
+              <SignOutButton className="flex w-full items-center justify-center gap-2 rounded-lg py-2 text-xs font-medium text-ink-2 hover:bg-surface-2 hover:text-danger" />
             </div>
           </div>
         </div>
@@ -166,17 +166,17 @@ export function AppShell({
       <header data-chrome className="sticky top-0 z-40 flex h-14 items-center justify-between border-b border-line bg-bg/80 px-4 backdrop-blur-xl lg:hidden">
         <Link href="/" className="flex min-w-0 items-center gap-2.5">
           <Logo className="size-7 text-ink" />
-          <span className="truncate text-sm font-extrabold tracking-wide text-ink">{brand}</span>
+          <span className="truncate text-sm font-semibold tracking-wide text-ink">{brand}</span>
         </Link>
         <div className="relative flex items-center gap-1">
-          <button type="button" onClick={toggle} aria-label="Alternar tema" className="grid size-9 place-items-center rounded-xl text-ink-2 hover:bg-surface-2">
+          <button type="button" onClick={toggle} aria-label="Alternar tema" className="grid size-9 place-items-center rounded-lg text-ink-2 hover:bg-surface-2">
             {theme === 'dark' ? <Sun className="size-[18px]" /> : <Moon className="size-[18px]" />}
           </button>
           <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Conta" className="rounded-full p-0.5">
             <Avatar name={user.name} src={user.avatar} size={32} />
           </button>
           {menuOpen && (
-            <div className="absolute top-12 right-0 w-60 animate-scale-in overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-2xl">
+            <div className="absolute top-12 right-0 w-60 animate-scale-in overflow-hidden rounded-xl border border-line-strong bg-surface shadow-2xl">
               <div className="border-b border-line px-4 py-3">
                 <p className="truncate text-sm font-semibold text-ink">{user.name}</p>
                 <p className="truncate text-xs text-muted">{user.email}</p>
@@ -211,7 +211,7 @@ export function AppShell({
           <button
             type="button"
             onClick={() => setMoreOpen(true)}
-            className={cn('flex flex-col items-center gap-1 py-2.5 text-[10px] font-semibold', moreOpen ? 'text-brand' : 'text-muted')}
+            className={cn('flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium', moreOpen ? 'text-ink' : 'text-muted')}
           >
             <span className="relative">
               <Menu className="size-5" />
@@ -225,7 +225,7 @@ export function AppShell({
       {moreOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 animate-fade-in bg-black/50" onClick={() => setMoreOpen(false)} />
-          <div className="absolute inset-x-0 bottom-0 animate-slide-up rounded-t-3xl border-t border-line-strong bg-surface p-4 safe-bottom">
+          <div className="absolute inset-x-0 bottom-0 animate-slide-up rounded-t-2xl border-t border-line-strong bg-surface p-4 safe-bottom">
             <div className="mb-3 flex items-center justify-between px-1">
               <span className="text-sm font-bold text-ink">Menu</span>
               <button
@@ -243,8 +243,8 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'relative flex flex-col items-center gap-2 rounded-2xl border border-line p-4 text-xs font-semibold',
-                    isActive(item.href) ? 'bg-brand-soft text-brand' : 'bg-surface-2 text-ink-2',
+                    'relative flex flex-col items-center gap-2 rounded-lg border p-4 text-xs font-medium',
+                    isActive(item.href) ? 'border-line-strong bg-surface-3 text-ink' : 'border-line bg-surface-2 text-ink-2',
                   )}
                 >
                   {'dot' in item && item.dot && (
@@ -268,18 +268,20 @@ function NavLink({ item, active }: { item: NavItem; active: boolean }) {
     <Link
       href={item.href}
       className={cn(
-        'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-all',
-        active ? 'bg-brand-soft text-brand' : 'text-ink-2 hover:bg-surface-2 hover:text-ink',
+        // item ativo: fundo neutro e texto forte (sem tinta azul nem bolinha); o ícone ganha a cor da marca
+        'group flex items-center gap-3 rounded-lg px-3 py-2 text-[13.5px] font-medium transition-colors',
+        active ? 'bg-surface-2 text-ink shadow-[inset_0_0_0_1px_var(--line)]' : 'text-ink-2 hover:bg-surface-2/70 hover:text-ink',
       )}
     >
-      <item.icon className={cn('size-[18px] transition-transform group-hover:scale-110', active && 'text-brand')} />
+      <item.icon className={cn('size-[17px] shrink-0', active ? 'text-brand' : 'text-muted group-hover:text-ink-2')} strokeWidth={1.75} />
       {item.label}
       {item.live ? (
-        <span className="ml-auto rounded bg-red-600 px-1.5 py-0.5 text-[9px] font-bold text-white">AO VIVO</span>
-      ) : item.dot ? (
-        <span aria-label="Novidade" className="ml-auto size-2 animate-pulse rounded-full bg-red-500" />
+        <span className="ml-auto flex items-center gap-1 font-mono text-[9.5px] font-medium tracking-[0.06em] text-red-500 uppercase">
+          <span className="size-1.5 animate-pulse rounded-full bg-red-500" />
+          Ao vivo
+        </span>
       ) : (
-        active && <span className="ml-auto size-1.5 rounded-full bg-brand" />
+        item.dot && <span aria-label="Novidade" className="ml-auto size-1.5 rounded-full bg-red-500" />
       )}
     </Link>
   );
@@ -289,9 +291,9 @@ function BottomLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
     <Link
       href={item.href}
-      className={cn('relative flex flex-col items-center gap-1 py-2.5 text-[10px] font-semibold transition-colors', active ? 'text-brand' : 'text-muted')}
+      className={cn('relative flex flex-col items-center gap-1 py-2.5 text-[10px] font-medium transition-colors', active ? 'text-ink' : 'text-muted')}
     >
-      {active && <span className="absolute top-0 h-0.5 w-8 rounded-full bg-brand" />}
+      {active && <span className="absolute top-0 h-0.5 w-6 rounded-full bg-brand" />}
       <span className="relative">
         <item.icon className="size-5" />
         {item.dot && <span aria-label="Novidade" className="absolute -top-0.5 -right-1 size-2 animate-pulse rounded-full bg-red-500 ring-2 ring-bg-elev" />}

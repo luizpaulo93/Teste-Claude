@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Importer } from './importer';
 
-const card = 'flex min-w-0 items-center gap-3 rounded-2xl border p-4 text-left transition';
+const card = 'flex min-w-0 items-center gap-3 rounded-xl border p-4 text-left transition';
 
 /** Atalhos da tela Questões: cadastrar (JSON + imagens, aqui mesmo), montar listas e excluir em lote. */
 export function QuestionsHub() {

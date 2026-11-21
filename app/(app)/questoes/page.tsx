@@ -112,7 +112,7 @@ export default async function QuestoesPage({ searchParams }: { searchParams: Pro
       ) : (
         <>
           {f.topico && (
-            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-2xl border border-brand/30 bg-brand/8 p-3 text-sm">
+            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-brand/30 bg-brand/8 p-3 text-sm">
               <span className="min-w-0 flex-1 break-words text-ink">
                 Assunto do cronograma: <strong>{f.topico}</strong>
               </span>

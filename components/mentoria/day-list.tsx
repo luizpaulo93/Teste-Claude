@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowRight, CalendarRange, Check, ChevronLeft, ChevronRight, Flame, Plus, X } from 'lucide-react';
+import { ArrowRight, CalendarRange, Check, ChevronLeft, ChevronRight, Flame, Frown, Meh, Plus, Smile, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -69,11 +69,11 @@ export function DayList({
               scroll={false}
               className={cn(
                 'flex flex-col items-center rounded-xl border py-1.5 transition',
-                d === day ? 'border-brand bg-brand text-white' : d === today ? 'border-brand/50 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
+                d === day ? 'border-ink bg-ink text-bg' : d === today ? 'border-brand/50 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
               <span className="text-[10px] font-bold uppercase">{WEEKDAYS[i]}</span>
-              <span className="text-sm font-extrabold tabular-nums">{Number(d.slice(8))}</span>
+              <span className="text-sm font-semibold tabular-nums">{Number(d.slice(8))}</span>
             </Link>
           ))}
         </div>
@@ -98,7 +98,7 @@ export function DayList({
           ))}
         </ul>
       ) : (
-        <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">
+        <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">
           {day < today ? 'Nada estudado neste dia.' : free ? 'Nenhum assunto neste dia.' : 'Dia de descanso.'}
         </p>
       )}
@@ -151,11 +151,11 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
 
   const lv = LEVELS[Math.min(4, it.level)];
   return (
-    <li className={cn('rounded-2xl border bg-surface p-3.5', it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : 'border-line')}>
+    <li className={cn('rounded-xl border bg-surface p-3.5', it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : 'border-line')}>
       <div className="flex items-start gap-3">
         <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', lv.dot)} />
         <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-center gap-1.5 text-[11px] font-bold text-brand uppercase">
+          <p className="font-mono flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-muted uppercase">
             {it.discipline} · {TASK_KIND[Math.min(4, it.level)]}
             {it.priority >= 3 && (
               <span className="flex items-center gap-0.5 normal-case text-orange-500">
@@ -188,7 +188,7 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
               {it.result.c}/{it.result.q} · {it.result.acc}% {it.result.goal ? `(meta ${it.result.goal}%)` : ''}
               {it.result.f ? (
                 <span className="ml-1 font-normal text-muted">
-                  · {FEELS[it.result.f - 1].emoji} {FEELS[it.result.f - 1].label}
+                  · {FEELS[it.result.f - 1].label}
                 </span>
               ) : null}
             </p>
@@ -265,7 +265,7 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
                     : 'border-line text-ink-2',
                 )}
               >
-                <span className="text-lg leading-none">{x.emoji}</span>
+                {x.value === 1 ? <Smile className="size-4" /> : x.value === 2 ? <Meh className="size-4" /> : <Frown className="size-4" />}
                 {x.label}
               </button>
             ))}

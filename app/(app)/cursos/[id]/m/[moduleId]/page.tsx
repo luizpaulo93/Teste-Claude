@@ -49,7 +49,7 @@ export default async function ModulePage({ params }: { params: Params }) {
         <ChevronLeft className="size-4 shrink-0" /> <span className="truncate">{course.title}</span>
       </Link>
       <div className="space-y-1">
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">{mod.title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{mod.title}</h1>
         {mod.description && <p className="text-sm whitespace-pre-line text-muted">{mod.description}</p>}
       </div>
 
@@ -58,13 +58,13 @@ export default async function ModulePage({ params }: { params: Params }) {
           href={whatsappLink(`Olá! Quero liberar meu acesso ao curso "${course.title}". Meu e-mail: ${viewer.email}`)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-[#25D366] px-5 py-3.5 text-sm font-bold text-white shadow-card transition hover:brightness-105 sm:inline-flex"
+          className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3.5 text-sm font-bold text-white shadow-card transition hover:brightness-105 sm:inline-flex"
         >
           <MessageCircle className="size-5" /> Liberar acesso pelo WhatsApp
         </a>
       )}
 
-      <ol className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <ol className="overflow-hidden rounded-xl border border-line bg-surface">
         {ml.map((l, li) => {
           const isDone = done.has(l.id);
           return (

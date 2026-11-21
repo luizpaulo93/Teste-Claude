@@ -76,7 +76,7 @@ export function Modal({
       <div
         ref={ref}
         className={cn(
-          'relative flex max-h-[92dvh] w-full animate-slide-up flex-col overflow-hidden rounded-t-3xl border border-line-strong bg-surface shadow-2xl sm:rounded-3xl',
+          'relative flex max-h-[92dvh] w-full animate-slide-up flex-col overflow-hidden rounded-t-2xl border border-line-strong bg-surface shadow-2xl sm:rounded-2xl',
           widths[size],
         )}
       >

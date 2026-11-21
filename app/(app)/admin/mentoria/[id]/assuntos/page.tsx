@@ -8,7 +8,7 @@ export default async function AdminMentoradoSubjects({ params }: { params: Promi
   const { rows, disciplines } = await assuntoRows(m.id, undefined, m.scope);
   if (!disciplines.length)
     return (
-      <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">
+      <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">
         Monte o cronograma na aba Cronograma para ver os assuntos.
       </p>
     );

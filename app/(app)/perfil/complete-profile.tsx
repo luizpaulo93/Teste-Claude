@@ -45,11 +45,11 @@ export function CompleteProfile({
   }, [state, router]);
   return (
     <div className="mx-auto max-w-md py-6">
-      <div className="rounded-3xl border border-brand/40 bg-surface p-5 shadow-card sm:p-6">
-        <div className="grid size-12 place-items-center rounded-2xl bg-brand/12 text-brand">
+      <div className="rounded-2xl border border-brand/40 bg-surface p-5 shadow-card sm:p-6">
+        <div className="grid size-12 place-items-center rounded-xl bg-brand/12 text-brand">
           <ShieldCheck className="size-6" />
         </div>
-        <h1 className="mt-4 text-xl font-extrabold tracking-tight text-ink">Complete seu perfil</h1>
+        <h1 className="mt-4 text-xl font-semibold tracking-tight text-ink">Complete seu perfil</h1>
         <p className="mt-1 text-sm text-muted">Preencha para continuar.</p>
         <form action={action} className="mt-5 space-y-4">
           <Field label="Nome completo">

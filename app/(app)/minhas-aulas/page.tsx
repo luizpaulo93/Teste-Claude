@@ -47,7 +47,7 @@ export default async function MyLessonsPage({ searchParams }: { searchParams: Pr
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {lessons.map((l) => (
             <Link key={l.id} href={`/aula/${l.id}`} className="group cv-auto">
-              <div className="relative aspect-video overflow-hidden rounded-2xl border border-line bg-surface-2">
+              <div className="relative aspect-video overflow-hidden rounded-xl border border-line bg-surface-2">
                 {l.thumbnail_url || l.youtube_id ? (
                   <Img
                     src={l.thumbnail_url || youtubeThumb(l.youtube_id)}

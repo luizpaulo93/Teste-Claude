@@ -38,7 +38,7 @@ export function Toaster() {
         <div
           key={t.id}
           role="status"
-          className="pointer-events-auto flex w-full max-w-sm animate-slide-up items-center gap-3 rounded-2xl border border-line-strong bg-surface/95 px-4 py-3 text-sm shadow-card backdrop-blur"
+          className="pointer-events-auto flex w-full max-w-sm animate-slide-up items-center gap-3 rounded-xl border border-line-strong bg-surface/95 px-4 py-3 text-sm shadow-card backdrop-blur"
         >
           {t.kind === 'success' ? <CheckCircle2 className="size-5 shrink-0 text-success" /> : <AlertTriangle className="size-5 shrink-0 text-danger" />}
           <span className="flex-1 text-ink">{t.message}</span>

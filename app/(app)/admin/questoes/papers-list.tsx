@@ -149,11 +149,11 @@ export function PapersList({ papers }: { papers: PaperView[] }) {
           </Card>
         );
       })}
-      {!shown.length && <p className="rounded-2xl border border-dashed border-line-strong p-6 text-center text-sm text-muted">Nenhuma prova encontrada.</p>}
+      {!shown.length && <p className="rounded-xl border border-dashed border-line-strong p-6 text-center text-sm text-muted">Nenhuma prova encontrada.</p>}
 
       {/* barra de exclusão: aparece quando há provas marcadas */}
       {sel.size > 0 && (
-        <div className="sticky bottom-20 z-20 flex items-center gap-2 rounded-2xl border border-line-strong bg-surface/95 p-2.5 pl-4 shadow-2xl backdrop-blur lg:bottom-4">
+        <div className="sticky bottom-20 z-20 flex items-center gap-2 rounded-xl border border-line-strong bg-surface/95 p-2.5 pl-4 shadow-2xl backdrop-blur lg:bottom-4">
           <span className="min-w-0 flex-1 text-sm font-semibold text-ink">
             {sel.size} {sel.size === 1 ? 'prova selecionada' : 'provas selecionadas'}
           </span>

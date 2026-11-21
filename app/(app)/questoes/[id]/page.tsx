@@ -63,7 +63,7 @@ export default async function QuestaoPage({
       </div>
 
       <Card className="mb-4 space-y-2 p-4">
-        <p className="text-xs font-semibold tracking-wider text-brand uppercase">
+        <p className="font-mono text-xs font-medium tracking-[0.08em] text-muted uppercase">
           {nav.pos > 0 ? `Questão ${nav.pos} de ${nav.total} · ` : ''}
           {viewer.isAdmin ? paperLabel(q.paper) : vestYear({ ...q, paper_ano: q.paper.ano })}
         </p>

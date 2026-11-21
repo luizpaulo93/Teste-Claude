@@ -78,7 +78,7 @@ export function Checks({ checks, mentoriaId }: { checks: CheckView[]; mentoriaId
         {[...pending, ...done].map((c) => {
           const tone = c.status === 'passed' ? 'border-success/40' : c.status === 'failed' ? 'border-danger/40' : 'border-brand/40';
           return (
-            <li key={c.id} className={cn('flex items-center gap-3 rounded-2xl border bg-surface p-3', tone)}>
+            <li key={c.id} className={cn('flex items-center gap-3 rounded-xl border bg-surface p-3', tone)}>
               <span
                 className={cn(
                   'grid size-9 shrink-0 place-items-center rounded-xl',
@@ -88,7 +88,7 @@ export function Checks({ checks, mentoriaId }: { checks: CheckView[]; mentoriaId
                 {c.status === 'passed' ? <Check className="size-4" /> : c.status === 'failed' ? <X className="size-4" /> : <ClipboardCheck className="size-4" />}
               </span>
               <Link href={`/listas/${c.list_id}`} className="min-w-0 flex-1">
-                <span className="block text-[11px] font-bold text-brand uppercase">
+                <span className="font-mono block text-[11px] font-medium text-muted uppercase">
                   {c.discipline}
                   {c.round > 1 && <span className="text-muted normal-case"> · {c.round}ª lista</span>}
                   {c.auto && (

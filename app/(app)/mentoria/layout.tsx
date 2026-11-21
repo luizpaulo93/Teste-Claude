@@ -28,8 +28,8 @@ export default async function MentoriaLayout({ children }: { children: React.Rea
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-bold tracking-[0.2em] text-brand uppercase">Mentoria</p>
-          <h1 className="truncate text-2xl font-extrabold tracking-tight text-ink sm:text-3xl">{m.exam_target || 'Seu cronograma'}</h1>
+          <p className="font-mono text-xs font-medium tracking-[0.2em] text-muted uppercase">Mentoria</p>
+          <h1 className="truncate text-2xl font-semibold tracking-tight text-ink sm:text-3xl">{m.exam_target || 'Seu cronograma'}</h1>
         </div>
         <div className="flex items-center gap-2">
           {left !== null && left >= 0 && (

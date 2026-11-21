@@ -13,7 +13,7 @@ import type { LessonMaterial } from '@/lib/types';
 export function LiveMaterialsList({ materials }: { materials: LessonMaterial[] }) {
   if (!materials.length) return null;
   return (
-    <div className="rounded-2xl border border-line bg-surface p-2">
+    <div className="rounded-xl border border-line bg-surface p-2">
       <p className="flex items-center gap-1.5 px-2 pt-1.5 pb-1 text-sm font-bold text-ink">
         <FileText className="size-4 text-danger" /> Materiais da aula
       </p>

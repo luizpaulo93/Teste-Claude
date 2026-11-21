@@ -16,7 +16,7 @@ export default async function MentoriaHours({ searchParams }: { searchParams: Pr
     <Card className="p-4 sm:p-6">
       {first && (
         <div className="mb-5 rounded-xl bg-brand/10 p-4 text-sm text-ink">
-          <p className="font-bold">Bem-vindo à mentoria! 👋</p>
+          <p className="font-bold">Bem-vindo à mentoria</p>
           <p className="mt-1 text-ink-2">Diga quanto tempo você tem em cada dia. Seu cronograma é montado nesses horários.</p>
         </div>
       )}

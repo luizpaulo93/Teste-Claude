@@ -44,7 +44,7 @@ export default async function StudentPerformance({ params }: { params: Promise<{
         <ChevronLeft className="size-4" /> Desempenho
       </Link>
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight text-ink">{uid === viewer.userId ? 'Seu desempenho' : person.name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">{uid === viewer.userId ? 'Seu desempenho' : person.name}</h1>
         <p className="text-sm text-muted">
           {turma}
           {viewer.isAdmin && ` · ${person.email}`}
@@ -62,10 +62,10 @@ export default async function StudentPerformance({ params }: { params: Promise<{
           </Card>
 
           {results.map((r) => (
-            <details key={r.simulado_id} className="group rounded-2xl border border-line bg-surface shadow-card">
+            <details key={r.simulado_id} className="group rounded-xl border border-line bg-surface shadow-card">
               <summary className="flex cursor-pointer list-none flex-wrap items-center gap-x-4 gap-y-1 p-4 [&::-webkit-details-marker]:hidden">
                 <span className="min-w-0 flex-1 truncate font-bold text-ink">{r.title}</span>
-                <span className="text-sm font-extrabold text-ink tabular-nums">
+                <span className="text-sm font-semibold text-ink tabular-nums">
                   {r.use_tri === false ? `${r.correct}/${r.question_count}` : Number(r.tri_score).toFixed(1)}
                 </span>
                 <span className="text-xs text-muted tabular-nums">
@@ -78,7 +78,7 @@ export default async function StudentPerformance({ params }: { params: Promise<{
                     {(['easy', 'medium', 'hard'] as const).map((t) => (
                       <div key={t} className="rounded-xl bg-surface-2 p-3 text-center">
                         <p className="text-[11px] font-semibold text-muted">{TIER[t]}</p>
-                        <p className="text-lg font-extrabold text-ink tabular-nums">
+                        <p className="text-lg font-semibold text-ink tabular-nums">
                           {r.tiers?.[t]?.correct ?? 0}/{r.tiers?.[t]?.total ?? 0}
                         </p>
                       </div>

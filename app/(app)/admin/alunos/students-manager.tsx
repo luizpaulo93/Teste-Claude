@@ -405,7 +405,7 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
             <Spinner className="text-brand" />
           </div>
         ) : users.length ? (
-          <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line">
+          <ul className="divide-y divide-line overflow-hidden rounded-xl border border-line">
             {users.map((u) => (
               <li key={u.email}>
                 <label
@@ -425,7 +425,7 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
             ))}
           </ul>
         ) : (
-          <p className="rounded-2xl border border-line p-5 text-center text-sm text-muted">Nenhum usuário sem turma{q ? ' com essa busca' : ''}.</p>
+          <p className="rounded-xl border border-line p-5 text-center text-sm text-muted">Nenhum usuário sem turma{q ? ' com essa busca' : ''}.</p>
         )}
         <button type="button" onClick={onManual} className="text-xs font-semibold text-brand">
           O aluno ainda não criou conta? Cadastrar e-mail manualmente

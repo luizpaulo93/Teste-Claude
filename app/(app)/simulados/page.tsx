@@ -79,20 +79,20 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
 
           {/* Notas embaixo do gráfico: toque para ver o relatório */}
           {shown.length > 0 && (
-            <ol className="overflow-hidden rounded-2xl border border-line bg-surface">
+            <ol className="overflow-hidden rounded-xl border border-line bg-surface">
               {[...shown].reverse().map((s) => {
                 const r = resBy.get(s.id)!;
                 return (
                   <li key={s.id} className="border-b border-line last:border-b-0">
                     <Link href={`/simulados/${s.id}`} className="flex items-center gap-3 px-4 py-3 transition hover:bg-surface-2">
-                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-extrabold text-brand">{s.area}</span>
+                      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft text-xs font-semibold text-brand">{s.area}</span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-semibold text-ink">{s.title}</span>
                         <span className="block text-[11px] text-muted">
                           {r.correct}/{s.question_count} acertos
                         </span>
                       </span>
-                      <span className="shrink-0 text-base font-extrabold text-ink tabular-nums">
+                      <span className="shrink-0 text-base font-semibold text-ink tabular-nums">
                         {tab === 'tri' ? Number(r.tri_score).toFixed(0) : `${Math.round(Number(r.accuracy))}%`}
                       </span>
                       <ChevronRight className="size-4 shrink-0 text-muted" />
@@ -139,9 +139,9 @@ export default async function SimuladosPage({ searchParams }: { searchParams: Pr
               );
             return (
               <Link key={s.id} href={`/simulados/${s.id}`} className="group">
-                <Card className="h-full p-5 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-brand/40 group-hover:shadow-glow">
+                <Card className="h-full p-5 transition-all duration-200 group-hover:-translate-y-0.5 group-hover:border-brand/40 group-hover:border-line-strong">
                   <div className="flex items-start justify-between gap-3">
-                    <span className="grid size-11 place-items-center rounded-xl bg-brand-soft text-sm font-extrabold text-brand">{s.area}</span>
+                    <span className="grid size-11 place-items-center rounded-xl bg-brand-soft text-sm font-semibold text-brand">{s.area}</span>
                     {badge}
                   </div>
                   <p className="mt-4 line-clamp-2 font-bold text-ink">{s.title}</p>

@@ -79,7 +79,7 @@ export function LoginForm({ next }: { next?: string }) {
 
   if (sent) {
     return (
-      <div className="animate-scale-in rounded-2xl border border-success/30 bg-success/10 p-6 text-center">
+      <div className="animate-scale-in rounded-xl border border-success/30 bg-success/10 p-6 text-center">
         <CheckCircle2 className="mx-auto size-10 text-success" />
         <p className="mt-3 font-bold text-ink">Confira seu e-mail</p>
         <p className="mt-1 text-sm text-muted">

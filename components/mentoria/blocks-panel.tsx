@@ -185,7 +185,7 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
                 onClick={() => pickKind(k.key)}
                 className={cn(
                   'rounded-xl border px-2 py-2 text-xs font-semibold transition',
-                  kind === k.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2 hover:bg-surface-2',
+                  kind === k.key ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:bg-surface-2',
                 )}
               >
                 {k.label}
@@ -240,7 +240,7 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
                   onClick={() => setDisc(d.key)}
                   className={cn(
                     'shrink-0 rounded-lg border px-2.5 py-1 text-xs font-semibold',
-                    disc === d.key ? 'border-brand bg-brand text-white' : 'border-line text-ink-2',
+                    disc === d.key ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2',
                   )}
                 >
                   {d.name}

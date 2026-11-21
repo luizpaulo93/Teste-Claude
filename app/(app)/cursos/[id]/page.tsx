@@ -55,7 +55,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
         <ChevronLeft className="size-4" /> Cursos
       </Link>
 
-      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-3xl">
+      <section className="relative -mx-4 overflow-hidden sm:mx-0 sm:rounded-2xl">
         <div className="relative">
           <div className="absolute inset-0">
             {course.banner_url || coverImage(course.cover_url) ? (
@@ -66,7 +66,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
             <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/70 to-black/30 backdrop-blur-[1px]" />
           </div>
           <div className="relative grid gap-6 p-5 sm:grid-cols-[180px_1fr] sm:p-8 lg:grid-cols-[220px_1fr] lg:p-10">
-            <div className="relative hidden aspect-[2/3] overflow-hidden rounded-2xl border border-white/10 shadow-2xl sm:block">
+            <div className="relative hidden aspect-[2/3] overflow-hidden rounded-xl border border-white/10 shadow-2xl sm:block">
               {coverImage(course.cover_url) ? (
                 <Img src={course.cover_url} loading="eager" className="size-full object-cover" />
               ) : (
@@ -89,7 +89,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
                   </Badge>
                 )}
               </div>
-              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">{course.title}</h1>
+              <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">{course.title}</h1>
               {!locked && lessons.length > 0 && (
                 <div className="mt-5">
                   <div className="w-full sm:max-w-sm">
@@ -113,7 +113,7 @@ export default async function CoursePage({ params }: { params: Promise<{ id: str
           href={whatsappLink(`Olá! Quero liberar meu acesso ao curso "${course.title}". Meu e-mail: ${viewer.email}`)}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center justify-center gap-2 rounded-2xl bg-[#25D366] px-5 py-3.5 text-sm font-bold text-white shadow-card transition hover:brightness-105 sm:inline-flex"
+          className="flex items-center justify-center gap-2 rounded-xl bg-[#25D366] px-5 py-3.5 text-sm font-bold text-white shadow-card transition hover:brightness-105 sm:inline-flex"
         >
           <MessageCircle className="size-5" /> Liberar acesso pelo WhatsApp
         </a>

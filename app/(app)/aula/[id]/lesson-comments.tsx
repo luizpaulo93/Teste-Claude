@@ -54,7 +54,7 @@ export function LessonComments({ lessonId, initial, me, isAdmin }: { lessonId: s
       </p>
       <form
         onSubmit={send}
-        className="mb-5 flex items-center gap-2 rounded-2xl border border-line-strong bg-bg-elev p-1.5 pl-2 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/15"
+        className="mb-5 flex items-center gap-2 rounded-xl border border-line-strong bg-bg-elev p-1.5 pl-2 focus-within:border-brand focus-within:ring-4 focus-within:ring-brand/15"
       >
         <Avatar name={me.full_name} src={me.avatar_url} size={30} />
         <input

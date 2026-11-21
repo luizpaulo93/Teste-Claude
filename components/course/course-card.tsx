@@ -1,21 +1,22 @@
-import { Lock, PlayCircle } from 'lucide-react';
+import { Lock, Play } from 'lucide-react';
 import Link from 'next/link';
+import { Logo } from '@/components/logo';
 import { Img, ProgressBar } from '@/components/ui';
 import type { Course } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
-/** 10 cores padrão das capas (mesmo formato: degradê escuro → cor). */
+/** 10 cores padrão das capas: tons sóbrios e foscos (cada um do escuro para o mesmo tom, sem neon nem roxo). */
 export const GRADIENTS = [
-  'from-[#0a1530] via-[#172554] to-[#2563eb]',
-  'from-[#050b18] via-[#0f244c] to-[#1d4ed8]',
-  'from-[#030712] via-[#0c1f44] to-[#0891b2]',
-  'from-[#081226] via-[#1e1b4b] to-[#4f46e5]',
-  'from-[#060d20] via-[#134e4a] to-[#0d9488]',
-  'from-[#0b0a1f] via-[#3b0764] to-[#9333ea]',
-  'from-[#14070d] via-[#4c0519] to-[#e11d48]',
-  'from-[#140b03] via-[#451a03] to-[#d97706]',
-  'from-[#04140c] via-[#064e3b] to-[#16a34a]',
-  'from-[#0b0f17] via-[#1f2937] to-[#64748b]',
+  'from-[#0e1730] to-[#1f3d82]',
+  'from-[#0b111f] to-[#1b2c52]',
+  'from-[#0a1719] to-[#164a4f]',
+  'from-[#101318] to-[#2b3443]',
+  'from-[#0b1610] to-[#1e4a33]',
+  'from-[#111114] to-[#36363e]',
+  'from-[#190c0e] to-[#5c1f27]',
+  'from-[#19120a] to-[#6b4a14]',
+  'from-[#0f130b] to-[#3e4b21]',
+  'from-[#13110f] to-[#4b4641]',
 ];
 
 /** Capa escolhida como cor: "color:3" → 3 */
@@ -29,10 +30,12 @@ export const coverImage = (url?: string | null) => (url && coverColor(url) === n
 export function CoverFallback({ title, seed, className, color }: { title: string; seed: string; className?: string; color?: number | null }) {
   const g = GRADIENTS[color ?? [...seed].reduce((a, c) => a + c.charCodeAt(0), 0) % 5];
   return (
-    <div className={cn('absolute inset-0 bg-gradient-to-br', g, className)}>
-      <div className="absolute inset-0 bg-[image:radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.18),transparent_55%)]" />
+    <div className={cn('absolute inset-0 bg-gradient-to-b', g, className)}>
+      {/* quadriculado de caderno + o vértice da marca bem apagado: capa com cara de material de estudo */}
+      <div className="absolute inset-0 bg-[image:linear-gradient(rgb(255_255_255/0.05)_1px,transparent_1px),linear-gradient(90deg,rgb(255_255_255/0.05)_1px,transparent_1px)] bg-[size:20px_20px]" />
+      <Logo className="absolute -top-[8%] -right-[14%] w-[78%] text-white/[0.07]" />
       <div className="absolute inset-x-0 bottom-0 p-4">
-        <p className="line-clamp-3 text-lg leading-tight font-extrabold text-white drop-shadow">{title}</p>
+        <p className="line-clamp-3 text-lg leading-tight font-semibold text-white drop-shadow">{title}</p>
       </div>
     </div>
   );
@@ -62,7 +65,7 @@ export function CoverCard({
 }) {
   return (
     <Link href={href} className="group block w-full min-w-0 outline-none" prefetch={priority ? true : undefined}>
-      <div className="relative aspect-[2/3] overflow-hidden rounded-2xl border border-line bg-surface-2 shadow-card transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-glow group-focus-visible:shadow-glow">
+      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-line bg-surface-2 shadow-card transition-all duration-300 group-hover:-translate-y-1 group-hover:border-line-strong group-focus-visible:">
         {coverImage(cover) ? (
           <Img
             src={coverImage(cover)}
@@ -72,10 +75,10 @@ export function CoverCard({
         ) : (
           <CoverFallback title="" seed={seed} color={coverColor(cover)} />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/25 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/15 to-transparent" />
         {free && (
           <div className="absolute top-2.5 left-2.5">
-            <span className="rounded-full bg-success px-2 py-0.5 text-[10px] font-bold text-white">GRÁTIS</span>
+            <span className="rounded-md bg-white px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-[0.06em] text-black uppercase">Grátis</span>
           </div>
         )}
         {locked ? (
@@ -84,12 +87,14 @@ export function CoverCard({
           </div>
         ) : (
           <div className="absolute inset-0 grid place-items-center opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-            <PlayCircle className="size-14 text-white drop-shadow-lg" strokeWidth={1.5} />
+            <span className="grid size-12 place-items-center rounded-full bg-white/95 text-black">
+              <Play className="ml-0.5 size-5 fill-current" />
+            </span>
           </div>
         )}
         {/* Nome completo na capa, sempre do mesmo tamanho */}
         <div className="absolute inset-x-0 bottom-0 space-y-2 p-3 sm:p-3.5">
-          <p className="text-[13px] leading-tight font-extrabold tracking-wide text-balance break-words text-white uppercase drop-shadow">{title}</p>
+          <p className="text-[15px] leading-[1.15] font-semibold tracking-[-0.01em] text-balance break-words text-white">{title}</p>
           {!locked && progress > 0 && <ProgressBar value={progress} className="h-1 bg-white/20" />}
         </div>
       </div>

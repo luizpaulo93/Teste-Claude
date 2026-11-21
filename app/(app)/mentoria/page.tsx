@@ -27,7 +27,7 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
     return (
       <div className="space-y-4">
         <Checks checks={checks} />
-        <p className="rounded-2xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>
+        <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>
       </div>
     );
   }
@@ -36,7 +36,7 @@ export default async function MentoriaToday({ searchParams }: { searchParams: Pr
   return (
     <div className="space-y-4">
       {!m.availability.some(Boolean) && (
-        <Link href="/mentoria/horarios" className="block rounded-2xl border border-brand/40 bg-brand/10 p-3.5 text-sm text-ink">
+        <Link href="/mentoria/horarios" className="block rounded-xl border border-brand/40 bg-brand/10 p-3.5 text-sm text-ink">
           <strong>Informe seus horários</strong> para os assuntos se distribuírem nos seus dias de estudo →
         </Link>
       )}

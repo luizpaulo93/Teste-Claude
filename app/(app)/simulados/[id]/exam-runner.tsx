@@ -177,7 +177,7 @@ export function ExamRunner({
   return (
     <div className="space-y-4">
       {/* Barra fixa com tempo e progresso */}
-      <div className="sticky top-14 z-30 -mx-4 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur-xl sm:mx-0 sm:rounded-2xl sm:border lg:top-4">
+      <div className="sticky top-14 z-30 -mx-4 border-b border-line bg-bg/90 px-4 py-3 backdrop-blur-xl sm:mx-0 sm:rounded-xl sm:border lg:top-4">
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-bold text-ink">{simulado.title}</p>
@@ -206,7 +206,7 @@ export function ExamRunner({
           </div>
           <div
             className={cn(
-              'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-extrabold tabular-nums',
+              'flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold tabular-nums',
               lowTime ? 'animate-pulse bg-danger/15 text-danger' : 'bg-surface-2 text-ink',
             )}
           >

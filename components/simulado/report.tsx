@@ -20,7 +20,7 @@ export function SegTabs({ tabs, active }: { tabs: { key: string; label: string; 
           scroll={false}
           className={cn(
             'rounded-lg px-4 py-1.5 text-center whitespace-nowrap transition',
-            active === t.key ? 'bg-brand text-white shadow' : 'text-ink-2 hover:text-ink',
+            active === t.key ? 'bg-ink text-bg' : 'text-ink-2 hover:text-ink',
           )}
         >
           {t.label} {t.count !== undefined && <span className="text-xs opacity-70">{t.count}</span>}
@@ -90,9 +90,9 @@ export function ClassCards({
           <Link
             key={c.id}
             href={hrefFor(c.id)}
-            className="flex min-w-0 items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 transition hover:border-brand/50 hover:bg-surface-2"
+            className="flex min-w-0 items-center gap-3 rounded-xl border border-line bg-surface p-3.5 transition hover:border-brand/50 hover:bg-surface-2"
           >
-            <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-sm font-extrabold', medal(i))}>{i + 1}</span>
+            <span className={cn('grid size-9 shrink-0 place-items-center rounded-full text-sm font-semibold', medal(i))}>{i + 1}</span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-bold text-ink">{c.name}</span>
               <span className="block text-[11px] text-muted">
@@ -100,7 +100,7 @@ export function ClassCards({
               </span>
             </span>
             <span className="shrink-0 text-right">
-              <span className="block text-lg font-extrabold text-ink tabular-nums">
+              <span className="block text-lg font-semibold text-ink tabular-nums">
                 {useTri && c.meanTri != null ? c.meanTri.toFixed(0) : (c.meanCorrect ?? '—')}
               </span>
               <span className="block text-[10px] text-muted uppercase">{useTri && c.meanTri != null ? 'média TRI' : 'acertos'}</span>
@@ -135,7 +135,7 @@ export function StudentRanking({
         <Trophy className="size-4 text-warning" /> {title}
       </h2>
       {rows.length ? (
-        <ol className="overflow-hidden rounded-2xl border border-line bg-surface">
+        <ol className="overflow-hidden rounded-xl border border-line bg-surface">
           {rows.map((r, i) => {
             const done = r.status === 'completed';
             return (
@@ -145,7 +145,7 @@ export function StudentRanking({
                   className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-3.5 transition hover:bg-surface-2 sm:pl-4"
                 >
                   <span
-                    className={cn('grid size-8 shrink-0 place-items-center rounded-full text-xs font-extrabold', done ? medal(i) : 'bg-surface-3 text-muted')}
+                    className={cn('grid size-8 shrink-0 place-items-center rounded-full text-xs font-semibold', done ? medal(i) : 'bg-surface-3 text-muted')}
                   >
                     {done ? i + 1 : '–'}
                   </span>
@@ -159,7 +159,7 @@ export function StudentRanking({
                   </span>
                   {done ? (
                     <span className="shrink-0 text-right">
-                      <span className="block text-base font-extrabold text-ink tabular-nums">
+                      <span className="block text-base font-semibold text-ink tabular-nums">
                         {useTri && r.tri != null ? r.tri.toFixed(1) : `${r.correct}`}
                       </span>
                       <span className="block text-[10px] text-muted uppercase">{useTri && r.tri != null ? 'TRI' : 'acertos'}</span>
@@ -174,7 +174,7 @@ export function StudentRanking({
           })}
         </ol>
       ) : (
-        <p className="rounded-2xl border border-line bg-surface p-5 text-sm text-muted">Ninguém fez este simulado ainda.</p>
+        <p className="rounded-xl border border-line bg-surface p-5 text-sm text-muted">Ninguém fez este simulado ainda.</p>
       )}
     </section>
   );
