@@ -60,7 +60,7 @@ export default async function LandingPage() {
   const brand = settings.brand_name || 'CURSO VÉRTICE';
 
   return (
-    <div data-theme="dark" className="min-h-dvh overflow-x-hidden bg-[#0a0a0b] text-white" id="topo">
+    <div data-theme="dark" className="min-h-dvh overflow-x-clip bg-[#0a0a0b] text-white" id="topo">
       <LandingRoot brand={brand}>
         <LandingNav brand={brand} />
 

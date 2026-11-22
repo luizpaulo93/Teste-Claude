@@ -102,6 +102,9 @@
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  /* a página nunca arrasta de lado: nada fica fora do encaixe (o que precisa rolar de lado tem a própria área) */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 body {
   background: var(--bg);
@@ -110,7 +113,9 @@ body {
   font-feature-settings: 'ss01', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  /* clip (e não hidden): corta sem virar uma área de rolagem, então os menus fixos no topo não saem do lugar */
+  overflow-x: clip;
+  max-width: 100vw;
 }
 
 /* Rolagem horizontal suave para trilhos de cursos */

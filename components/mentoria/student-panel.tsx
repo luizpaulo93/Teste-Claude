@@ -162,8 +162,8 @@ export function AllSubjects({ subjects, disciplines }: { subjects: PanelSubject[
       </div>
       <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
         {blocks.map((b) => (
-          <div key={b}>
-            <p className="mb-1 font-mono text-[10.5px] tracking-[0.08em] text-muted uppercase">{b}</p>
+          <div key={b} className="min-w-0">
+            <p className="mb-1 truncate font-mono text-[10.5px] tracking-[0.08em] text-muted uppercase">{b}</p>
             <ul className="divide-y divide-line rounded-lg border border-line">
               {shown
                 .filter((s) => s.block === b)

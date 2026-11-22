@@ -2,13 +2,21 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 
 /** Abas da mentoria (rolam de lado no celular). */
 export function MentoriaTabs({ base, tabs }: { base: string; tabs: { href: string; label: string; badge?: number }[] }) {
   const path = usePathname();
+  const rail = useRef<HTMLElement>(null);
+  // a aba aberta fica sempre à vista (no meio), sem mexer na página
+  useEffect(() => {
+    const box = rail.current;
+    const el = box?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (box && el && box.scrollWidth > box.clientWidth) box.scrollLeft = Math.max(0, el.offsetLeft - (box.clientWidth - el.clientWidth) / 2);
+  }, [path]);
   return (
-    <nav className="rail -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
+    <nav ref={rail} className="rail -mx-4 flex gap-1 overflow-x-auto border-b border-line px-4 sm:mx-0 sm:px-0">
       {tabs.map((t) => {
         const href = `${base}${t.href}`;
         const active = t.href ? path.startsWith(href) : path === base;
@@ -17,6 +25,7 @@ export function MentoriaTabs({ base, tabs }: { base: string; tabs: { href: strin
             key={t.href}
             href={href}
             scroll={false}
+            aria-current={active ? 'page' : undefined}
             className={cn(
               'relative flex shrink-0 items-center gap-1.5 px-3 py-2.5 text-sm font-semibold whitespace-nowrap transition',
               active ? 'text-brand' : 'text-muted hover:text-ink',
