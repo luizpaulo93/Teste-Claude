@@ -18,8 +18,13 @@ const LADDER: [number, number][] = [
 /** abaixo disso a imagem treme: só aceita a câmera a partir de 25 quadros por segundo (o normal é 30) */
 export const SMOOTH_FPS = 25;
 
-/** Conta os quadros que chegam de verdade durante `ms` (depois do primeiro quadro). */
-export function measureFps(track: MediaStreamTrack, ms = 2000): Promise<number> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Conta os quadros que chegam de verdade durante `ms` depois do primeiro quadro.
+ * Câmera USB demora a "acordar": espera o primeiro quadro por até `firstWait` (sem nenhum = 0).
+ */
+export function measureFps(track: MediaStreamTrack, ms = 2000, firstWait = 7000): Promise<number> {
   return new Promise((resolve) => {
     const v = document.createElement('video');
     v.muted = true;
@@ -35,6 +40,7 @@ export function measureFps(track: MediaStreamTrack, ms = 2000): Promise<number> 
     let last = 0;
     let count = 0;
     let done = false;
+    let timer = 0;
     const finish = (fps: number) => {
       if (done) return;
       done = true;
@@ -44,18 +50,28 @@ export function measureFps(track: MediaStreamTrack, ms = 2000): Promise<number> 
       v.remove();
       resolve(Math.round(fps));
     };
-    // sem nenhum quadro (ou travou no meio): conta o que deu até aqui
-    const timer = window.setTimeout(() => finish(first && last > first ? (count * 1000) / (last - first) : 0), ms + 3000);
+    // nenhum quadro até aqui: a câmera não está mandando imagem neste modo
+    timer = window.setTimeout(() => finish(0), firstWait);
     const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number) => void) => number }).requestVideoFrameCallback;
     if (!rvfc) {
-      // navegador sem contador de quadros: confia no que a câmera informa
-      window.setTimeout(() => finish(track.getSettings().frameRate ?? 30), 400);
+      // navegador sem contador de quadros: espera a imagem aparecer e confia no que a câmera informa
+      const poll = window.setInterval(() => {
+        if (done) return window.clearInterval(poll);
+        if (v.readyState >= 2 && v.videoWidth > 0) {
+          window.clearInterval(poll);
+          finish(track.getSettings().frameRate ?? 30);
+        }
+      }, 100);
       return;
     }
     const tick = (now: number) => {
       if (done) return;
-      if (!first) first = now;
-      else count++;
+      if (!first) {
+        first = now;
+        // chegou o primeiro: agora conta durante `ms` (se travar no meio, fecha com o que deu)
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => finish(last > first ? (count * 1000) / (last - first) : 0), ms + 1500);
+      } else count++;
       last = now;
       if (now - first >= ms) finish((count * 1000) / (now - first));
       else rvfc.call(v, tick);
@@ -64,12 +80,15 @@ export function measureFps(track: MediaStreamTrack, ms = 2000): Promise<number> 
   });
 }
 
-async function tryOpen(deviceId: string, w: number, h: number) {
-  const base = { deviceId: { exact: deviceId }, width: { ideal: w }, height: { ideal: h }, aspectRatio: { ideal: 16 / 9 } };
-  // exige 25 quadros no mínimo; se a câmera recusar o mínimo, tenta só com o ideal
-  return navigator.mediaDevices
-    .getUserMedia({ video: { ...base, frameRate: { ideal: 30, min: 25 } } })
-    .catch(() => navigator.mediaDevices.getUserMedia({ video: { ...base, frameRate: { ideal: 30 } } }));
+/** Pedidos de abertura: resolução (ou o modo padrão da câmera, sem impor nada) */
+type Ask = { w: number; h: number } | 'padrao';
+
+async function openAsk(deviceId: string, a: Ask) {
+  if (a === 'padrao') return navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } } });
+  // sem taxa mínima obrigatória: em alguns iPads a webcam USB num modo forçado não manda imagem nenhuma
+  return navigator.mediaDevices.getUserMedia({
+    video: { deviceId: { exact: deviceId }, width: { ideal: a.w }, height: { ideal: a.h }, aspectRatio: { ideal: 16 / 9 }, frameRate: { ideal: 30 } },
+  });
 }
 
 export interface SmoothCamera {
@@ -82,53 +101,59 @@ export interface SmoothCamera {
   stepped: { from: number; fps: number } | null;
 }
 
-/** O máximo que a câmera informa ter (qualquer câmera; nem todo navegador informa). */
-function maxOf(t: MediaStreamTrack) {
-  const c = (t.getCapabilities?.() ?? {}) as MediaTrackCapabilities;
-  const w = c.width?.max ?? 0;
-  const h = c.height?.max ?? 0;
-  return { w, h, fps: c.frameRate?.max ?? 0 };
-}
-
 /**
- * Abre qualquer câmera no máximo dela: começa pela maior resolução que ela tem (até a da live) e só desce
- * (720p → 576p → 480p) se, naquela resolução, a própria câmera entregar menos de 25 quadros por segundo.
- * Se a câmera promete 30 e quem atrasa é o navegador, fica no máximo (o problema não é a câmera).
+ * Abre qualquer câmera no máximo dela que fique fluido:
+ *  1. a maior resolução (até a da live);
+ *  2. se não vier imagem nenhuma, o modo padrão da própria câmera (sem impor resolução nem taxa);
+ *  3. resoluções menores (720p, 576p, 480p).
+ * Aceita a primeira que entrega 25+ quadros por segundo (ou que promete 25+ e só o navegador atrasa).
+ * Entre uma tentativa e outra espera a câmera ser liberada (no iPad, reabrir na hora trava a webcam USB).
  */
 export async function openSmoothCamera(deviceId: string, maxHeight: number, isCancelled: () => boolean = () => false): Promise<SmoothCamera> {
-  let steps = LADDER.filter(([, h]) => h <= maxHeight);
-  let best: { w: number; h: number; fps: number } | null = null;
+  const ladder = LADDER.filter(([, h]) => h <= maxHeight);
+  const queue: Ask[] = [{ w: ladder[0][0], h: ladder[0][1] }];
+  let best: { ask: Ask; w: number; h: number; fps: number } | null = null;
   let firstTry: { from: number; fps: number } | null = null;
-  for (let k = 0; k < steps.length; k++) {
-    const [w, h] = steps[k];
+  let triedDefault = false;
+  const tried = new Set<string>();
+  while (queue.length) {
+    const ask = queue.shift()!;
     if (isCancelled()) throw new Error('cancelado');
-    const s = await tryOpen(deviceId, w, h).catch(() => null);
+    const s = await openAsk(deviceId, ask).catch(() => null);
     if (!s) continue;
     const t = s.getVideoTracks()[0];
-    if (k === 0) {
-      // primeira vez: o máximo da câmera define por onde começar (sem passar da resolução da live)
-      const m = maxOf(t);
-      if (m.h && m.w) steps = [[Math.min(m.w, Math.round((maxHeight * 16) / 9)), Math.min(m.h, maxHeight)], ...steps.filter(([, sh]) => sh < Math.min(m.h, maxHeight))];
-    }
     const st = t.getSettings();
     const promised = Math.round(st.frameRate ?? 0);
     const fps = await measureFps(t);
-    const real = { w: st.width ?? w, h: st.height ?? h, fps };
-    if (!firstTry) firstTry = { from: Math.min(real.w, real.h), fps: promised && promised < fps ? promised : fps };
-    // fluida: contou 25+; ou a câmera está num modo de 25+ e o atraso é do navegador (não desce à toa)
-    if (fps >= SMOOTH_FPS || (promised >= SMOOTH_FPS && fps >= 12)) {
+    const real = { w: st.width ?? 0, h: st.height ?? 0, fps };
+    tried.add(`${real.w}x${real.h}`);
+    if (!firstTry) firstTry = { from: Math.min(real.w, real.h) || (ask === 'padrao' ? 0 : ask.h), fps };
+    if (fps > 0 && (fps >= SMOOTH_FPS || (promised >= SMOOTH_FPS && fps >= 12))) {
       const stepped = firstTry.from !== Math.min(real.w, real.h) ? firstTry : null;
       return { stream: s, width: real.w, height: real.h, fps: Math.max(fps, Math.min(promised, 30)), stepped };
     }
-    if (!best || fps > best.fps) best = real;
-    // a mesma câmera aberta duas vezes trava no iPad: fecha antes de tentar a próxima
+    if (fps > 0 && (!best || fps > best.fps)) best = { ask, ...real };
     s.getTracks().forEach((x) => x.stop());
+    // a câmera precisa de um instante para ser liberada antes de abrir de novo
+    await sleep(700);
+    // próximos pedidos: sem imagem nenhuma → o modo padrão da câmera; depois, resoluções menores que a atual
+    if (!triedDefault && fps === 0) {
+      triedDefault = true;
+      queue.unshift('padrao');
+    }
+    if (!queue.length) {
+      const cur = Math.min(real.h || 9999, ask === 'padrao' ? 9999 : ask.h);
+      for (const [w, h] of ladder) if (h < cur && !tried.has(`${w}x${h}`) && !queue.some((q) => q !== 'padrao' && q.h === h)) queue.push({ w, h });
+      if (!queue.length && !triedDefault) {
+        triedDefault = true;
+        queue.push('padrao');
+      }
+    }
   }
   if (isCancelled()) throw new Error('cancelado');
-  // nenhuma ficou fluida: abre a que deu mais quadros (ou do jeito que a câmera quiser)
-  const s = best
-    ? await tryOpen(deviceId, best.w, best.h)
-    : await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, frameRate: { ideal: 30 } } });
+  if (!best) throw new Error('sem imagem');
+  // nenhuma ficou fluida: abre a que deu mais quadros
+  const s = await openAsk(deviceId, best.ask);
   const st = s.getVideoTracks()[0].getSettings();
-  return { stream: s, width: st.width ?? 0, height: st.height ?? 0, fps: best?.fps ?? Math.round(st.frameRate ?? 0), stepped: firstTry };
+  return { stream: s, width: st.width ?? best.w, height: st.height ?? best.h, fps: best.fps, stepped: firstTry };
 }

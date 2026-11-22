@@ -1033,7 +1033,12 @@ export function Studio({
       })
       .catch((e) => {
         window.clearTimeout(slow);
-        if (!cancelled && !(e instanceof Error && e.message === 'cancelado')) toast.error('Não foi possível abrir esta câmera.');
+        if (cancelled || (e instanceof Error && e.message === 'cancelado')) return;
+        toast.error(
+          e instanceof Error && e.message === 'sem imagem'
+            ? 'A câmera não mandou nenhuma imagem. Desconecte e conecte de novo; numa webcam USB no iPad, use um adaptador/hub com energia.'
+            : 'Não foi possível abrir esta câmera.',
+        );
       });
     return () => {
       cancelled = true;
