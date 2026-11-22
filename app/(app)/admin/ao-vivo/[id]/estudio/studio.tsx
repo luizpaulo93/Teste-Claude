@@ -54,6 +54,7 @@ import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
 import { openSmoothCamera, SMOOTH_FPS } from '@/lib/live/camera';
+import { CameraTest } from '@/components/live/camera-test';
 import { cn } from '@/lib/utils';
 
 // Resolução (a C922 vai até 1080p) e taxa de vídeo pela conexão, como a "taxa dinâmica" do OBS:
@@ -2418,9 +2419,8 @@ export function Studio({
         lease,
         resume,
         res,
-        // quadros adaptativos: de 22 a 30 por segundo (ritmo estável: buscar mais que 30 fazia o aparelho
-        // oscilar entre subir e perder quadros, e a live engasgava)
-        minFps: 22,
+        // ritmo fixo de 30: ritmo que muda faz o YouTube misturar quadros (fantasmas no movimento)
+        minFps: 30,
         maxFps: 30,
         onFps: (f) => {
           comp.current?.setFps(f);
@@ -3255,6 +3255,7 @@ export function Studio({
             ))}
             <option value={`${device.current.id}|none`}>Sem câmera</option>
           </Select>
+          {!light && cam !== 'none' && camTrack.current && <CameraTest track={() => camTrack.current} />}
           {!light && cam !== 'none' && camInfo && (
             <span className={cn('block text-[11px]', camInfo.fps && camInfo.fps < SMOOTH_FPS ? 'text-danger' : 'text-muted')}>
               Câmera entregando {camInfo.w}×{camInfo.h}
