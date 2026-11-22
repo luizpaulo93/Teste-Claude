@@ -32,8 +32,9 @@ class ElSource {
     el.autoplay = true;
     el.setAttribute('playsinline', '');
     el.srcObject = new MediaStream([track]);
-    // No iPad o Safari desacelera vídeo fora da página: fica na página, invisível e minúsculo
-    el.style.cssText = 'position:fixed;left:0;top:0;width:2px;height:2px;opacity:0.01;pointer-events:none;z-index:-1';
+    // No iPad o Safari desacelera vídeo fora da página ou minúsculo (a câmera chegava aos trancos):
+    // fica na página, com tamanho de verdade, mas invisível e atrás de tudo
+    el.style.cssText = 'position:fixed;left:0;top:0;width:320px;height:180px;opacity:0.01;pointer-events:none;z-index:-1';
     document.body.appendChild(el);
     void el.play().catch(() => {});
     this.el = el;
