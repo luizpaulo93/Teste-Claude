@@ -1,6 +1,6 @@
 import 'server-only';
 import { sql } from '@/lib/db';
-import { DISCIPLINES } from '@/lib/enem-matriz';
+import { DISCIPLINES } from '@/lib/trilha-catalog';
 
 /** Números de um assunto (somando todas as vezes que foi feito). */
 export interface TopicStat {
@@ -73,7 +73,7 @@ type Row = {
   discipline: string;
   title: string;
   level: number;
-  history: { d: string; q: number; c: number; l: number; f?: number }[] | null;
+  history: { d: string; q: number; c: number; l: number; f?: number; p?: number }[] | null;
 };
 
 const NAMES = Object.fromEntries(DISCIPLINES.map((d) => [d.key, d.name]));
@@ -101,9 +101,10 @@ function topics(rows: Row[]) {
     for (const e of h) {
       t.questions += e.q;
       t.correct += e.c;
-      if (e.f === 3) t.hard++;
+      // trilha: lista em que ficou retido conta como dificuldade; registros antigos usam o "como foi"
+      if (e.f === 3 || e.p === 0) t.hard++;
       else if (e.f === 2) t.medium++;
-      else if (e.f === 1) t.easy++;
+      else if (e.f === 1 || e.p === 1) t.easy++;
     }
     t.who.add(r.mentoria_id);
     by.set(r.item_key, t);
@@ -113,7 +114,7 @@ function topics(rows: Row[]) {
 
 function rank(list: TopicStat[], n = 10) {
   return {
-    // Maior dificuldade: "ladeira abaixo" primeiro, depois "mais ou menos", depois o menor acerto
+    // Maior dificuldade: mais listas sem passar (ou "ladeira abaixo"), depois "mais ou menos", depois o menor acerto
     hardest: list
       .filter((t) => t.hard + t.medium > 0)
       .sort((a, b) => b.hard - a.hard || b.medium - a.medium || a.acc - b.acc)

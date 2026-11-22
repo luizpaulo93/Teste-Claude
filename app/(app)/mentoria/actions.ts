@@ -2,8 +2,9 @@
 
 import { refresh as refreshClient } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
-import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/enem-matriz';
-import { afterScore, shift, todayBR } from '@/lib/mentoria';
+import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/trilha-catalog';
+import { shift, todayBR } from '@/lib/mentoria';
+import { newTrailList, setTrailLevel, setTrailSize } from '@/lib/trilha';
 import { checkOptions, createCheck } from '@/lib/mentoria-checks';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
@@ -49,48 +50,64 @@ export async function buildPlan(disciplines: string[], order: 'prioridade' | 'ma
   return { ok: true, count };
 }
 
-// ---------------- Quadro: mover card e marcar desempenho
-/** Seta do assunto: "a estudar" → "estudado" (ou volta). */
-export async function moveCard(id: string, step: 'study' | 'questions', mentoriaId?: string): Promise<Result> {
+// ---------------- Trilha: teoria, níveis e listas
+/** Aluno terminou a teoria: o assunto vai para o Nível 1 e a lista já é criada. */
+export async function studiedTheory(id: string, mentoriaId?: string): Promise<Result & { listId?: string | null; noQuestions?: boolean }> {
   const a = await access(mentoriaId);
-  if (!a || !isDocId(id) || !['study', 'questions'].includes(step)) return { error: 'Sem acesso.' };
-  const n = await sql.exec(`update mentoria_cards set step = $3, updated_at = now() where id = $1 and mentoria_id = $2`, [id, a.id, step]);
-  if (!n) return { error: 'Card não encontrado.' };
+  if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
+  const c = await sql.one<{ level: number }>(`select level from mentoria_cards where id = $1 and mentoria_id = $2`, [id, a.id]);
+  if (!c) return { error: 'Assunto não encontrado.' };
+  if (c.level > 0) return { ok: true };
+  const r = await setTrailLevel(a.id, id, 1);
+  if ('error' in r) return { error: r.error };
+  await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true, listId: r.listId, noQuestions: r.noQuestions };
+}
+
+/** Tamanho das listas do assunto: 5, 10 ou 15 questões (aluno ou mentor). */
+export async function setListSize(id: string, size: number, mentoriaId?: string): Promise<Result & { listId?: string | null }> {
+  const a = await access(mentoriaId);
+  if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
+  const r = await setTrailSize(a.id, id, Number(size));
+  if ('error' in r) return { error: r.error };
+  refresh(a.id);
+  return { ok: true, listId: r.listId };
+}
+
+/** Mentor: leva o assunto para outra etapa (arrastar no quadro ou setas). */
+export async function moveTrail(id: string, level: number, mentoriaId: string): Promise<Result & { noQuestions?: boolean }> {
+  const a = await access(mentoriaId);
+  if (!a?.mentor || !isDocId(id)) return { error: 'Só o mentor muda a etapa.' };
+  const r = await setTrailLevel(a.id, id, Number(level));
+  if ('error' in r) return { error: r.error };
+  await reschedule(a.id);
+  refresh(a.id);
+  return { ok: true, noQuestions: r.noQuestions };
+}
+
+/** Mentor: ordem da fila (os primeiros entram antes na agenda do aluno). */
+export async function reorderTrail(ids: string[], mentoriaId: string): Promise<Result> {
+  const a = await access(mentoriaId);
+  if (!a?.mentor) return { error: 'Só o mentor muda a ordem.' };
+  const list = (ids ?? []).filter(isDocId).slice(0, 400);
+  await sql.exec(
+    `update mentoria_cards c set ord = v.o from unnest($2::text[], $3::int[]) as v(id, o) where c.mentoria_id = $1 and c.id = v.id`,
+    [a.id, list, list.map((_, i) => i)],
+  );
+  await reschedule(a.id);
   refresh(a.id);
   return { ok: true };
 }
 
-/** O aluno informa quantas questões fez e acertou; o app decide quando o assunto volta. */
-export async function scoreCard(
-  id: string,
-  questions: number,
-  correct: number,
-  feel: number,
-  mentoriaId?: string,
-): Promise<Result & { level?: number; acc?: number; due?: string | null; passed?: boolean; goal?: number }> {
+/** Mentor: outra lista do nível atual agora. */
+export async function newListNow(id: string, mentoriaId: string): Promise<Result & { listId?: string }> {
   const a = await access(mentoriaId);
-  if (!a || !isDocId(id)) return { error: 'Sem acesso.' };
-  const q = clampInt(questions, 0, 300);
-  const c = Math.min(q, clampInt(correct, 0, 300));
-  if (!q) return { error: 'Informe quantas questões você fez e quantas acertou.' };
-  const f = [1, 2, 3].includes(Number(feel)) ? Number(feel) : 0;
-  if (!f) return { error: 'Diga como foi o assunto: de boas, mais ou menos ou ladeira abaixo.' };
-  const card = await sql.one<{ level: number; history: unknown[]; pinned_on: string | null }>(
-    `select level, history, pinned_on::text as pinned_on from mentoria_cards where id = $1 and mentoria_id = $2`,
-    [id, a.id],
-  );
-  if (!card) return { error: 'Card não encontrado.' };
-  const today = todayBR();
-  const r = afterScore(card.level, q, c, today, f);
-  const history = [...(Array.isArray(card.history) ? card.history : []), { d: today, q, c, l: card.level, f, ...(card.pinned_on ? { x: 1 } : {}) }].slice(-30);
-  await sql.exec(
-    `update mentoria_cards set level = $3, step = 'study', due_on = $4, last_acc = $5, attempts = attempts + 1, history = $6, last_feel = $7, pinned_on = null, span_end = null, updated_at = now()
-     where id = $1 and mentoria_id = $2`,
-    [id, a.id, r.level, r.due, r.acc, JSON.stringify(history), f],
-  );
-  await reschedule(a.id);
+  if (!a?.mentor || !isDocId(id)) return { error: 'Acesso negado.' };
+  const r = await newTrailList(a.id, id);
+  if ('error' in r) return { error: r.error };
   refresh(a.id);
-  return { ok: true, level: r.level, acc: r.acc, due: r.due, passed: r.passed, goal: r.goal };
+  return { ok: true, listId: r.listId };
 }
 
 // ---------------- Horários do aluno

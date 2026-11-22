@@ -886,3 +886,50 @@ create index if not exists mentoria_checks_list_idx on mentoria_checks (list_id)
 -- Versão 33: resolução em blocos (texto, equação, tabela e imagem), com as imagens no lugar certo.
 -- ============================================================================
 alter table questions add column if not exists resolucao_blocos jsonb not null default '[]'::jsonb;
+
+-- ============================================================================
+-- Versão 35: trilha da mentoria por níveis.
+-- Cada assunto: teoria → Nível 1 (básicas) → Nível 2 (abaixo do ENEM) → Nível 3 (ENEM) → dominado.
+-- Cada nível é uma lista de 5 a 15 questões; passa com mais da metade, senão recebe outra lista do mesmo nível.
+-- Assuntos já estudados voltam dentro das listas da mesma disciplina (dificuldade: toda semana; fácil: a cada 2).
+-- ============================================================================
+-- Dificuldade das questões de vestibular (fácil/média/difícil, como vem no JSON); as do ENEM usam a TRI
+alter table questions add column if not exists dificuldade text not null default '';
+update questions set dificuldade = case
+    when d ~ '^(fac|1|f$|baix)' then 'facil'
+    when d ~ '^(med|2|m$|interm)' then 'media'
+    when d ~ '^(dif|3|d$|alt)' then 'dificil'
+    else '' end
+  from (select id as qid, translate(lower(trim(coalesce(microdados ->> 'dificuldade', microdados ->> 'nivelDificuldade', microdados ->> 'nivel_dificuldade',
+          microdados ->> 'difficulty', microdados ->> 'nivel', ''))), 'áéíóúâêôãõç', 'aeiouaeoaoc') as d from questions) x
+ where questions.id = x.qid and questions.dificuldade = '' and x.d <> '';
+
+alter table mentoria_cards add column if not exists list_size int not null default 5;      -- 5, 10 ou 15 questões
+alter table mentoria_cards add column if not exists next_review date;                     -- quando volta nas listas
+alter table mentoria_cards add column if not exists hard boolean not null default false;  -- assunto com dificuldade
+alter table mentoria_cards add column if not exists retained int not null default 0;      -- listas seguidas sem passar no nível atual
+alter table mentoria_cards add column if not exists retained_total int not null default 0;
+alter table mentoria_cards add column if not exists review_ok int not null default 0;     -- acertos seguidos nas revisões
+alter table mentoria_cards add column if not exists mastered_on date;
+
+create table if not exists mentoria_trail_lists (
+  id text primary key,
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  card_id text references mentoria_cards (id) on delete set null,
+  item_key text not null,
+  discipline text not null,
+  level int not null,                         -- 1, 2 ou 3 (0 = revisão da semana)
+  round int not null default 1,               -- 1ª, 2ª… lista do mesmo nível
+  list_id text not null references question_lists (id) on delete cascade,
+  main_ids text[] not null default '{}',      -- questões do assunto (contam para passar)
+  off_level int not null default 0,           -- questões de outro nível (faltou questão do nível certo no banco)
+  review jsonb not null default '[]'::jsonb,  -- questões de revisão de outros assuntos: [{ q, k }]
+  status text not null default 'open',        -- open | passed | failed | done | closed
+  ok int,
+  total int,
+  created_at timestamptz not null default now(),
+  finished_at timestamptz
+);
+create index if not exists mtrail_idx on mentoria_trail_lists (mentoria_id, status, created_at desc);
+create index if not exists mtrail_list_idx on mentoria_trail_lists (list_id);
+create index if not exists mtrail_card_idx on mentoria_trail_lists (card_id, created_at desc);

@@ -3,7 +3,7 @@
 import { revalidatePath, updateTag } from 'next/cache';
 import { fail, requireAdminAction, type ActionResult } from '@/lib/admin/guard';
 import { sql } from '@/lib/db';
-import { DISCIPLINES } from '@/lib/enem-matriz';
+import { DISCIPLINES } from '@/lib/trilha-catalog';
 import { blocksOf } from '@/lib/mentoria-blocks';
 import { archiveCycle } from '@/lib/mentoria-cycles';
 import { orderedKeys, reschedule, writePlan } from '@/lib/mentoria-data';

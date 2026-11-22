@@ -8,7 +8,7 @@ import { buttonClass, Input } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { setGroupAssuntos } from '@/app/(app)/admin/mentoria/group-actions';
 import { setPlanAssuntos } from '@/app/(app)/mentoria/actions';
-import { DISCIPLINES } from '@/lib/enem-matriz';
+import { DISCIPLINES } from '@/lib/trilha-catalog';
 import { cn } from '@/lib/utils';
 
 /** Mentor marca e desmarca os assuntos do cronograma (manual ou ajustando o que foi gerado). */

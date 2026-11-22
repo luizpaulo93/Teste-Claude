@@ -77,7 +77,9 @@ export async function canSeeList(viewer: Viewer, list: QList) {
 }
 
 export async function listsForViewer(viewer: Viewer) {
-  const all = await sql.query<QList>(`select * from question_lists where owner_id is null and cardinality(audience) > 0 order by updated_at desc limit 300`);
+  const all = await sql.query<QList>(`select * from question_lists l where owner_id is null and cardinality(audience) > 0
+      and not exists (select 1 from mentoria_trail_lists t where t.list_id = l.id)
+    order by updated_at desc limit 300`);
   const ok = await Promise.all(
     all.map(async (l) => (viewer.isAdmin ? true : (await Promise.all(l.audience.map((t) => audienceMatch(viewer, t)))).some(Boolean))),
   );
@@ -265,7 +267,14 @@ function randomWhere(f: RandomFilters) {
   any('q.assunto_geral', f.assunto);
   any('q.habilidade', f.habilidade);
   if (f.dificuldade?.length) {
-    const ors = f.dificuldade.map((d) => (d === 'facil' ? 'q.param_b < 0.8' : d === 'media' ? '(q.param_b >= 0.8 and q.param_b < 1.6)' : 'q.param_b >= 1.6'));
+    // ENEM pela TRI; vestibulares pela dificuldade que veio no JSON
+    const ors = f.dificuldade.map((d) =>
+      d === 'facil'
+        ? `(q.param_b < 0.8 or (q.param_b is null and q.dificuldade = 'facil'))`
+        : d === 'media'
+          ? `((q.param_b >= 0.8 and q.param_b < 1.6) or (q.param_b is null and q.dificuldade = 'media'))`
+          : `(q.param_b >= 1.6 or (q.param_b is null and q.dificuldade = 'dificil'))`,
+    );
     conds.push(`(${ors.join(' or ')})`);
   }
   return { where: conds.join(' and '), args };

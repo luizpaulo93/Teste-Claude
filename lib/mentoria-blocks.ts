@@ -1,6 +1,6 @@
 import 'server-only';
 import { emailKey, newId, sql } from '@/lib/db';
-import { ASSUNTO_BY_KEY } from '@/lib/enem-matriz';
+import { ASSUNTO_BY_KEY } from '@/lib/trilha-catalog';
 import { reschedule } from '@/lib/mentoria-data';
 
 /**

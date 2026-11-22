@@ -84,8 +84,8 @@ export function PlanBuilder({
         <div className="grid gap-2 sm:grid-cols-2">
           {(
             [
-              ['prioridade', 'Mais cobrados no ENEM primeiro', 'Começa pelos assuntos de maior incidência e segue a matriz'],
-              ['matriz', 'Do primeiro ao último', 'Segue a ordem da Matriz de Referência'],
+              ['prioridade', 'Mais cobrados no ENEM primeiro', 'Começa pelos assuntos de maior incidência no ENEM'],
+              ['matriz', 'Ordem didática', 'Do primeiro ao último assunto de cada disciplina (o básico antes)'],
             ] as const
           ).map(([k, t, d]) => (
             <button
@@ -104,7 +104,7 @@ export function PlanBuilder({
         </div>
       </div>
       <button type="button" onClick={build} disabled={busy || !sel.length} className={buttonClass('primary', 'lg', 'w-full sm:w-auto')}>
-        {busy ? <Spinner /> : <Sparkles className="size-4" />} {chosen.length ? 'Atualizar cronograma' : 'Gerar cronograma'}
+        {busy ? <Spinner /> : <Sparkles className="size-4" />} {chosen.length ? 'Atualizar trilha' : 'Gerar trilha'}
       </button>
       {!hasSchedule && (
         <p className="text-xs text-warning">O aluno ainda não informou os horários. Preencha na aba Horários para distribuir os assuntos nos dias certos.</p>

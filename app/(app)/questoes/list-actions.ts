@@ -4,6 +4,7 @@ import { refresh } from 'next/cache';
 import { sql } from '@/lib/db';
 import { canSeeList, getList } from '@/lib/question-lists';
 import { afterListFinished } from '@/lib/mentoria-checks';
+import { afterTrailList } from '@/lib/trilha';
 import { resolutionHtml } from '@/lib/resolution';
 import type { QBloco } from '@/lib/question-types';
 import { getViewer } from '@/lib/session';
@@ -66,10 +67,16 @@ export async function finishList(listId: string) {
 // lista de verificação da mentoria: com muitos erros, a próxima lista do assunto é criada sozinha
   if (!v.isAdmin) {
     const f = await sql.one<{ ok: number; total: number }>(`select ok, total from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
+    // trilha da mentoria: decide se passa de nível e já cria a próxima lista
+    const trail = await afterTrailList(listId, v.userId).catch(() => null);
+    if (trail) {
+      refresh();
+      return { trail };
+    }
     const check = f ? await afterListFinished(listId, f.ok ?? 0, f.total ?? 0).catch(() => null) : null;
     if (check) {
       refresh();
-return { check };
+      return { check };
     }
   }
   return {};

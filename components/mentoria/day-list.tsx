@@ -1,34 +1,40 @@
 'use client';
 
-import { ArrowRight, CalendarRange, Check, ChevronLeft, ChevronRight, Flame, Frown, Meh, Plus, Smile, X } from 'lucide-react';
+import { ArrowRight, BookOpen, CalendarRange, Check, ChevronLeft, ChevronRight, Flame, ListChecks, Plus, RotateCcw, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { toast } from '@/components/toast';
-import { buttonClass, Input } from '@/components/ui';
+import { buttonClass } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
 import { DayFolder, periodLabel, type ApostilaGroup } from '@/components/mentoria/apostilas';
-import { moveCard, removeFromDay, scoreCard } from '@/app/(app)/mentoria/actions';
-import { FEELS, GOAL, LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
+import { removeFromDay, setListSize, studiedTheory } from '@/app/(app)/mentoria/actions';
+import { LEVELS, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
 
 export interface DayItem {
   id: string;
+  kind: 'theory' | 'list' | 'review';
   discipline: string;
   title: string;
   priority: number;
-  /** nível no momento (0 novo … 4 manutenção) */
+  /** etapa na trilha (0 teoria, 1 a 3 níveis, 4 dominado) */
   level: number;
-  step: 'study' | 'questions';
+  /** tamanho escolhido para as listas do assunto */
+  size: number;
+  hard: boolean;
+  retained: number;
+  /** lista aberta (para responder) */
+  list: { id: string; answered: number; total: number; round: number } | null;
   /** acrescentado pelo aluno (além do que o mentor montou) */
   extra?: boolean;
   /** assunto de um período escolhido pelo mentor */
   period?: { from: string; to: string } | null;
-  /** já feito neste dia: resultado */
-  result?: { q: number; c: number; acc: number; passed: boolean; goal: number; f?: number } | null;
+  /** já feito neste dia: resultado da lista */
+  result?: { q: number; c: number; acc: number; passed: boolean; round: number } | null;
 }
 
-/** Cronograma por dia da semana: escolhe o dia e vê os assuntos; hoje dá para marcar estudado e as questões. */
+/** Agenda por dia da semana: teoria para estudar, listas dos níveis e revisões. */
 export function DayList({
   week,
   day,
@@ -68,12 +74,12 @@ export function DayList({
               href={href(d)}
               scroll={false}
               className={cn(
-                'flex flex-col items-center rounded-xl border py-1.5 transition',
+                'flex flex-col items-center rounded-lg border py-1.5 transition',
                 d === day ? 'border-ink bg-ink text-bg' : d === today ? 'border-brand/50 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
-              <span className="text-[10px] font-bold uppercase">{WEEKDAYS[i]}</span>
-              <span className="text-sm font-semibold tabular-nums">{Number(d.slice(8))}</span>
+              <span className="font-mono text-[10px] uppercase">{WEEKDAYS[i]}</span>
+              <span className="num text-sm font-medium">{Number(d.slice(8))}</span>
             </Link>
           ))}
         </div>
@@ -83,10 +89,10 @@ export function DayList({
       </div>
 
       <div className="flex items-baseline justify-between gap-2">
-        <p className="text-sm font-bold text-ink">
+        <p className="text-sm font-semibold text-ink">
           {day === today ? 'Hoje' : (WEEKDAYS[week.indexOf(day)] ?? '')} · {formatDate(day)}
         </p>
-        <p className="text-[11px] text-muted tabular-nums">{free ? `${fmt(minutes)} de ${fmt(free)} livres` : day < today ? '' : 'sem estudo neste dia'}</p>
+        <p className="num text-[11px] text-muted">{free ? `${fmt(minutes)} de ${fmt(free)} livres` : day < today ? '' : 'sem estudo neste dia'}</p>
       </div>
 
       <DayFolder groups={folder} />
@@ -99,7 +105,7 @@ export function DayList({
         </ul>
       ) : (
         <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">
-          {day < today ? 'Nada estudado neste dia.' : free ? 'Nenhum assunto neste dia.' : 'Dia de descanso.'}
+          {day < today ? 'Nada feito neste dia.' : free ? 'Nenhum assunto neste dia.' : 'Dia de descanso.'}
         </p>
       )}
     </div>
@@ -108,14 +114,8 @@ export function DayList({
 
 function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: boolean; removable: boolean; mentoriaId?: string }) {
   const router = useRouter();
-  const [step, setStep] = useState(it.step);
-  const [q, setQ] = useState('');
-  const [c, setC] = useState('');
   const [busy, setBusy] = useState(false);
-  const [feel, setFeel] = useState(0);
-  const goal = GOAL[Math.min(4, it.level)];
-  const total = Number(q) || 0;
-  const right = Math.min(total, Number(c) || 0);
+  const lv = LEVELS[Math.min(4, it.level)];
 
   async function remove() {
     setBusy(true);
@@ -125,83 +125,69 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
     toast('Assunto tirado do dia.');
     router.refresh();
   }
-  async function studied() {
-    setStep('questions');
-    const r = await moveCard(it.id, 'questions', mentoriaId).catch(() => ({ error: 'rede' }));
-    if (r.error) {
-      setStep('study');
-      toast.error('Não foi possível salvar.');
-    }
-  }
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (!total || c === '') return toast.error('Preencha quantas questões fez e quantas acertou.');
-    if (!feel) return toast.error('Conte como foi: de boas, mais ou menos ou ladeira abaixo.');
+  async function theoryDone() {
     setBusy(true);
-    const r = await scoreCard(it.id, total, right, feel, mentoriaId);
+    const r = await studiedTheory(it.id, mentoriaId).catch(() => ({ error: 'Sem conexão.' }) as { error: string; listId?: string; noQuestions?: boolean });
     setBusy(false);
     if (r.error) return toast.error(r.error);
-    toast(
-      r.passed
-        ? `${r.acc}% de acerto${r.goal ? ' — meta batida!' : ''} Próxima vez em ${formatDate(r.due!)}`
-        : `${r.acc}% — meta de ${r.goal}% não batida. Volta em ${formatDate(r.due!)}`,
-    );
+    if ('noQuestions' in r && r.noQuestions) toast('Teoria concluída. Ainda não há questões deste assunto no banco: o mentor foi avisado.');
+    else toast('Teoria concluída! A lista do Nível 1 está pronta.');
     router.refresh();
   }
 
-  const lv = LEVELS[Math.min(4, it.level)];
+  const label = it.kind === 'review' ? 'Revisão' : it.kind === 'theory' ? 'Teoria' : lv.label;
   return (
-    <li className={cn('rounded-xl border bg-surface p-3.5', it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : 'border-line')}>
+    <li
+      className={cn(
+        'rounded-xl border bg-surface p-3.5',
+        it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : it.kind === 'review' ? 'border-brand/35' : 'border-line',
+      )}
+    >
       <div className="flex items-start gap-3">
-        <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', lv.dot)} />
+        <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', it.kind === 'review' ? 'bg-brand' : lv.dot)} />
         <div className="min-w-0 flex-1">
-          <p className="font-mono flex flex-wrap items-center gap-1.5 text-[11px] font-medium text-muted uppercase">
-            {it.discipline} · {TASK_KIND[Math.min(4, it.level)]}
-            {it.priority >= 3 && (
-              <span className="flex items-center gap-0.5 normal-case text-orange-500">
+          <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10.5px] tracking-[0.04em] text-muted uppercase">
+            {it.discipline} · {label}
+            {it.priority >= 3 && it.kind !== 'review' && (
+              <span className="flex items-center gap-0.5 text-orange-500 normal-case">
                 <Flame className="size-3" /> mais cobrado
               </span>
             )}
+            {it.hard && !it.result && <span className="rounded bg-danger/10 px-1 py-px text-danger normal-case">reforço</span>}
             {it.period && (
-              <span className="flex items-center gap-0.5 rounded-md bg-sky-500/15 px-1.5 py-0.5 normal-case text-sky-500">
-                <CalendarRange className="size-3" /> período {periodLabel(it.period.from, it.period.to)}
+              <span className="flex items-center gap-0.5 rounded bg-sky-500/12 px-1 py-px text-sky-500 normal-case">
+                <CalendarRange className="size-3" /> {periodLabel(it.period.from, it.period.to)}
               </span>
             )}
             {it.extra && (
-              <span className="flex items-center gap-0.5 rounded-md bg-violet-500/15 px-1.5 py-0.5 normal-case text-violet-500">
+              <span className="flex items-center gap-0.5 rounded bg-surface-3 px-1 py-px text-ink-2 normal-case">
                 <Plus className="size-3" /> {mentoriaId ? 'acrescentado pelo aluno' : 'você acrescentou'}
               </span>
             )}
           </p>
           <p className="mt-0.5 text-[15px] leading-snug font-semibold text-ink">{it.title}</p>
-          {editable && (
-            <Link
-              href={`/questoes?disciplina=${encodeURIComponent(it.discipline)}&topico=${encodeURIComponent(it.title)}`}
-              className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-brand"
-            >
-              Responder questões do assunto <ArrowRight className="size-3" />
-            </Link>
-          )}
+
           {it.result ? (
-            <p className={cn('mt-1.5 flex items-center gap-1 text-xs font-semibold', it.result.passed ? 'text-success' : 'text-danger')}>
+            <p className={cn('mt-1.5 flex flex-wrap items-center gap-1 text-xs font-medium', it.result.passed ? 'text-success' : 'text-danger')}>
               {it.result.passed ? <Check className="size-3.5" /> : <X className="size-3.5" />}
-              {it.result.c}/{it.result.q} · {it.result.acc}% {it.result.goal ? `(meta ${it.result.goal}%)` : ''}
-              {it.result.f ? (
-                <span className="ml-1 font-normal text-muted">
-                  · {FEELS[it.result.f - 1].label}
-                </span>
-              ) : null}
-            </p>
-          ) : (
-            <p className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-              <span className={cn('rounded-md px-1.5 py-0.5 font-bold', step === 'questions' ? 'bg-amber-400/15 text-amber-500' : 'bg-surface-3 text-muted')}>
-                {step === 'questions' ? 'Estudado' : 'A estudar'}
+              <span className="num">
+                {it.result.c}/{it.result.q}
               </span>
-              {goal > 0 && <span className="text-muted">meta {goal}% de acerto</span>}
+              {it.level >= 1 && it.level <= 3
+                ? it.result.passed
+                  ? `· passou do ${LEVELS[it.level].label}`
+                  : `· ficou no ${LEVELS[it.level].label}, nova lista criada`
+                : ''}
             </p>
+          ) : it.kind === 'theory' ? (
+            <p className="mt-1 text-xs text-muted">Estude a teoria. Ao terminar, a lista do Nível 1 (questões básicas) é criada.</p>
+          ) : it.list ? (
+            <ListLine it={it} editable={editable} mentoriaId={mentoriaId} />
+          ) : (
+            <p className="mt-1 text-xs text-warning">Ainda não há questões deste nível no banco. O mentor foi avisado.</p>
           )}
         </div>
-        {it.extra && removable && step === 'study' && (
+        {it.extra && removable && it.kind === 'theory' && (
           <button
             type="button"
             onClick={remove}
@@ -213,74 +199,67 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
             <X className="size-4" />
           </button>
         )}
-        {editable && step === 'study' && (
-          <button
-            type="button"
-            onClick={studied}
-            aria-label="Marcar como estudado"
-            title="Estudado"
-            className="grid size-10 shrink-0 place-items-center rounded-xl bg-brand/12 text-brand transition hover:bg-brand hover:text-white"
-          >
-            <ArrowRight className="size-5" />
-          </button>
-        )}
       </div>
-      {editable && step === 'questions' && (
-        <form onSubmit={save} className="mt-3 space-y-2 border-t border-line pt-3">
-          <p className="text-xs font-semibold text-ink-2">Questões resolvidas</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Input
-              value={q}
-              onChange={(e) => setQ(e.target.value.replace(/\D/g, '').slice(0, 3))}
-              inputMode="numeric"
-              placeholder="Feitas"
-              aria-label="Questões feitas"
-              className="h-10"
-            />
-            <Input
-              value={c}
-              onChange={(e) => setC(e.target.value.replace(/\D/g, '').slice(0, 3))}
-              inputMode="numeric"
-              placeholder="Acertos"
-              aria-label="Acertos"
-              className="h-10"
-            />
-          </div>
-          <p className="pt-1 text-xs font-semibold text-ink-2">Como foi esse assunto?</p>
-          <div className="grid grid-cols-3 gap-1.5">
-            {FEELS.map((x) => (
-              <button
-                key={x.value}
-                type="button"
-                onClick={() => setFeel(x.value)}
-                aria-pressed={feel === x.value}
-                className={cn(
-                  'flex flex-col items-center gap-0.5 rounded-xl border px-1 py-2 text-[11px] font-semibold transition',
-                  feel === x.value
-                    ? x.value === 3
-                      ? 'border-danger bg-danger/10 text-danger'
-                      : x.value === 2
-                        ? 'border-warning bg-warning/10 text-warning'
-                        : 'border-success bg-success/10 text-success'
-                    : 'border-line text-ink-2',
-                )}
-              >
-                {x.value === 1 ? <Smile className="size-4" /> : x.value === 2 ? <Meh className="size-4" /> : <Frown className="size-4" />}
-                {x.label}
-              </button>
-            ))}
-          </div>
-          <button type="submit" disabled={busy} className={buttonClass('primary', 'md', 'w-full')}>
-            {busy ? <Spinner /> : 'Salvar'}
-          </button>
-          {total > 0 && (
-            <p className={cn('text-xs font-semibold', Math.round((right / total) * 100) >= goal ? 'text-success' : 'text-danger')}>
-              Taxa de acerto: {Math.round((right / total) * 100)}%{goal ? ` · meta ${goal}%` : ''}
-            </p>
-          )}
-        </form>
+      {editable && it.kind === 'theory' && (
+        <button type="button" onClick={theoryDone} disabled={busy} className={buttonClass('secondary', 'md', 'mt-3 w-full')}>
+          {busy ? <Spinner /> : <BookOpen className="size-4" />} Terminei a teoria
+        </button>
       )}
     </li>
+  );
+}
+
+/** Lista aberta: progresso, botão para responder e (antes de começar) o tamanho da lista. */
+function ListLine({ it, editable, mentoriaId }: { it: DayItem; editable: boolean; mentoriaId?: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(0);
+  const l = it.list!;
+  const started = l.answered > 0;
+  async function size(n: number) {
+    if (n === it.size) return;
+    setBusy(n);
+    const r = await setListSize(it.id, n, mentoriaId).catch(() => ({ error: 'Sem conexão.' }));
+    setBusy(0);
+    if (r.error) return toast.error(r.error);
+    toast(`Listas deste assunto com ${n} questões.`);
+    router.refresh();
+  }
+  return (
+    <div className="mt-2 space-y-2.5">
+      <div className="flex items-center gap-2.5">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
+          <div className="h-full rounded-full bg-brand" style={{ width: `${Math.round((l.answered / Math.max(1, l.total)) * 100)}%` }} />
+        </div>
+        <span className="num shrink-0 text-[11px] text-muted">
+          {l.answered}/{l.total}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Link href={`/listas/${l.id}`} className={buttonClass('primary', 'sm')}>
+          <ListChecks className="size-3.5" /> {started ? 'Continuar lista' : 'Fazer lista'} <ArrowRight className="size-3.5" />
+        </Link>
+        {l.round > 1 && (
+          <span className="flex items-center gap-1 text-[11px] text-muted">
+            <RotateCcw className="size-3" /> {l.round}ª lista deste nível
+          </span>
+        )}
+        {it.kind === 'list' && editable && !started && (
+          <span className="ml-auto inline-flex items-center rounded-md border border-line p-0.5" role="group" aria-label="Questões por lista">
+            {[5, 10, 15].map((n) => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => size(n)}
+                aria-pressed={it.size === n}
+                className={cn('num h-7 min-w-8 rounded px-1.5 text-[11px] font-medium', it.size === n ? 'bg-ink text-bg' : 'text-ink-2 hover:bg-surface-2')}
+              >
+                {busy === n ? <Spinner className="size-3" /> : n}
+              </button>
+            ))}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
 

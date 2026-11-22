@@ -6,7 +6,7 @@ import { BlocksPanel } from '@/components/mentoria/blocks-panel';
 import { Card } from '@/components/ui';
 import { todayBR } from '@/lib/mentoria';
 import { blocksOf } from '@/lib/mentoria-blocks';
-import { ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
+import { ASSUNTOS, DISCIPLINES } from '@/lib/trilha-catalog';
 import { getGroup } from '@/lib/mentoria-space';
 import { formatDate } from '@/lib/utils';
 

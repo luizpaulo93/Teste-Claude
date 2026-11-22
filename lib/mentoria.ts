@@ -2,17 +2,17 @@
 
 export const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
-/** Situação do assunto (cores: vermelho, amarelo e as revisões). */
+/** Etapa do assunto na trilha: teoria, níveis 1 a 3 e dominado. */
 export const LEVELS = [
-  { label: 'Não estudado', dot: 'bg-red-500', chip: 'bg-red-500/15 text-red-500' },
-  { label: 'Estudado', dot: 'bg-amber-400', chip: 'bg-amber-400/15 text-amber-500' },
-  { label: 'Revisão 01', dot: 'bg-sky-400', chip: 'bg-sky-400/15 text-sky-500' },
-  { label: 'Revisão 02', dot: 'bg-blue-500', chip: 'bg-blue-500/15 text-blue-500' },
-  { label: 'Revisão 03', dot: 'bg-emerald-500', chip: 'bg-emerald-500/15 text-emerald-500' },
+  { label: 'Teoria', dot: 'bg-zinc-400', chip: 'bg-zinc-500/15 text-ink-2' },
+  { label: 'Nível 1', dot: 'bg-sky-400', chip: 'bg-sky-400/15 text-sky-500' },
+  { label: 'Nível 2', dot: 'bg-amber-400', chip: 'bg-amber-400/15 text-amber-500' },
+  { label: 'Nível 3', dot: 'bg-orange-500', chip: 'bg-orange-500/15 text-orange-500' },
+  { label: 'Dominado', dot: 'bg-emerald-500', chip: 'bg-emerald-500/15 text-emerald-500' },
 ] as const;
 
-/** O que o aluno faz no card, conforme o nível em que o assunto está */
-export const TASK_KIND = ['Estudar', 'Revisão 01', 'Revisão 02', 'Revisão 03', 'Revisão de manutenção'];
+/** O que o aluno faz no card, conforme a etapa */
+export const TASK_KIND = ['Estudar a teoria', 'Lista Nível 1', 'Lista Nível 2', 'Lista Nível 3', 'Revisão'];
 
 /** Meta de acerto para passar em cada revisão (nível 1 → Revisão 01 …) */
 export const GOAL = [0, 40, 60, 70, 70];
@@ -84,7 +84,7 @@ export interface PlanCard {
 /**
  * Distribui os assuntos do dia de hoje até o fim da mentoria, nos minutos livres de cada dia.
  * Em cada dia: o que já está em andamento, depois as revisões, depois assuntos novos (ordem do plano:
- * mais cobrados primeiro). Cada assunto novo já reserva o tempo das suas revisões futuras (7, 21 e 49 dias),
+ * mais cobrados primeiro). Cada assunto novo já reserva o tempo das listas dos níveis 2 e 3 (2 e 6 dias depois),
  * para o cronograma fechar dentro do período. O que não couber fica fora (os menos cobrados).
  */
 export function schedule(cards: PlanCard[], availability: number[], today: string, end: string, doneToday = { minutes: 0, count: 0 }) {
@@ -98,8 +98,12 @@ export function schedule(cards: PlanCard[], availability: number[], today: strin
   const pinned = cards.filter((c) => c.step === 'study' && c.pinned_on);
   for (const c of pinned) out.set(c.id, c.pinned_on! < today ? today : c.pinned_on!);
   const rest = cards.filter((c) => !(c.step === 'study' && c.pinned_on));
-  const active = rest.filter((c) => c.step !== 'study');
-  const reviews = rest.filter((c) => c.step === 'study' && c.level > 0).sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord);
+  const active = rest.filter((c) => c.step !== 'study' && c.level < 4);
+  // listas dos níveis 1 a 3 na data delas; dominados não ocupam dia (voltam dentro das listas, como revisão)
+  for (const c of rest) if (c.level >= 4) out.set(c.id, null);
+  const reviews = rest
+    .filter((c) => c.step === 'study' && c.level > 0 && c.level < 4)
+    .sort((a, b) => (a.due_on ?? '').localeCompare(b.due_on ?? '') || a.ord - b.ord);
   const news = rest.filter((c) => c.step === 'study' && c.level === 0).sort((a, b) => a.ord - b.ord);
   const projected: string[] = []; // datas de revisões futuras reservadas
   let r = 0;
@@ -133,7 +137,8 @@ export function schedule(cards: PlanCard[], availability: number[], today: strin
       out.set(news[n++].id, d);
       left -= COST.novo;
       count++;
-      for (const k of [7, 21, 49]) if (shift(d, k) <= last) projected.push(shift(d, k));
+      // a lista do Nível 1 vai junto com a teoria; Nível 2 e 3 vêm alguns dias depois
+      for (const k of [2, 6]) if (shift(d, k) <= last) projected.push(shift(d, k));
     }
   }
   for (; r < reviews.length; r++) out.set(reviews[r].id, null);

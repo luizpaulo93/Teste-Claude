@@ -8,7 +8,7 @@ import { toast } from '@/components/toast';
 import { Button, buttonClass, Field, Input } from '@/components/ui';
 import { ActionButton, Modal, Spinner } from '@/components/ui-client';
 import { deleteBlock, saveBlock } from '@/app/(app)/admin/mentoria/block-actions';
-import { ASSUNTO_BY_KEY, ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
+import { ASSUNTO_BY_KEY, ASSUNTOS, DISCIPLINES } from '@/lib/trilha-catalog';
 import { cn } from '@/lib/utils';
 import { periodLabel, type ApostilaGroup } from './apostilas';
 

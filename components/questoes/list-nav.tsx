@@ -8,6 +8,12 @@ import { toast } from '@/components/toast';
 import { Button } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { cn } from '@/lib/utils';
+import type { TrailResult } from '@/lib/trilha';
+import Link from 'next/link';
+import { ArrowRight, Check, RotateCcw, Trophy } from 'lucide-react';
+import { buttonClass } from '@/components/ui';
+
+const LEVEL_NAME = ['Teoria', 'Nível 1', 'Nível 2', 'Nível 3', 'Dominado'];
 
 export interface NavItem {
   n: number;
@@ -31,6 +37,7 @@ export function ListNav({ items, finishId }: { items: NavItem[]; finishId?: stri
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [states, setStates] = useState(() => new Map(items.map((i) => [i.id, i.state])));
+  const [trail, setTrail] = useState<TrailResult | null>(null);
 
   // questão que está na tela agora
   useEffect(() => {
@@ -85,6 +92,14 @@ export function ListNav({ items, finishId }: { items: NavItem[]; finishId?: stri
     setBusy(false);
     if (r && 'error' in r && r.error) return toast.error(r.error);
     close();
+    // trilha da mentoria: mostra se passou de nível e já oferece a próxima lista
+    const tr = r && 'trail' in r ? r.trail : null;
+    if (tr) {
+      setTrail(tr);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      router.refresh();
+      return;
+    }
     const ck = r && 'check' in r ? r.check : null;
     toast(
       ck
@@ -136,6 +151,50 @@ export function ListNav({ items, finishId }: { items: NavItem[]; finishId?: stri
       >
         <ChevronRight className="size-4" />
       </button>
+      <Modal open={Boolean(trail)} onClose={() => setTrail(null)} title={trail?.review ? 'Revisão concluída' : 'Resultado da lista'} size="sm">
+        {trail && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span
+                className={cn(
+                  'grid size-12 shrink-0 place-items-center rounded-xl border',
+                  trail.passed ? 'border-success/40 bg-success/10 text-success' : 'border-warning/40 bg-warning/10 text-warning',
+                )}
+              >
+                {trail.level === 4 ? <Trophy className="size-6" /> : trail.passed ? <Check className="size-6" /> : <RotateCcw className="size-5" />}
+              </span>
+              <div className="min-w-0">
+                <p className="num text-2xl font-medium text-ink">
+                  {trail.ok}/{trail.total}
+                </p>
+                <p className="truncate text-sm text-muted">{trail.title}</p>
+              </div>
+            </div>
+            <p className="text-sm text-ink-2">
+              {trail.review
+                ? 'As revisões ajudam a não esquecer. Os assuntos que você errou voltam na próxima semana.'
+                : trail.level === 4
+                  ? 'Assunto dominado! Ele volta de tempos em tempos nas suas listas, para você não esquecer.'
+                  : trail.passed
+                    ? `Você passou para o ${LEVEL_NAME[trail.level]}. A próxima lista já está pronta.`
+                    : `Para passar é preciso acertar mais da metade. Você continua no ${LEVEL_NAME[trail.level]}: uma nova lista com outras questões foi criada.`}
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row-reverse">
+              {trail.next && (
+                <Link href={`/listas/${trail.next}`} className={buttonClass('primary', 'md', 'flex-1')} onClick={() => setTrail(null)}>
+                  Abrir a próxima lista <ArrowRight className="size-4" />
+                </Link>
+              )}
+              <Link href="/mentoria" className={buttonClass('secondary', 'md', 'flex-1')} onClick={() => setTrail(null)}>
+                Voltar à mentoria
+              </Link>
+            </div>
+            <button type="button" onClick={() => setTrail(null)} className="w-full text-center text-xs text-muted hover:text-ink">
+              Ver minhas respostas
+            </button>
+          </div>
+        )}
+      </Modal>
       <Modal
         open={open}
         onClose={close}

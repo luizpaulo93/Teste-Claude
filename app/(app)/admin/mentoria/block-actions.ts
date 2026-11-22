@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { fail, requireAdminAction, type ActionResult } from '@/lib/admin/guard';
 import { newId, sql } from '@/lib/db';
-import { ASSUNTO_BY_KEY } from '@/lib/enem-matriz';
+import { ASSUNTO_BY_KEY } from '@/lib/trilha-catalog';
 import { applyBlock, getBlock, releaseBlock, type BlockFile } from '@/lib/mentoria-blocks';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;

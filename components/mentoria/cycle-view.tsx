@@ -2,7 +2,7 @@ import { Archive, CalendarRange, Check, ChevronRight, X } from 'lucide-react';
 import Link from 'next/link';
 import { ApostilasFolder } from '@/components/mentoria/apostilas';
 import { AssuntosView, type AssuntoRow } from '@/components/mentoria/assuntos-view';
-import { ASSUNTO_BY_KEY, ASSUNTOS, DISCIPLINES } from '@/lib/enem-matriz';
+import { ASSUNTO_BY_KEY, ASSUNTOS, DISCIPLINES, trilhaKey } from '@/lib/trilha-catalog';
 import { FEELS, GOAL, TASK_KIND } from '@/lib/mentoria';
 import type { cyclesOf, Cycle } from '@/lib/mentoria-cycles';
 import { cn, formatDate } from '@/lib/utils';
@@ -38,7 +38,13 @@ export function CycleList({ list, base }: { list: Awaited<ReturnType<typeof cycl
 
 /** Tudo o que foi feito num ciclo: números, assuntos (como ficaram), o que fez em cada dia e as apostilas. */
 export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
-  const by = new Map(cycle.cards.map((c) => [c.item_key, c]));
+  // ciclos antigos guardaram os conteúdos do cronograma anterior: cada um vai para o assunto da trilha (o mais adiantado vale)
+  const by = new Map<string, (typeof cycle.cards)[number]>();
+  for (const c of cycle.cards) {
+    const k = trilhaKey(c.item_key) ?? c.item_key;
+    const o = by.get(k);
+    if (!o || c.level > o.level) by.set(k, c);
+  }
   const specific = cycle.scope === 'especifica';
   const inPlan = new Set(cycle.cards.map((c) => c.discipline));
   const disciplines = DISCIPLINES.filter((d) => !specific || inPlan.has(d.key)).map((d) => ({ key: d.key, name: d.name }));

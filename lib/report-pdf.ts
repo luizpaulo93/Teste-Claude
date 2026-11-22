@@ -10,7 +10,7 @@ const MUTED = rgb(0.42, 0.45, 0.52);
 const BRAND = rgb(0.15, 0.39, 0.92);
 const RED = rgb(0.85, 0.2, 0.25);
 const LEVEL_COLORS = [rgb(0.94, 0.27, 0.27), rgb(0.98, 0.75, 0.14), rgb(0.22, 0.74, 0.97), rgb(0.23, 0.51, 0.96), rgb(0.06, 0.73, 0.51)];
-const LEVEL_LABELS = ['Não estudado', 'Estudado', 'Revisão 01', 'Revisão 02', 'Revisão 03'];
+const LEVEL_LABELS = ['Teoria', 'Nível 1', 'Nível 2', 'Nível 3', 'Dominado'];
 
 /** Fonte padrão do PDF só tem Latin-1: troca o que não existe. */
 const clean = (s: string) =>

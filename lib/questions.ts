@@ -128,6 +128,7 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
     param_a: num(q.parametros?.a),
     param_b: num(q.parametros?.b),
     param_c: num(q.parametros?.c),
+    dificuldade: difficultyIn(q),
     blocos,
     alternativas,
     imagem_alternativas,
@@ -138,6 +139,27 @@ export function cleanQuestion(q: QuestaoIn, provaId: string, urls: Record<string
         ? JSON.parse(JSON.stringify(q.microdados, (_, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v)))
         : {},
   };
+}
+
+/**
+ * Dificuldade da questão de vestibular como vem no JSON ("Fácil", "Média", "Difícil", 1–3…), em qualquer um dos
+ * nomes de campo que os geradores costumam usar (também dentro dos microdados). As do ENEM usam a TRI.
+ */
+function difficultyIn(q: QuestaoIn): string {
+  const x = q as unknown as Record<string, unknown>;
+  const m = (q.microdados ?? {}) as Record<string, unknown>;
+  const raw = [x.dificuldade, x.nivelDificuldade, x.nivel_dificuldade, x.difficulty, x.nivel, m.dificuldade, m.nivelDificuldade, m.nivel_dificuldade, m.difficulty, m.nivel]
+    .map((v) => (v === null || v === undefined ? '' : String(v)))
+    .find((v) => v.trim());
+  const d = (raw ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+  if (/^(fac|1\b|f$|baix)/.test(d)) return 'facil';
+  if (/^(med|2\b|m$|interm)/.test(d)) return 'media';
+  if (/^(dif|3\b|d$|alt)/.test(d)) return 'dificil';
+  return '';
 }
 
 /** resolução: aceita também outros nomes de campo que os geradores de JSON costumam usar */
@@ -248,16 +270,16 @@ export async function savePaper(p: ProvaIn, urls: Record<string, string>, userId
   );
   await sql.exec(
     `insert into questions (id, paper_id, numero, banca, ano, area_sigla, area, disciplina, assunto_geral, assunto_especifico, competencia, habilidade,
-                            gabarito, status, param_a, param_b, param_c, blocos, alternativas, imagem_alternativas, resolucao, resolucao_blocos, microdados, updated_at)
+                            gabarito, status, param_a, param_b, param_c, dificuldade, blocos, alternativas, imagem_alternativas, resolucao, resolucao_blocos, microdados, updated_at)
      select x.id, x.paper_id, x.numero, x.banca, x.ano, x.area_sigla, x.area, x.disciplina, x.assunto_geral, x.assunto_especifico, x.competencia, x.habilidade,
-            x.gabarito, x.status, x.param_a, x.param_b, x.param_c, x.blocos, x.alternativas, x.imagem_alternativas, x.resolucao, x.resolucao_blocos, x.microdados, now()
+            x.gabarito, x.status, x.param_a, x.param_b, x.param_c, coalesce(x.dificuldade, ''), x.blocos, x.alternativas, x.imagem_alternativas, x.resolucao, x.resolucao_blocos, x.microdados, now()
        from jsonb_to_recordset($1::jsonb) as x(id text, paper_id text, numero int, banca text, ano int, area_sigla text, area text, disciplina text,
             assunto_geral text, assunto_especifico text, competencia text, habilidade text, gabarito text, status text, param_a float8, param_b float8,
-            param_c float8, blocos jsonb, alternativas jsonb, imagem_alternativas jsonb, resolucao text, resolucao_blocos jsonb, microdados jsonb)
+            param_c float8, dificuldade text, blocos jsonb, alternativas jsonb, imagem_alternativas jsonb, resolucao text, resolucao_blocos jsonb, microdados jsonb)
      on conflict (id) do update set paper_id = excluded.paper_id, numero = excluded.numero, banca = excluded.banca, ano = excluded.ano,
        area_sigla = excluded.area_sigla, area = excluded.area, disciplina = excluded.disciplina, assunto_geral = excluded.assunto_geral,
        assunto_especifico = excluded.assunto_especifico, competencia = excluded.competencia, habilidade = excluded.habilidade, gabarito = excluded.gabarito,
-       status = excluded.status, param_a = excluded.param_a, param_b = excluded.param_b, param_c = excluded.param_c, blocos = excluded.blocos,
+       status = excluded.status, param_a = excluded.param_a, param_b = excluded.param_b, param_c = excluded.param_c, dificuldade = excluded.dificuldade, blocos = excluded.blocos,
        alternativas = excluded.alternativas, imagem_alternativas = excluded.imagem_alternativas, resolucao = excluded.resolucao, resolucao_blocos = excluded.resolucao_blocos,
        microdados = excluded.microdados, updated_at = now()`,
     [JSON.stringify(rows)],

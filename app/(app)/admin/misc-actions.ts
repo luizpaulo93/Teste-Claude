@@ -1,6 +1,6 @@
 'use server';
 
-import { DISCIPLINES } from '@/lib/enem-matriz';
+import { DISCIPLINES } from '@/lib/trilha-catalog';
 import { appendCards, orderedKeys, reschedule, writePlan } from '@/lib/mentoria-data';
 import { revalidatePath, updateTag } from 'next/cache';
 import { bool, dateOrNull, fail, int, refreshSettings, requireAdminAction, str, type ActionResult } from '@/lib/admin/guard';
