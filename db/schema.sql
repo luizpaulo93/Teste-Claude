@@ -933,3 +933,24 @@ create table if not exists mentoria_trail_lists (
 create index if not exists mtrail_idx on mentoria_trail_lists (mentoria_id, status, created_at desc);
 create index if not exists mtrail_list_idx on mentoria_trail_lists (list_id);
 create index if not exists mtrail_card_idx on mentoria_trail_lists (card_id, created_at desc);
+
+-- ============================================================================
+-- Versão 36: espaçamento inteligente da mentoria.
+-- Memória de cada questão resolvida na trilha (caixas de Leitner): errou → volta em 3 dias;
+-- acertou → o intervalo cresce (7, 15, 30, 60 dias). Cada assunto também tem o seu intervalo
+-- de revisão (cresce quando acerta, encolhe quando erra; nunca passa de 1 mês).
+-- ============================================================================
+create table if not exists mentoria_qmemory (
+  mentoria_id text not null references mentorias (id) on delete cascade,
+  question_id text not null,
+  item_key text not null,
+  box smallint not null default 0,      -- 1 errou; 2..5 acertou seguidas
+  seen int not null default 0,
+  wrong int not null default 0,
+  due date,                             -- quando a questão pode voltar
+  last_on date,
+  primary key (mentoria_id, question_id)
+);
+create index if not exists mqmem_due_idx on mentoria_qmemory (mentoria_id, due);
+create index if not exists mqmem_key_idx on mentoria_qmemory (mentoria_id, item_key);
+alter table mentoria_cards add column if not exists review_every int not null default 14;  -- dias até o assunto voltar

@@ -68,7 +68,10 @@ export async function finishList(listId: string) {
   if (!v.isAdmin) {
     const f = await sql.one<{ ok: number; total: number }>(`select ok, total from list_finishes where list_id = $1 and user_id = $2`, [listId, v.userId]);
     // trilha da mentoria: decide se passa de nível e já cria a próxima lista
-    const trail = await afterTrailList(listId, v.userId).catch(() => null);
+    const trail = await afterTrailList(listId, v.userId).catch((e) => {
+      console.error('trilha: falha ao fechar a lista', e);
+      return null;
+    });
     if (trail) {
       refresh();
       return { trail };

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { PageHeader } from '@/components/ui';
+import { BarChart3 } from 'lucide-react';
+import { LinkButton, PageHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
 import type { Mentoria, MentoriaMeeting } from '@/lib/types';
 import { todayBR } from '@/lib/mentoria';
@@ -49,7 +50,14 @@ export default async function AdminMentoria() {
   );
   return (
     <>
-      <PageHeader title="Mentoria" />
+      <PageHeader
+        title="Mentoria"
+        actions={
+          <LinkButton href="/admin/mentoria/painel" size="sm">
+            <BarChart3 className="size-4" /> Painel dos mentorados
+          </LinkButton>
+        }
+      />
       <MentoriaList
         mentorias={list}
         groupMeetings={meetings}

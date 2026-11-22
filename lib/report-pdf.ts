@@ -2,25 +2,25 @@
 import { PDFDocument, rgb, StandardFonts, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { MentoriaReport, TopicStat } from './mentoria-report';
 
-const W = 595.28; // A4
-const H = 841.89;
-const M = 42;
-const INK = rgb(0.1, 0.12, 0.18);
-const MUTED = rgb(0.42, 0.45, 0.52);
-const BRAND = rgb(0.15, 0.39, 0.92);
-const RED = rgb(0.85, 0.2, 0.25);
-const LEVEL_COLORS = [rgb(0.94, 0.27, 0.27), rgb(0.98, 0.75, 0.14), rgb(0.22, 0.74, 0.97), rgb(0.23, 0.51, 0.96), rgb(0.06, 0.73, 0.51)];
-const LEVEL_LABELS = ['Teoria', 'Nível 1', 'Nível 2', 'Nível 3', 'Dominado'];
+export const W = 595.28; // A4
+export const H = 841.89;
+export const M = 42;
+export const INK = rgb(0.1, 0.12, 0.18);
+export const MUTED = rgb(0.42, 0.45, 0.52);
+export const BRAND = rgb(0.15, 0.39, 0.92);
+export const RED = rgb(0.85, 0.2, 0.25);
+export const LEVEL_COLORS = [rgb(0.63, 0.63, 0.67), rgb(0.22, 0.74, 0.97), rgb(0.98, 0.75, 0.14), rgb(0.98, 0.45, 0.09), rgb(0.06, 0.73, 0.51)];
+export const LEVEL_LABELS = ['Teoria', 'Nível 1', 'Nível 2', 'Nível 3', 'Dominado'];
 
 /** Fonte padrão do PDF só tem Latin-1: troca o que não existe. */
-const clean = (s: string) =>
+export const clean = (s: string) =>
   s
     .replace(/[–—]/g, '-')
     .replace(/[‘’]/g, "'")
     .replace(/[“”]/g, '"')
     .replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
 
-class Writer {
+export class Writer {
   doc: PDFDocument;
   page!: PDFPage;
   y = 0;
@@ -89,7 +89,7 @@ class Writer {
     list.forEach((t, i) => {
       const detail =
         kind === 'hard'
-          ? [t.hard && `${t.hard}x ladeira abaixo`, t.medium && `${t.medium}x mais ou menos`, `${t.acc}% de acerto`].filter(Boolean).join(' · ')
+          ? [t.hard && `${t.hard}x sem passar`, t.medium && `${t.medium}x mais ou menos`, `${t.acc}% de acerto`].filter(Boolean).join(' · ')
           : kind === 'errors'
             ? `${t.errors} erros em ${t.questions} questões (${t.acc}%)`
             : `${t.correct}/${t.questions} acertos (${t.acc}%)`;
@@ -107,7 +107,7 @@ export async function reportPdf(r: MentoriaReport) {
   const when = r.week ? `Semana de ${dmy(r.week.from)} a ${dmy(r.week.to)}` : new Date(r.generatedAt).toLocaleDateString('pt-BR');
   const w = new Writer(doc, font, bold, `Relatório da mentoria · ${r.title} · ${when}`);
   const FEEL = ['', 'de boas', 'mais ou menos', 'ladeira abaixo'];
-  const KIND = ['estudo', 'revisão 01', 'revisão 02', 'revisão 03', 'manutenção'];
+  const KIND = ['teoria', 'nível 1', 'nível 2', 'nível 3', 'revisão'];
   const g = r.general;
   const group = r.students.length > 1;
 

@@ -483,3 +483,71 @@ export async function boardData(mentoriaId: string) {
   const weekly = lists.filter((t) => t.level === 0).slice(0, 6).map((t) => ({ id: t.list_id, discipline: DISCIPLINE_NAME[t.discipline] ?? t.discipline, status: t.status, at: t.created_at.slice(0, 10), q: t.review.length, ok: t.ok, total: t.total }));
   return { cards: out, weekly };
 }
+
+/** Painel do aluno: números, revisão, todos os assuntos com a fase e as listas da mentoria. */
+export async function studentPanel(m: { id: string; plan_disciplines: string[]; availability: number[] }) {
+  const { DISCIPLINES } = await import('@/lib/trilha-catalog');
+  const today = todayBR();
+  const [list, lists, acc, due, todayData] = await Promise.all([
+    cards(m.id),
+    sql.query<{ id: string; title: string; level: number; status: string; ok: number | null; total: number | null; created_at: string; n: number; answered: number }>(
+      `select t.list_id as id, l.title, t.level, t.status, t.ok, t.total, t.created_at::text as created_at, cardinality(l.question_ids)::int as n,
+              (select count(distinct r.question_id)::int from list_responses r where r.list_id = t.list_id) as answered
+         from mentoria_trail_lists t join question_lists l on l.id = t.list_id
+        where t.mentoria_id = $1 order by t.created_at desc limit 300`,
+      [m.id],
+    ),
+    sql.one<{ n: number; ok: number; week: number }>(
+      `select count(*)::int as n, count(*) filter (where r.correct)::int as ok,
+              count(*) filter (where r.answered_at > now() - interval '7 days')::int as week
+         from list_responses r join mentoria_trail_lists t on t.list_id = r.list_id where t.mentoria_id = $1`,
+      [m.id],
+    ),
+    sql.one<{ q: number; a: number }>(
+      `select (select count(*)::int from mentoria_qmemory where mentoria_id = $1 and box <= 2 and due <= $2) as q,
+              (select count(*)::int from mentoria_cards where mentoria_id = $1 and level >= 1 and next_review <= $2) as a`,
+      [m.id, today],
+    ),
+    dayData(m),
+  ]);
+  const by = new Map(list.map((c) => [c.item_key, c]));
+  const inPlan = new Set(list.map((c) => c.discipline));
+  const discs = DISCIPLINES.filter((d) => inPlan.has(d.key) || m.plan_disciplines.includes(d.key));
+  const subjects = (discs.length ? discs : DISCIPLINES).flatMap((d) =>
+    d.blocks.flatMap((b) =>
+      b.items.map((i) => {
+        const c = by.get(i.key);
+        return {
+          key: i.key,
+          discipline: d.key,
+          block: b.title,
+          title: i.title.includes(':') ? i.title.split(':').slice(1).join(':').trim() : i.title,
+          priority: i.priority,
+          // -1 fora da trilha; 0 teoria; 1 a 3 níveis; 4 dominado
+          phase: c ? Math.min(4, c.level) : -1,
+          hard: c?.hard ?? false,
+          scheduled: c?.scheduled_on ?? null,
+        };
+      }),
+    ),
+  );
+  return {
+    disciplines: (discs.length ? discs : DISCIPLINES).map((d) => ({ key: d.key, name: d.name })),
+    subjects,
+    // finalizada pelo aluno (fechada pelo mentor sem o aluno terminar não libera as resoluções)
+    lists: lists.map((l) => ({ ...l, finished: ['passed', 'failed', 'done'].includes(l.status) })),
+    stats: {
+      total: list.length,
+      mastered: list.filter((c) => c.level >= 4).length,
+      doing: list.filter((c) => c.level >= 1 && c.level <= 3).length,
+      hard: list.filter((c) => c.hard).length,
+      answered: acc?.n ?? 0,
+      accuracy: acc?.n ? Math.round(((acc.ok ?? 0) / acc.n) * 100) : null,
+      week: acc?.week ?? 0,
+      reviewQuestions: due?.q ?? 0,
+      reviewSubjects: due?.a ?? 0,
+      todayTasks: todayData.items.filter((i) => !i.result).length,
+      finishedLists: lists.filter((l) => l.status !== 'open').length,
+    },
+  };
+}

@@ -28,6 +28,10 @@ export const passedList = (ok: number, total: number) => total > 0 && ok * 2 > t
 const GAP_AFTER_PASS = [0, 2, 4];
 const REVIEW_HARD = 7;
 const REVIEW_EASY = 14;
+/** O assunto nunca fica mais de 1 mês sem voltar */
+const REVIEW_MAX = 30;
+/** Memória de cada questão (caixas de Leitner): dias até poder voltar, pela caixa (1 = errou) */
+const QUESTION_GAP = [0, 3, 7, 15, 30, 60];
 /** Revisões dentro de uma lista do assunto: no máximo 3 questões de outros assuntos */
 const MAX_REVIEW_IN_LIST = 3;
 /** Revisão atrasada há tantos dias sem nenhuma lista da disciplina para levar: vira a "Revisão da semana" */
@@ -122,20 +126,88 @@ const dueReviews = (mentoriaId: string, discipline: string, exceptKey: string, t
     [mentoriaId, discipline, exceptKey, today],
   );
 
+/**
+ * Questões de revisão de um assunto: metade (no máximo) são questões que o aluno errou e já estão na data de
+ * voltar (para ver se aprendeu); o resto são questões que ele ainda não viu — assim cada volta traz questões novas.
+ */
+async function reviewPick(mentoriaId: string, c: TrailCard, want: number, exclude: string[], today: string) {
+  const b = bankOf(c.item_key, c.discipline, c.title);
+  const wrong = (
+    await sql.query<{ question_id: string }>(
+      `select m.question_id from mentoria_qmemory m join questions q on q.id = m.question_id and q.status <> 'anulada'
+        where m.mentoria_id = $1 and m.item_key = $2 and m.box <= 2 and m.due <= $3 and not (m.question_id = any($4::text[]))
+        order by m.due, m.wrong desc limit $5`,
+      [mentoriaId, c.item_key, today, exclude, Math.ceil(want / 2)],
+    )
+  ).map((r) => r.question_id);
+  const lv = Math.min(3, Math.max(1, c.level >= 4 ? 3 : c.level));
+  const fresh = await pick(mentoriaId, c.item_key, b.disciplina, b.assunto, lv, want - wrong.length, [...exclude, ...wrong]);
+  return [...wrong, ...fresh.ids];
+}
+
 /** Escolhe as questões de revisão (1 por assunto; 2 se ele estiver com dificuldade) e marca a próxima vez. */
-async function reviewQuestions(mentoriaId: string, cards: TrailCard[], exclude: string[], cap: number, today: string) {
+async function reviewQuestions(mentoriaId: string, cards: (TrailCard & { review_every?: number })[], exclude: string[], cap: number, today: string) {
   const out: { q: string; k: string }[] = [];
   for (const c of cards) {
     if (out.length >= cap) break;
-    const b = bankOf(c.item_key, c.discipline, c.title);
-    const want = Math.min(cap - out.length, c.hard ? 2 : 1);
-    const lv = Math.min(3, Math.max(1, c.level >= 4 ? 3 : c.level));
-    const r = await pick(mentoriaId, c.item_key, b.disciplina, b.assunto, lv, want, [...exclude, ...out.map((x) => x.q)]);
-    for (const q of r.ids) out.push({ q, k: c.item_key });
-    if (r.ids.length)
-      await sql.exec(`update mentoria_cards set next_review = $3 where id = $1 and mentoria_id = $2`, [c.id, mentoriaId, shift(today, c.hard ? REVIEW_HARD : REVIEW_EASY)]);
+    const ids = await reviewPick(mentoriaId, c, Math.min(cap - out.length, c.hard ? 2 : 1), [...exclude, ...out.map((x) => x.q)], today);
+    for (const q of ids) out.push({ q, k: c.item_key });
+    // já foi revisado agora: a próxima volta é pelo intervalo do assunto (o resultado ajusta depois)
+    if (ids.length) await sql.exec(`update mentoria_cards set next_review = $3::date + review_every where id = $1 and mentoria_id = $2`, [c.id, mentoriaId, today]);
   }
   return out;
+}
+
+/**
+ * Lista de revisão pedida pelo aluno, com o que ele já estudou: primeiro as questões que ele errou e já estão
+ * na data de voltar, depois questões novas dos assuntos estudados (os com dificuldade e os há mais tempo sem
+ * revisar primeiro), revezando os assuntos.
+ */
+export async function createStudentReview(mentoriaId: string, size: number, discipline?: string) {
+  const today = todayBR();
+  const n = Math.max(5, Math.min(30, Math.round(size) || 10));
+  const cards = await sql.query<TrailCard>(
+    `select ${CARD_COLS} from mentoria_cards where mentoria_id = $1 and level >= 1 ${discipline ? 'and discipline = $2' : ''}
+      order by hard desc, next_review nulls last, updated_at`,
+    discipline ? [mentoriaId, discipline] : [mentoriaId],
+  );
+  if (!cards.length) return { error: 'Você ainda não estudou nenhum assunto. Termine a teoria de um assunto e faça a lista do Nível 1.' };
+  const keys = cards.map((c) => c.item_key);
+  const out: { q: string; k: string }[] = (
+    await sql.query<{ question_id: string; item_key: string }>(
+      `select m.question_id, m.item_key from mentoria_qmemory m join questions q on q.id = m.question_id and q.status <> 'anulada'
+        where m.mentoria_id = $1 and m.item_key = any($2) and m.box <= 2 and m.due <= $3 order by m.due, m.wrong desc limit $4`,
+      [mentoriaId, keys, today, Math.floor(n / 2)],
+    )
+  ).map((r) => ({ q: r.question_id, k: r.item_key }));
+  // revezando os assuntos: 1 questão nova de cada, até completar
+  for (let round = 0; round < 6 && out.length < n; round++) {
+    let added = 0;
+    for (const c of cards) {
+      if (out.length >= n) break;
+      const b = bankOf(c.item_key, c.discipline, c.title);
+      const lv = Math.min(3, Math.max(1, c.level >= 4 ? 3 : c.level));
+      const r = await pick(mentoriaId, c.item_key, b.disciplina, b.assunto, lv, 1, out.map((x) => x.q));
+      if (r.ids[0]) {
+        out.push({ q: r.ids[0], k: c.item_key });
+        added++;
+      }
+    }
+    if (!added) break;
+  }
+  if (!out.length) return { error: 'Não há questões dos assuntos estudados no banco.' };
+  const day = today.slice(8, 10) + '/' + today.slice(5, 7);
+  const listId = await insertList(mentoriaId, `Revisão · ${day}${discipline ? ` · ${DISCIPLINE_NAME[discipline] ?? discipline}` : ''}`, out.map((r) => r.q));
+  await sql.exec(
+    `insert into mentoria_trail_lists (id, mentoria_id, card_id, item_key, discipline, level, round, list_id, main_ids, review)
+     values ($1, $2, null, 'revisao:aluno', $3, 0, 1, $4, '{}', $5)`,
+    [newId(), mentoriaId, discipline ?? 'todas', listId, JSON.stringify(out)],
+  );
+  await sql.exec(
+    `update mentoria_cards set next_review = $3::date + review_every where mentoria_id = $1 and item_key = any($2)`,
+    [mentoriaId, [...new Set(out.map((r) => r.k))], today],
+  );
+  return { ok: true as const, listId, count: out.length };
 }
 
 async function insertList(mentoriaId: string, title: string, ids: string[]) {
@@ -204,7 +276,8 @@ export async function setTrailLevel(mentoriaId: string, cardId: string, level: n
     `update mentoria_cards set level = $3, step = 'study', retained = 0, updated_at = now(),
             due_on = case when $3 between 1 and 3 then $4::date else null end,
             mastered_on = case when $3 = 4 then coalesce(mastered_on, $4::date) else null end,
-            next_review = case when $3 = 4 then $5::date when $3 = 0 then null else next_review end
+            next_review = case when $3 = 4 then $5::date when $3 = 0 then null else next_review end,
+            review_every = case when $3 = 4 then (case when hard then 7 else 14 end) else review_every end
       where id = $1 and mentoria_id = $2`,
     [cardId, mentoriaId, to, today, shift(today, c.hard ? REVIEW_HARD : REVIEW_EASY)],
   );
@@ -272,18 +345,41 @@ export async function afterTrailList(listId: string, userId: string): Promise<Tr
   const ok = valid.filter((q) => right.get(q.id)).length;
   const today = todayBR();
 
-  // revisões: errou → o assunto fica com dificuldade e volta em 1 semana; acertou 2 seguidas → sai da dificuldade
-  for (const r of t.review) {
-    const correct = right.get(r.q) === true;
+  // memória de cada questão (caixas): errou → volta em 3 dias; acertou → o intervalo cresce (7, 15, 30, 60 dias)
+  const all = [...t.main_ids.map((q) => ({ q, k: t.item_key })), ...t.review];
+  if (all.length) {
+    const ids = all.map((x) => x.q);
+    const keys = all.map((x) => x.k);
+    const ok2 = all.map((x) => right.get(x.q) === true);
+    await sql.exec(
+      `insert into mentoria_qmemory as m (mentoria_id, question_id, item_key, box, seen, wrong, due, last_on)
+       select $1, v.q, v.k, case when v.c then 2 else 1 end, 1, case when v.c then 0 else 1 end,
+              $2::date + (case when v.c then $4::int else $3::int end), $2::date
+         from unnest($5::text[], $6::text[], $7::bool[]) as v(q, k, c)
+       on conflict (mentoria_id, question_id) do update set
+         box = case when excluded.wrong = 0 then least(5, greatest(m.box, 1) + 1) else 1 end,
+         seen = m.seen + 1, wrong = m.wrong + excluded.wrong, last_on = excluded.last_on,
+         due = excluded.last_on + (case when excluded.wrong = 0 then (array[0, 3, 7, 15, 30, 60])[least(5, greatest(m.box, 1) + 1) + 1] else $3::int end)`,
+      [t.mentoria_id, today, QUESTION_GAP[1], QUESTION_GAP[2], ids, keys, ok2],
+    );
+  }
+
+  // revisão de cada assunto (todas as questões dele nesta lista):
+  //  acertou tudo → o intervalo cresce (até 1 mês) e, com 2 revisões certas seguidas, sai da dificuldade;
+  //  errou alguma → dificuldade, intervalo volta para 1 semana
+  const byKey = new Map<string, boolean>();
+  for (const r of t.review) byKey.set(r.k, (byKey.get(r.k) ?? true) && right.get(r.q) === true);
+  for (const [k, correct] of byKey) {
     // (no update os valores da direita são os de antes)
     await sql.exec(
       `update mentoria_cards set
           review_ok = case when $3 then review_ok + 1 else 0 end,
           hard = case when $3 then hard and review_ok + 1 < 2 else true end,
-          next_review = case when $3 and not (hard and review_ok + 1 < 2) then $5::date else $4::date end,
+          review_every = case when $3 then least($6::int, greatest($4::int, round(review_every * 1.8)::int)) else $4::int end,
+          next_review = $5::date + case when $3 then least($6::int, greatest($4::int, round(review_every * 1.8)::int)) else $4::int end,
           updated_at = now()
         where mentoria_id = $1 and item_key = $2 and level >= 1`,
-      [t.mentoria_id, r.k, correct, shift(today, REVIEW_HARD), shift(today, REVIEW_EASY)],
+      [t.mentoria_id, k, correct, REVIEW_HARD, today, REVIEW_MAX],
     );
   }
 
@@ -312,7 +408,7 @@ export async function afterTrailList(listId: string, userId: string): Promise<Tr
     const hard = mastered ? c.retained_total >= 2 : false;
     await sql.exec(
       `update mentoria_cards set level = $3, retained = 0, step = 'study', last_acc = $4, attempts = attempts + 1, history = $5,
-              hard = $6, review_ok = 0,
+              hard = $6, review_ok = 0, review_every = case when $8 then $11::int else review_every end,
               due_on = $7, mastered_on = case when $8 then $9::date else mastered_on end,
               next_review = case when $8 then $10::date else next_review end, updated_at = now()
         where id = $1 and mentoria_id = $2`,
@@ -327,6 +423,7 @@ export async function afterTrailList(listId: string, userId: string): Promise<Tr
         mastered,
         today,
         shift(today, hard ? REVIEW_HARD : REVIEW_EASY),
+        hard ? REVIEW_HARD : REVIEW_EASY,
       ],
     );
     const next = mastered ? null : await createTrailList(t.mentoria_id, c.id);

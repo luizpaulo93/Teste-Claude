@@ -4,7 +4,7 @@ import { refresh as refreshClient } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
 import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/trilha-catalog';
 import { shift, todayBR } from '@/lib/mentoria';
-import { newTrailList, setTrailLevel, setTrailSize } from '@/lib/trilha';
+import { createStudentReview, newTrailList, setTrailLevel, setTrailSize } from '@/lib/trilha';
 import { checkOptions, createCheck } from '@/lib/mentoria-checks';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
 import { getViewer } from '@/lib/session';
@@ -108,6 +108,17 @@ export async function newListNow(id: string, mentoriaId: string): Promise<Result
   if ('error' in r) return { error: r.error };
   refresh(a.id);
   return { ok: true, listId: r.listId };
+}
+
+/** Aluno: lista de revisão com o que já estudou (5 a 30 questões; uma disciplina ou todas). */
+export async function createReviewList(size: number, discipline?: string, mentoriaId?: string): Promise<Result & { listId?: string; count?: number }> {
+  const a = await access(mentoriaId);
+  if (!a) return { error: 'Sem acesso.' };
+  const disc = discipline && /^[a-z]{3,20}$/.test(discipline) ? discipline : undefined;
+  const r = await createStudentReview(a.id, Number(size), disc);
+  if ('error' in r) return { error: r.error };
+  refresh(a.id);
+  return { ok: true, listId: r.listId, count: r.count };
 }
 
 // ---------------- Horários do aluno

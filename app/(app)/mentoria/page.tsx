@@ -1,61 +1,79 @@
-import { CalendarClock, Video } from 'lucide-react';
+import { CalendarDays, Trophy } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Checks } from '@/components/mentoria/checks';
-import { DayList } from '@/components/mentoria/day-list';
-import { checksOf } from '@/lib/mentoria-checks';
-import { buttonClass, Card } from '@/components/ui';
-import { emailKey, sql } from '@/lib/db';
-import { blocksOf, blocksOnDay, spacesOfMentoria } from '@/lib/mentoria-blocks';
-import { dayData, ensureFresh, getMentoria, nextMeeting } from '@/lib/mentoria-data';
+import { AllSubjects, MentoriaLists, ReviewButton } from '@/components/mentoria/student-panel';
+import { Card } from '@/components/ui';
+import { emailKey } from '@/lib/db';
+import { ensureFresh, getMentoria, studentPanel } from '@/lib/mentoria-data';
 import { requireViewer } from '@/lib/session';
-import { formatDateTime } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Mentoria' };
 
-/** Cronograma do dia: abre em hoje; escolhe outro dia da semana para ver os assuntos. */
-export default async function MentoriaToday({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
+/** Painel do aluno: como está, o que fazer hoje, revisão, todos os assuntos do ENEM com a fase e as listas. */
+export default async function MentoriaPanel() {
   const viewer = await requireViewer();
   const m = await getMentoria(emailKey(viewer.email));
   if (!m) return null;
-  const [has, blocks, checks] = await Promise.all([
-    sql.one(`select 1 from mentoria_cards where mentoria_id = $1 limit 1`, [m.id]),
-    spacesOfMentoria(m.id).then(blocksOf),
-    checksOf(m.id),
-  ]);
-  if (!has && !blocks.length) {
-    return (
-      <div className="space-y-4">
-        <Checks checks={checks} />
-        <p className="rounded-xl border border-dashed border-line-strong p-8 text-center text-sm text-muted">Seu cronograma está sendo montado.</p>
-      </div>
-    );
-  }
   await ensureFresh(m.id);
-  const [data, meeting] = await Promise.all([dayData(m, (await searchParams).d), nextMeeting(m.id)]);
+  const p = await studentPanel(m);
+  const s = p.stats;
+  const pct = s.total ? Math.round((s.mastered / s.total) * 100) : 0;
   return (
-    <div className="space-y-4">
-      {!m.availability.some(Boolean) && (
-        <Link href="/mentoria/horarios" className="block rounded-xl border border-brand/40 bg-brand/10 p-3.5 text-sm text-ink">
-          <strong>Informe seus horários</strong> para os assuntos se distribuírem nos seus dias de estudo →
-        </Link>
-      )}
-      {meeting && data.day === data.today && (
-        <Card className="flex items-center gap-3 p-3.5">
-          <CalendarClock className="size-5 shrink-0 text-brand" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-ink">{meeting.title}</p>
-            <p className="text-xs text-muted">{formatDateTime(meeting.starts_at)}</p>
-          </div>
-          {meeting.link && (
-            <a href={meeting.link} target="_blank" rel="noopener noreferrer" className={buttonClass('primary', 'sm')}>
-              <Video className="size-3.5" /> Entrar
-            </a>
-          )}
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-line bg-line lg:grid-cols-4">
+        <Kpi label="Dominados" value={`${s.mastered}/${s.total}`} hint={`${pct}% da trilha`} />
+        <Kpi label="Em andamento" value={String(s.doing)} hint={s.hard ? `${s.hard} com reforço` : 'nos níveis 1 a 3'} />
+        <Kpi label="Acerto nas listas" value={s.accuracy === null ? '—' : `${s.accuracy}%`} hint={`${s.answered} questões`} />
+        <Kpi label="Últimos 7 dias" value={String(s.week)} hint="questões resolvidas" />
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-surface-3">
+        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <Card className="flex flex-col gap-3 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <CalendarDays className="size-4 text-muted" /> Hoje
+          </p>
+          <p className="text-sm text-ink-2">
+            {s.todayTasks ? `${s.todayTasks} ${s.todayTasks === 1 ? 'tarefa' : 'tarefas'} na sua agenda (teoria, listas e revisões).` : 'Nada pendente para hoje.'}
+          </p>
+          <Link href="/mentoria/agenda" className="mt-auto text-sm font-medium text-brand">
+            Abrir a agenda →
+          </Link>
         </Card>
-      )}
-      <Checks checks={checks} />
-      <DayList key={data.day + data.items.map((i) => i.id + i.step).join()} {...data} folder={blocksOnDay(blocks, data.day)} />
+        <Card className="flex flex-col gap-3 p-4">
+          <p className="flex items-center gap-2 text-sm font-semibold text-ink">
+            <Trophy className="size-4 text-muted" /> Revisão
+          </p>
+          <p className="text-sm text-ink-2">
+            {s.reviewQuestions || s.reviewSubjects
+              ? `${s.reviewQuestions} questões que você errou já podem voltar · ${s.reviewSubjects} assuntos na hora de revisar.`
+              : 'Tudo em dia. Revise quando quiser com o que já estudou.'}
+          </p>
+          <ReviewButton disciplines={p.disciplines} className="mt-auto self-start" />
+        </Card>
+      </div>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold tracking-[-0.015em] text-ink">Todos os assuntos do ENEM</h2>
+        <AllSubjects subjects={p.subjects} disciplines={p.disciplines} />
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold tracking-[-0.015em] text-ink">Listas da mentoria</h2>
+        <MentoriaLists lists={p.lists} />
+      </section>
+    </div>
+  );
+}
+
+function Kpi({ label, value, hint }: { label: string; value: string; hint: string }) {
+  return (
+    <div className="bg-surface px-4 py-3.5">
+      <p className="font-mono text-[10.5px] tracking-[0.06em] text-muted uppercase">{label}</p>
+      <p className="num mt-1.5 text-2xl font-medium text-ink">{value}</p>
+      <p className="mt-0.5 text-[11px] text-muted">{hint}</p>
     </div>
   );
 }
