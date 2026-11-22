@@ -22,6 +22,8 @@ export interface Viewer {
   classCourseIds: string[];
   /** Aluno liberado (ativo e com turma) ou admin, ou plataforma aberta. */
   isMember: boolean;
+  /** Questões: banco de exercícios e geração de listas (liberado pela turma ou à parte pelo admin). */
+  canQuestoes: boolean;
   /** Participa da mentoria (individual, em grupo ou pela turma). */
   hasMentoria: boolean;
   /** Grupos de mentoria de que participa */
@@ -124,6 +126,10 @@ export const getViewer = cache(async (): Promise<Viewer | null> => {
     classGroup,
     classCourseIds: classGroup?.course_ids ?? [],
     isMember,
+    // questões à parte: o admin pode liberar sem turma (true) ou tirar de quem tem turma (false)
+    canQuestoes:
+      isAdmin ||
+      (student?.questoes === true ? student.status === 'active' : student?.questoes === false ? false : isMember),
     hasMentoria: isAdmin || Boolean(row?.mentoria) || Boolean(row?.groups?.length),
     mentoriaGroups: row?.groups ?? [],
     pdfOwner: isAdmin

@@ -4,14 +4,17 @@ import { confirmDialog } from '@/components/confirm';
 
 import { Ban, CheckCircle2, ChevronLeft, ChevronRight, Pencil, Search, Trash2, Upload, UserPlus } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState, useTransition } from 'react';
+import { useCallback, useEffect, useState, useTransition } from 'react';
+import { AccessFields, AccessModal } from '@/components/admin/access-modal';
+import type { AccessInput } from '../access-actions';
 import { ActionForm } from '@/components/admin/action-form';
 import { toast } from '@/components/toast';
 import { Avatar, Badge, Button, Card, EmptyState, Field, Input, Select, Textarea } from '@/components/ui';
 import { ActionButton, Modal, Spinner, SubmitButton } from '@/components/ui-client';
 import type { ClassGroup, Student } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { addUsersToClass, bulkStudents, deleteStudent, importStudents, listUnassignedUsers, saveStudent, setStudentStatus } from '../people-actions';
+import { saveAccess } from '../access-actions';
+import { bulkStudents, deleteStudent, importStudents, listUnassignedUsers, saveStudent, setStudentStatus } from '../people-actions';
 
 export function StudentsManager({
   students,
@@ -38,6 +41,8 @@ export function StudentsManager({
   const [importOpen, setImportOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [accessOf, setAccessOf] = useState<string | null>(null);
+  const closeAccess = useCallback(() => setAccessOf(null), []);
   const [q, setQ] = useState(filters.q);
   const profileBy = new Map(profiles.map((p) => [p.email.toLowerCase(), p]));
   const className = (id: string | null) => classes.find((c) => c.id === id)?.name;
@@ -172,11 +177,20 @@ export function StudentsManager({
                   />
                   <Avatar name={s.name || prof?.full_name || s.email} src={prof?.avatar_url} size={34} />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-ink">{s.name || prof?.full_name || s.email}</p>
+                    <button
+                      type="button"
+                      onClick={() => setAccessOf(s.email)}
+                      title="Liberar acesso"
+                      className="block max-w-full truncate text-left text-sm font-semibold text-ink hover:text-brand"
+                    >
+                      {s.name || prof?.full_name || s.email}
+                    </button>
                     <p className="truncate text-xs text-muted">{s.email}</p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {className(s.class_id) ? <Badge>{className(s.class_id)}</Badge> : <Badge tone="warning">Sem turma</Badge>}
                       {s.status !== 'active' && <Badge tone="danger">Bloqueado</Badge>}
+                      {s.questoes === true && <Badge>Questões</Badge>}
+                      {s.questoes === false && s.class_id && <Badge>Sem questões</Badge>}
                       {!prof && <Badge>Nunca entrou</Badge>}
                     </div>
                   </div>
@@ -281,6 +295,8 @@ export function StudentsManager({
         )}
       </Modal>
 
+      <AccessModal email={accessOf} onClose={closeAccess} classes={classes} />
+
       <AddUsersModal
         open={addOpen}
         onClose={() => setAddOpen(false)}
@@ -330,8 +346,9 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
   const [q, setQ] = useState('');
   const [users, setUsers] = useState<{ email: string; name: string; avatar_url: string }[] | null>(null);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [classId, setClassId] = useState(classes[0]?.id ?? '');
+  const [access, setAccess] = useState<AccessInput>({ classId: classes[0]?.id ?? null, mentoria: false, questoes: true });
   const [saving, start] = useTransition();
+  const none = access.classId === null && !access.mentoria && !access.questoes;
 
   useEffect(() => {
     if (!open) return;
@@ -367,9 +384,9 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
 
   const save = () =>
     start(async () => {
-      const r = await addUsersToClass([...picked], classId);
+      const r = await saveAccess([...picked], access);
       if (r.error) return void toast.error(r.error);
-      toast(`${r.count} aluno${r.count === 1 ? '' : 's'} adicionado${r.count === 1 ? '' : 's'} à turma`);
+      toast(`Acesso liberado para ${r.count} pessoa${r.count === 1 ? '' : 's'}`);
       onClose();
     });
 
@@ -380,18 +397,9 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
       title="Adicionar alunos"
       size="lg"
       footer={
-        <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center">
-          <Select value={classId} onChange={(e) => setClassId(e.target.value)} className="min-w-0 sm:flex-1" aria-label="Turma">
-            {classes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </Select>
-          <Button onClick={save} disabled={saving || !picked.size || !classId}>
-            {saving ? <Spinner /> : <UserPlus className="size-4" />} Adicionar {picked.size || ''} à turma
-          </Button>
-        </div>
+        <Button onClick={save} disabled={saving || !picked.size || none || access.classId === ''} className="w-full sm:w-auto">
+          {saving ? <Spinner /> : <UserPlus className="size-4" />} Liberar para {picked.size || ''} {picked.size === 1 ? 'pessoa' : 'pessoas'}
+        </Button>
       }
     >
       <div className="space-y-3">
@@ -399,7 +407,7 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
           <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Pesquisar e-mail ou nome" className="pl-10" autoFocus />
         </div>
-        <p className="text-xs text-muted">Usuários que ainda não estão em nenhuma turma{users ? ` · ${users.length}` : ''}</p>
+        <p className="text-xs text-muted">Pessoas que ainda não estão em nenhuma turma{users ? ` · ${users.length}` : ''}</p>
         {users === null ? (
           <div className="grid place-items-center py-10">
             <Spinner className="text-brand" />
@@ -427,6 +435,10 @@ function AddUsersModal({ open, onClose, classes, onManual }: { open: boolean; on
         ) : (
           <p className="rounded-xl border border-line p-5 text-center text-sm text-muted">Nenhum usuário sem turma{q ? ' com essa busca' : ''}.</p>
         )}
+        <div className="space-y-2 border-t border-line pt-4">
+          <p className="text-sm font-semibold text-ink">O que liberar</p>
+          <AccessFields value={access} onChange={setAccess} classes={classes} />
+        </div>
         <button type="button" onClick={onManual} className="text-xs font-semibold text-brand">
           O aluno ainda não criou conta? Cadastrar e-mail manualmente
         </button>

@@ -11,7 +11,7 @@ import { getViewer } from '@/lib/session';
  */
 export async function answerQuestion(id: string, letter: string) {
   const v = await getViewer();
-  if (!v || !(v.isMember || v.isAdmin)) return { error: 'Acesso negado.' };
+  if (!v || !v.canQuestoes) return { error: 'Acesso negado.' };
   const q = await sql.one<{ gabarito: string; status: string; resolucao: string; resolucao_blocos: QBloco[] }>(
     `select gabarito, status, resolucao, resolucao_blocos from questions where id = $1`,
     [id],

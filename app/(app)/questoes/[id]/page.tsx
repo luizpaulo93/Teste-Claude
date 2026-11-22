@@ -24,7 +24,7 @@ export default async function QuestaoPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const viewer = await requireViewer();
-  if (!viewer.isMember && !viewer.isAdmin) redirect('/');
+  if (!viewer.canQuestoes) redirect('/');
   const { id } = await params;
   const f = readFilters(await searchParams);
   // o aluno não filtra por ano (nem por prova)

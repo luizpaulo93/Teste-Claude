@@ -26,7 +26,7 @@ const plain = (s: string) =>
 
 export default async function QuestoesPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const viewer = await requireViewer();
-  if (!viewer.isMember && !viewer.isAdmin) redirect('/');
+  if (!viewer.canQuestoes) redirect('/');
   const sp = await searchParams;
   const f = readFilters(sp);
   // o aluno não filtra por ano (nem por prova, que já diz o ano)

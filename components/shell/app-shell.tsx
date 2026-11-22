@@ -2,6 +2,7 @@
 
 import {
   BarChart3,
+  ChevronDown,
   CalendarDays,
   ClipboardCheck,
   Compass,
@@ -27,6 +28,7 @@ import { Avatar } from '@/components/ui';
 import { InstallApp } from '@/components/install-app';
 import { SignOutButton } from '@/components/sign-out-button';
 import { cn } from '@/lib/utils';
+import { ADMIN_TABS } from '@/app/(app)/admin/admin-nav';
 
 interface NavItem {
   href: string;
@@ -59,6 +61,7 @@ export function AppShell({
   user,
   isAdmin,
   isMember,
+  canQuestoes = isMember,
   hasMentoria,
   liveNow = false,
   mentoriaAlert = 0,
@@ -69,6 +72,7 @@ export function AppShell({
   user: { name: string; email: string; avatar: string };
   isAdmin: boolean;
   isMember: boolean;
+  canQuestoes?: boolean;
   hasMentoria: boolean;
   liveNow?: boolean;
   mentoriaAlert?: number;
@@ -95,7 +99,7 @@ export function AppShell({
     { href: '/minhas-aulas', label: 'Minhas aulas', icon: Heart },
     // Desempenho no lugar de Simulados (e Simulados no lugar de Desempenho)
     { href: '/desempenho', label: 'Desempenho', icon: BarChart3, show: isMember },
-    { href: '/questoes', label: isAdmin ? 'Questões' : 'Exercícios', icon: FileQuestion, show: isMember },
+    { href: '/questoes', label: isAdmin ? 'Questões' : 'Exercícios', icon: FileQuestion, show: canQuestoes },
     { href: '/simulados', label: 'Simulados', icon: ClipboardCheck, show: isMember, dot: fresh('/simulados', news.simulados) },
     { href: '/duvidas', label: 'Dúvidas', icon: MessageCircleQuestion, show: isMember },
     // Mentor vai direto para a gestão da mentoria (com aviso de dúvidas sem resposta)
@@ -105,6 +109,10 @@ export function AppShell({
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
   const inAdmin = pathname.startsWith('/admin');
+  // Admin: a lateral tem dois menus que abrem e fecham (abrir um recolhe o outro)
+  const [section, setSection] = useState<'geral' | 'admin' | null>(inAdmin ? 'admin' : 'geral');
+  const toggleSection = (s: 'geral' | 'admin') => setSection((v) => (v === s ? null : s));
+  const adminActive = (href: string) => (href === '/admin' ? pathname === '/admin' : pathname.startsWith(href));
 
   // Sempre 4 atalhos + "Mais": primeiro os preferidos, depois completa com os outros
   // Dúvidas no menu de baixo; Calendário fica no "Mais" (entra só se faltar atalho)
@@ -127,14 +135,25 @@ export function AppShell({
           <span className="truncate text-[13px] font-semibold tracking-[0.04em] text-ink uppercase">{brand}</span>
         </Link>
         <nav className="scrollbar-thin flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {items.map((item) => (
-            <NavLink key={item.href} item={item} active={isActive(item.href)} />
-          ))}
-          {isAdmin && (
+          {isAdmin ? (
             <>
-              <div className="px-3 pt-6 pb-2 font-mono text-[10.5px] font-medium tracking-[0.08em] text-muted uppercase">Gestão</div>
-              <NavLink item={{ href: '/admin', label: 'Painel admin', icon: Shield }} active={inAdmin} />
+              <Section title="Geral" icon={Home} open={section === 'geral'} onToggle={() => toggleSection('geral')}>
+                {items.map((item) => (
+                  <NavLink key={item.href} item={item} active={isActive(item.href)} />
+                ))}
+              </Section>
+              <Section title="Admin" icon={Shield} open={section === 'admin'} onToggle={() => toggleSection('admin')} dot={mentoriaAlert > 0}>
+                {ADMIN_TABS.map((t) => (
+                  <NavLink
+                    key={t.href}
+                    item={{ href: t.href, label: t.label, icon: t.icon, dot: t.href === '/admin/mentoria' && mentoriaAlert > 0 }}
+                    active={adminActive(t.href)}
+                  />
+                ))}
+              </Section>
             </>
+          ) : (
+            items.map((item) => <NavLink key={item.href} item={item} active={isActive(item.href)} />)
           )}
         </nav>
         <div className="border-t border-line p-3">
@@ -259,6 +278,47 @@ export function AppShell({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Menu da lateral que abre e fecha (Geral / Admin) */
+function Section({
+  title,
+  icon: Icon,
+  open,
+  onToggle,
+  dot,
+  children,
+}: {
+  title: string;
+  icon: typeof Home;
+  open: boolean;
+  onToggle: () => void;
+  dot?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className="pb-1">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className={cn(
+          'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 font-mono text-[11px] font-medium tracking-[0.08em] uppercase transition-colors',
+          open ? 'text-ink' : 'text-muted hover:bg-surface-2/70 hover:text-ink',
+        )}
+      >
+        <Icon className="size-[15px] shrink-0" strokeWidth={1.75} />
+        {title}
+        {!open && dot && <span aria-label="Novidade" className="size-1.5 rounded-full bg-red-500" />}
+        <ChevronDown className={cn('ml-auto size-4 transition-transform duration-200', open ? 'rotate-180' : '')} />
+      </button>
+      <div className={cn('grid transition-[grid-template-rows] duration-200 ease-out', open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]')}>
+        <div className={cn('min-h-0 space-y-1 overflow-hidden', open ? 'pt-1' : '')} inert={!open}>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }

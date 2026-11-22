@@ -19,7 +19,7 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-const TABS = [
+export const ADMIN_TABS = [
   { href: "/admin", label: "Visão geral", icon: BarChart3 },
   { href: "/admin/aulas", label: "Aulas", icon: FolderOpen },
   { href: "/admin/cursos", label: "Cursos", icon: BookOpen },
@@ -50,16 +50,16 @@ export function AdminNav({ mentoriaAlert = 0 }: { mentoriaAlert?: number }) {
   // Só nas telas de gestão (e em Desempenho/Calendário, que o admin abre daqui)
   if (!/^\/(admin|desempenho|calendario)(\/|$)/.test(pathname)) return null;
   return (
-    // fica preso no topo ao rolar (abaixo da barra do celular)
+    // celular e tablet em pé: fica preso no topo ao rolar. Na tela grande o menu do admin fica na lateral
     <div
       data-chrome
-      className="sticky top-14 z-30 -mx-4 mb-6 border-b border-line bg-bg/95 backdrop-blur-xl sm:-mx-6 lg:top-0 lg:-mx-10"
+      className="sticky top-14 z-30 -mx-4 mb-6 border-b border-line bg-bg/95 backdrop-blur-xl sm:-mx-6 lg:hidden"
     >
       <div
         ref={rail}
         className="rail flex gap-1 overflow-x-auto px-4 sm:px-6 lg:px-10"
       >
-        {TABS.map((t) => {
+        {ADMIN_TABS.map((t) => {
           const active =
             t.href === "/admin"
               ? pathname === "/admin"

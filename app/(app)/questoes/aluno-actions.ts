@@ -8,7 +8,7 @@ import { getViewer } from '@/lib/session';
 
 async function student() {
   const v = await getViewer();
-  if (!v || !(v.isMember || v.isAdmin)) throw new Error('Acesso negado.');
+  if (!v || !v.canQuestoes) throw new Error('Acesso negado.');
   return v;
 }
 const clean = (f: AdminFilters): AdminFilters => {

@@ -1,9 +1,9 @@
 import { BookOpen, ClipboardCheck, MessageCircleQuestion, PlayCircle, UserCheck, Users } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Avatar, Badge, Card, PageHeader, Stat } from '@/components/ui';
+import { Card, PageHeader, Stat } from '@/components/ui';
+import { RecentPeople, type RecentPerson } from './recent-people';
 import { getCatalogData, sql } from '@/lib/db';
-import { timeAgo } from '@/lib/utils';
 
 export const metadata: Metadata = { title: 'Painel admin' };
 
@@ -17,14 +17,18 @@ export default async function AdminHome() {
               (select count(*) from users)::int as users`,
     ),
     getCatalogData(),
-    sql.query<{ id: string; email: string; full_name: string; avatar_url: string; role: string; created_at: string; status: string | null }>(
-      `select u.id, u.email, u.full_name, u.avatar_url, u.role, u.created_at, s.status
-         from users u left join students s on s.email = u.email
+    sql.query<RecentPerson>(
+      `select u.id, u.email, u.full_name, u.avatar_url, u.role, u.created_at, s.status, c.name as class_name,
+              coalesce(case when s.questoes is null then s.status = 'active' and s.class_id is not null else s.questoes end, false) as questoes,
+              exists(select 1 from mentorias m where m.id = replace(lower(u.email), '/', '_') and m.status = 'active') as mentoria
+         from users u
+         left join students s on s.email = lower(u.email)
+         left join classes c on c.id = s.class_id
          order by u.created_at desc limit 8`,
     ),
   ]);
   const { students = 0, active = 0, open_doubts: openDoubts = 0, sims = 0, users = 0 } = counts ?? {};
-  const listedMap = new Map(recentList.filter((u) => u.status).map((u) => [u.email.toLowerCase(), u.status as string]));
+  const classes = [...catalog.classes].sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, name: c.name }));
 
   return (
     <>
@@ -64,35 +68,15 @@ export default async function AdminHome() {
 
       <Card className="mt-6 overflow-hidden">
         <div className="flex items-center justify-between border-b border-line p-4 sm:p-5">
-          <p className="text-sm font-bold text-ink">Últimos cadastros</p>
+          <div>
+            <p className="text-sm font-bold text-ink">Últimos cadastros</p>
+            <p className="text-xs text-muted">Toque na pessoa para liberar turma, mentoria ou questões.</p>
+          </div>
           <Link href="/admin/alunos" className="text-xs font-semibold text-brand">
             Gerenciar alunos
           </Link>
         </div>
-        <ul className="divide-y divide-line">
-          {recentList.map((u) => {
-            const st = listedMap.get(u.email.toLowerCase());
-            return (
-              <li key={u.id} className="flex items-center gap-3 px-4 py-3 sm:px-5">
-                <Avatar name={u.full_name || u.email} src={u.avatar_url} size={34} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-ink">{u.full_name || '—'}</p>
-                  <p className="truncate text-xs text-muted">{u.email}</p>
-                </div>
-                {u.role === 'admin' ? (
-                  <Badge tone="brand">Admin</Badge>
-                ) : st === 'active' ? (
-                  <Badge tone="success">Liberado</Badge>
-                ) : st === 'blocked' ? (
-                  <Badge tone="danger">Bloqueado</Badge>
-                ) : (
-                  <Badge tone="warning">Fora da lista</Badge>
-                )}
-                <span className="hidden text-xs text-muted sm:block">{timeAgo(u.created_at)}</span>
-              </li>
-            );
-          })}
-        </ul>
+        <RecentPeople people={recentList} classes={classes} />
       </Card>
     </>
   );

@@ -108,6 +108,8 @@ export interface Student {
   birth_date: string | null;
   class_id: string | null;
   status: 'active' | 'blocked';
+  /** questões e geração de listas: null = segue a turma; true = liberado mesmo sem turma; false = sem acesso */
+  questoes?: boolean | null;
   created_at: string;
 }
 

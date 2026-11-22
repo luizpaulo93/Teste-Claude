@@ -954,3 +954,10 @@ create table if not exists mentoria_qmemory (
 create index if not exists mqmem_due_idx on mentoria_qmemory (mentoria_id, due);
 create index if not exists mqmem_key_idx on mentoria_qmemory (mentoria_id, item_key);
 alter table mentoria_cards add column if not exists review_every int not null default 14;  -- dias até o assunto voltar
+
+-- ============================================================================
+-- Versão 37: acesso por módulo. O admin libera para cada pessoa o que quiser:
+-- turma (cursos, aulas, ao vivo, simulados), mentoria e questões (banco e geração de listas).
+-- questoes: null = segue a turma (como antes); true = liberado mesmo sem turma; false = sem questões.
+-- ============================================================================
+alter table students add column if not exists questoes boolean;

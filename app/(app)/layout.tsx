@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [viewer, settings] = await Promise.all([getViewer(), getSettings()]);
   if (!viewer) redirect('/auth/expirado');
   // uma vez por servidor: questões já cadastradas passam para a taxonomia de assuntos
-  if (viewer.isMember || viewer.isAdmin) await ensureTaxonomy();
+  if (viewer.isMember || viewer.canQuestoes) await ensureTaxonomy();
 
   // Tudo vem do cache ou da consulta única do usuário: nenhuma consulta extra por página
   const liveNow = (await visibleLives(viewer, ['live'])).length > 0;
@@ -29,6 +29,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       user={{ name: viewer.profile.full_name || viewer.email, email: viewer.email, avatar: viewer.profile.avatar_url }}
       isAdmin={viewer.isAdmin}
       isMember={viewer.isMember}
+      canQuestoes={viewer.canQuestoes}
       hasMentoria={viewer.hasMentoria}
       liveNow={liveNow}
       mentoriaAlert={mentoriaAlert}

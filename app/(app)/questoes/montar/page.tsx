@@ -7,6 +7,6 @@ export const metadata: Metadata = { title: 'Escolher questões' };
 
 export default async function MontarLista() {
   const viewer = await requireViewer();
-  if (!viewer.isMember && !viewer.isAdmin) redirect('/');
+  if (!viewer.canQuestoes) redirect('/');
   return <StudentBuilder />;
 }
