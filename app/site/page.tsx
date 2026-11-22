@@ -48,10 +48,10 @@ const SUBJECTS = [
 ];
 
 const FAQ = [
-  ['Como acesso a plataforma?', 'Clique em “Entrar” e use sua conta Google ou receba um link de acesso no seu e-mail. Não precisa decorar senha.'],
+  ['Como acesso a plataforma?', 'Clique em “Entrar” e use sua conta Google. Não precisa criar nem decorar senha.'],
   ['Posso estudar pelo celular?', 'Sim. A plataforma foi pensada primeiro para o celular e também pode ser instalada na tela inicial como um aplicativo.'],
   ['Como funciona a nota TRI dos simulados?', 'Depois que a turma entrega a prova, calculamos sua nota com base na dificuldade de cada questão e na coerência das suas respostas — o mesmo princípio usado no ENEM.'],
-  ['Já sou aluno, mas não consigo ver as aulas.', 'Seu acesso é liberado pelo e-mail cadastrado na matrícula. Entre com esse mesmo e-mail ou fale com a coordenação.'],
+  ['Já sou aluno, mas não consigo ver as aulas.', 'Seu acesso é liberado pelo e-mail cadastrado na matrícula. Entre com a conta Google desse mesmo e-mail ou fale com a coordenação.'],
   ['Existe conteúdo gratuito?', 'Sim. Ao entrar você já encontra aulas abertas para conhecer a metodologia do Vértice.'],
 ];
 
@@ -238,7 +238,7 @@ export default async function LandingPage() {
           <SectionHead eyebrow="Como funciona" title="Comece a estudar em minutos" />
           <ol className="mt-12 grid gap-10 md:grid-cols-3 md:gap-8">
             {[
-              ['Entre com seu e-mail', 'Use sua conta Google ou receba um link de acesso. Sem senha para esquecer.'],
+              ['Entre com o Google', 'Use sua conta Google, com o e-mail da matrícula. Sem senha para esquecer.'],
               ['Siga sua trilha', 'Assista às aulas na ordem certa, baixe os materiais e marque o que já concluiu.'],
               ['Meça sua evolução', 'Faça simulados, acompanhe sua nota TRI e tire dúvidas com o professor.'],
             ].map(([t, d], i) => (
