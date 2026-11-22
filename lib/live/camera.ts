@@ -50,8 +50,9 @@ export function measureFps(track: MediaStreamTrack, ms = 2000, firstWait = 7000)
       v.remove();
       resolve(Math.round(fps));
     };
-    // nenhum quadro até aqui: a câmera não está mandando imagem neste modo
-    timer = window.setTimeout(() => finish(0), firstWait);
+    // nenhum quadro contado até aqui: se mesmo assim a imagem chegou ao vídeo (o navegador só não avisou cada
+    // quadro), vale o que a câmera informa; senão a câmera não está mandando imagem neste modo
+    timer = window.setTimeout(() => finish(v.readyState >= 2 && v.videoWidth > 0 ? (track.getSettings().frameRate ?? 30) : 0), firstWait);
     const rvfc = (v as HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number) => void) => number }).requestVideoFrameCallback;
     if (!rvfc) {
       // navegador sem contador de quadros: espera a imagem aparecer e confia no que a câmera informa

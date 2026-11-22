@@ -1011,6 +1011,16 @@ export function Studio({
       return;
     }
     let cancelled = false;
+    setCamInfo(null);
+    // iPad/iPhone: só uma câmera filma por vez. Com a câmera anterior ainda aberta, a webcam USB não manda
+    // imagem nenhuma — fecha a anterior antes de abrir a nova (no computador a troca continua sem buraco)
+    const ua = navigator.userAgent;
+    const apple = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (apple && camTrack.current && !camRemote.current) {
+      comp.current?.setCamera(null);
+      camTrack.current.stop();
+      camTrack.current = null;
+    }
     // fluidez primeiro: conta os quadros que a câmera entrega e desce de resolução até ficar fluida
     // (webcam USB no iPad em 1080p sai a ~5 fps; em 720p mantém 30)
     const slow = window.setTimeout(() => !cancelled && toast('Ajustando a câmera para a imagem ficar fluida…'), 2500);
