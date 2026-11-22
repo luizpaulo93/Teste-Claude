@@ -53,8 +53,6 @@ import { PdfPresenter, type PdfPos, type PdfView } from '@/lib/live/pdf-presente
 import { getFileUrl } from '@/lib/storage/client';
 import type { LessonMaterial, LiveMessage, ProfileCard } from '@/lib/types';
 import { LiveChat } from '../../../../ao-vivo/[id]/live-room';
-import { openSmoothCamera, SMOOTH_FPS } from '@/lib/live/camera';
-import { CameraTest } from '@/components/live/camera-test';
 import { cn } from '@/lib/utils';
 
 // Resolução (a C922 vai até 1080p) e taxa de vídeo pela conexão, como a "taxa dinâmica" do OBS:
@@ -1011,24 +1009,19 @@ export function Studio({
       return;
     }
     let cancelled = false;
-    setCamInfo(null);
-    // iPad/iPhone: só uma câmera filma por vez. Com a câmera anterior ainda aberta, a webcam USB não manda
-    // imagem nenhuma — fecha a anterior antes de abrir a nova (no computador a troca continua sem buraco)
-    const ua = navigator.userAgent;
-    const apple = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
-    if (apple && camTrack.current && !camRemote.current) {
-      comp.current?.setCamera(null);
-      camTrack.current.stop();
-      camTrack.current = null;
-    }
-    // fluidez primeiro: conta os quadros que a câmera entrega e desce de resolução até ficar fluida
-    // (webcam USB no iPad em 1080p sai a ~5 fps; em 720p mantém 30)
-    const slow = window.setTimeout(() => !cancelled && toast('Ajustando a câmera para a imagem ficar fluida…'), 2500);
-    openSmoothCamera(cam, RES[res].h, () => cancelled)
-      .then((c) => {
-        window.clearTimeout(slow);
-        if (cancelled) return c.stream.getTracks().forEach((t) => t.stop());
-        const t = c.stream.getVideoTracks()[0];
+    navigator.mediaDevices
+      .getUserMedia({
+        video: {
+          deviceId: { exact: cam },
+          width: { ideal: RES[res].w },
+          height: { ideal: RES[res].h },
+          aspectRatio: { ideal: 16 / 9 },
+          frameRate: { ideal: 30 },
+        },
+      })
+      .then((s) => {
+        if (cancelled) return s.getTracks().forEach((t) => t.stop());
+        const t = s.getVideoTracks()[0];
         const old = camTrack.current;
         const wasRemote = camRemote.current;
         camRemote.current = false;
@@ -1036,20 +1029,23 @@ export function Studio({
         // a câmera anterior (daqui ou de outro aparelho) ficou no ar até agora: troca sem buraco
         comp.current?.setCamera(t);
         if (old && old !== t && !wasRemote) old.stop();
-        setCamInfo({ w: Math.max(c.width, c.height), h: Math.min(c.width, c.height), fps: c.fps });
-        if (c.stepped && c.fps >= SMOOTH_FPS)
-          toast(`Câmera em ${Math.min(c.width, c.height)}p a ${c.fps} quadros por segundo (em ${c.stepped.from}p ela só entregava ${c.stepped.fps}).`);
-        else if (c.fps < SMOOTH_FPS) toast.error(`Esta câmera só entrega ${c.fps} quadros por segundo neste aparelho. Tente outra porta USB ou outra câmera.`);
+        // o que a câmera está entregando de verdade (a C922 vai até 1920×1080)
+        const read = () => {
+          if (cancelled) return;
+          const st = t.getSettings();
+          if (st.width && st.height) setCamInfo({ w: Math.max(st.width, st.height), h: Math.min(st.width, st.height), fps: Math.round(st.frameRate ?? 0) });
+        };
+        // quadros adaptativos: pede até 60 fps mantendo a resolução que a câmera já entregou
+        const st0 = t.getSettings();
+        if (st0.width && st0.height)
+          void t
+            .applyConstraints({ width: { exact: st0.width }, height: { exact: st0.height }, frameRate: { ideal: 60 } })
+            .catch(() => {})
+            .finally(read);
+        read();
+        window.setTimeout(read, 1500);
       })
-      .catch((e) => {
-        window.clearTimeout(slow);
-        if (cancelled || (e instanceof Error && e.message === 'cancelado')) return;
-        toast.error(
-          e instanceof Error && e.message === 'sem imagem'
-            ? 'A câmera não mandou nenhuma imagem. Desconecte e conecte de novo; numa webcam USB no iPad, use um adaptador/hub com energia.'
-            : 'Não foi possível abrir esta câmera.',
-        );
-      });
+      .catch(() => toast.error('Não foi possível abrir esta câmera.'));
     return () => {
       cancelled = true;
     };
@@ -2389,12 +2385,6 @@ export function Studio({
   }, [onAir]);
 
   async function goLive() {
-    // a câmera ainda está sendo ajustada (procurando a resolução fluida): espera ela ficar pronta
-    if (!camTrack.current && !screenTrack.current && cam && cam !== 'none') {
-      setBusy(true);
-      for (let i = 0; i < 60 && !camTrack.current; i++) await new Promise((r) => setTimeout(r, 250));
-      setBusy(false);
-    }
     if (!camTrack.current && !screenTrack.current) return toast.error('Escolha a câmera ou espelhe a tela.');
     if (caster.current) return;
     setBusy(true);
@@ -2434,8 +2424,9 @@ export function Studio({
         lease,
         resume,
         res,
-        // ritmo fixo de 30: ritmo que muda faz o YouTube misturar quadros (fantasmas no movimento)
-        minFps: 30,
+        // quadros adaptativos: de 22 a 30 por segundo (ritmo estável: buscar mais que 30 fazia o aparelho
+        // oscilar entre subir e perder quadros, e a live engasgava)
+        minFps: 22,
         maxFps: 30,
         onFps: (f) => {
           comp.current?.setFps(f);
@@ -3270,16 +3261,11 @@ export function Studio({
             ))}
             <option value={`${device.current.id}|none`}>Sem câmera</option>
           </Select>
-          {!light && cam !== 'none' && camTrack.current && <CameraTest track={() => camTrack.current} />}
           {!light && cam !== 'none' && camInfo && (
-            <span className={cn('block text-[11px]', camInfo.fps && camInfo.fps < SMOOTH_FPS ? 'text-danger' : 'text-muted')}>
+            <span className={cn('block text-[11px]', camInfo.h < RES[res].h ? 'text-warning' : 'text-muted')}>
               Câmera entregando {camInfo.w}×{camInfo.h}
-              {camInfo.fps ? ` · ${camInfo.fps} quadros/s (contados)` : ''}
-              {camInfo.fps && camInfo.fps < SMOOTH_FPS
-                ? ' — imagem vai travar: troque a porta USB ou a câmera'
-                : camInfo.h < RES[res].h
-                  ? ` — ${camInfo.h}p para manter a imagem fluida`
-                  : ''}
+              {camInfo.fps ? ` · ${camInfo.fps} fps` : ''}
+              {camInfo.h < RES[res].h ? ` — abaixo de ${res}p, a imagem não ganha detalhe` : ''}
             </span>
           )}
         </div>

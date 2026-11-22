@@ -351,36 +351,25 @@ export class Broadcaster {
     else if (load < 0.6 && !this.uploads.length) this.want(this.rate + 1_000_000);
   }
 
-  /**
-   * Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto.
-   * Ritmo constante (como o OBS): cada quadro vai numa "casa" exata de 1/30 s. Com horários irregulares o
-   * YouTube converte o ritmo misturando dois quadros — é isso que aparecia como fantasma no movimento.
-   * Se o aparelho pulou uma casa, a imagem atual preenche a casa vazia (o ritmo não quebra).
-   */
-  private lastSlot = -1;
+  /** Quadro pronto da mesa de cenas (canvas no tamanho da live): codifica direto. */
   pushFrame(canvas: HTMLCanvasElement) {
     if (!this.running || !this.venc) return;
-    const dur = 1e6 / this.fpsNow;
-    const slot = Math.round(this.now() / dur);
-    if (slot <= this.lastSlot) return; // cedo demais: esta casa já tem quadro
+    const ts = this.now();
+    if (ts < this.nextFrame) return;
+    // folga de 20%: o relógio da mesa de cenas oscila e nenhum quadro no ritmo certo é cortado
+    this.nextFrame = ts + (1e6 / this.fpsNow) * 0.8;
     this.offered++;
     if (this.venc.encodeQueueSize > 3) {
-      this.skipped++; // codificador atrasado: a casa fica com o quadro anterior
+      this.skipped++; // codificador atrasado: pula este quadro
       return;
     }
-    // casas puladas (no máximo 2): repete a imagem atual nelas
-    const from = this.lastSlot >= 0 && slot - this.lastSlot <= 3 ? this.lastSlot + 1 : slot;
-    this.lastSlot = slot;
-    for (let k = from; k <= slot; k++) {
-      const ts = Math.round(k * dur);
-      this.encFrames++;
-      const out = new VideoFrame(canvas, { timestamp: ts, duration: Math.round(dur) });
-      const key = ts - this.lastKeyAt >= SEGMENT_US;
-      if (key) this.lastKeyAt = ts;
-      if (key) this.applyRate();
-      this.venc.encode(out, { keyFrame: key });
-      out.close();
-    }
+    this.encFrames++;
+    const out = new VideoFrame(canvas, { timestamp: ts });
+    const key = ts - this.lastKeyAt >= SEGMENT_US;
+    if (key) this.lastKeyAt = ts;
+    if (key) this.applyRate();
+    this.venc.encode(out, { keyFrame: key });
+    out.close();
   }
 
   /** Troca a câmera/tela no meio da transmissão (o vídeo continua no mesmo tamanho). */
@@ -396,19 +385,18 @@ export class Broadcaster {
     this.videoReader = reader;
     this.readers.push(reader);
     const frameUs = () => 1e6 / this.fpsNow;
-    let next = -1;
+    let next = 0;
     while (this.running && this.videoReader === reader) {
       const { value: frame, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
       if (done || !frame) break;
-      // mesma regra do ritmo constante: horário na casa exata de 1/30 s
-      const slot = Math.round((performance.now() - this.t0) * 1000 / frameUs());
-      if (slot <= next || !this.venc || this.venc.encodeQueueSize > 3) {
+      const ts = Math.round((performance.now() - this.t0) * 1000);
+      // limita o fps e descarta quadros se o codificador estiver atrasado
+      if (ts < next || !this.venc || this.venc.encodeQueueSize > 3) {
         frame.close();
         continue;
       }
-      const ts = Math.round(slot * frameUs());
       this.encFrames++;
-      next = slot;
+      next = ts + frameUs() * 0.9;
       // desenha centralizado num quadro fixo (troca de câmera/tela não muda o tamanho do vídeo)
       const fw = frame.displayWidth;
       const fh = frame.displayHeight;
