@@ -74,7 +74,8 @@
   --color-danger: var(--danger);
   --shadow-card: var(--shadow);
   --shadow-glow: var(--glow);
-  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  /* o app inteiro (aluno e admin) usa a letra dos cartões do painel: Geist Mono. Os PDFs têm as fontes deles. */
+  --font-sans: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
   --font-mono: var(--font-geist-mono), ui-monospace, 'SF Mono', monospace;
   --animate-fade-in: fade-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-slide-up: slide-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
