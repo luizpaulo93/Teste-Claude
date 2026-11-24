@@ -356,7 +356,7 @@ function ImageSlot({
   }
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-ink-2">{label}</p>
+      <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">{label}</p>
       {value.url ? (
         <div className="relative rounded-xl border border-line bg-white p-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}

@@ -79,7 +79,7 @@ export function CycleView({ cycle, today }: { cycle: Cycle; today: string }) {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-line bg-surface p-4">
-        <p className="flex items-center gap-1.5 text-[11px] font-bold tracking-wider text-muted uppercase">
+        <p className="font-mono flex items-center gap-1.5 text-[11px] font-medium tracking-wider text-muted uppercase">
           <Archive className="size-3.5" /> Ciclo salvo · {specific ? 'mentoria específica' : 'mentoria completa'}
         </p>
         <h2 className="mt-1 text-lg font-semibold text-ink">{cycle.title}</h2>

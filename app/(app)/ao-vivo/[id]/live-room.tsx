@@ -128,7 +128,7 @@ function Countdown({ startsAt, serverNow, label, icon, cover }: { startsAt: stri
             {parts.map(([v, l]) => (
               <div key={l} className="min-w-14 rounded-xl bg-black/40 px-2 py-2 backdrop-blur sm:min-w-16">
                 <p className="text-2xl font-semibold tabular-nums sm:text-3xl">{String(v).padStart(2, '0')}</p>
-                <p className="text-[10px] tracking-wide text-white/60 uppercase">{l}</p>
+                <p className="font-mono text-[10px] tracking-wide text-white/60 uppercase">{l}</p>
               </div>
             ))}
           </div>

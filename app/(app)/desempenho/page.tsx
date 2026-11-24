@@ -462,7 +462,7 @@ function Chip({ href, active, small, children }: { href: string; active: boolean
 function Kpi({ icon, label, value }: { icon: React.ReactNode; label: string; value: React.ReactNode }) {
   return (
     <Card className="p-4">
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+      <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
         <span className="text-brand">{icon}</span> {label}
       </p>
       <p className="mt-1.5 text-2xl font-semibold tracking-tight text-ink tabular-nums">{value}</p>

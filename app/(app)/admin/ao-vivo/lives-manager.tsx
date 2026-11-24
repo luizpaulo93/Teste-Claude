@@ -192,7 +192,7 @@ export function LiveForm({ live, options, onDone, now = false }: { live?: LiveSe
         </Field>
       )}
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Capa (3:4)</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Capa (3:4)</span>
         <ImageUpload name="cover_url" defaultValue={live?.cover_url} folder="lives" aspect="aspect-[3/4] max-w-40" />
       </div>
       <FormPdfs initial={live?.materials ?? []} />
@@ -301,7 +301,7 @@ export function AudiencePicker({
         <input key={k} type="hidden" name="audience" value={k} />
       ))}
       <div>
-        <p className="text-xs font-semibold text-ink-2">{title}</p>
+        <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">{title}</p>
         <p className="text-[11px] text-muted">
           {sel.length ? `${sel.length} escolhido${sel.length > 1 ? 's' : ''}: ${sel.map((k) => all.find((x) => x.key === k)?.label ?? k).join(', ')}` : empty}
         </p>
@@ -354,7 +354,7 @@ function FormPdfs({ initial }: { initial: LessonMaterial[] }) {
   return (
     <div className="space-y-2">
       <input type="hidden" name="materials" value={JSON.stringify(list)} />
-      <span className="text-xs font-semibold text-ink-2">PDFs para os alunos baixarem durante a live</span>
+      <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">PDFs para os alunos baixarem durante a live</span>
       {list.map((m) => (
         <div key={m.id} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2">
           <FileText className="size-4 shrink-0 text-danger" />

@@ -27,7 +27,7 @@ export function SettingsForm({ settings, admins }: { settings: PlatformSettings;
             <Input name="hero_cta" defaultValue={settings.hero_cta} maxLength={60} />
           </Field>
           <div className="space-y-1.5">
-            <span className="text-xs font-semibold text-ink-2">Imagem de fundo (login e topo da home)</span>
+            <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Imagem de fundo (login e topo da home)</span>
             <ImageUpload name="hero_bg_url" defaultValue={settings.hero_bg_url} folder="platform" aspect="aspect-video" maxSize={1920} hint="1920 × 1080 px" />
           </div>
           <Switch

@@ -14,7 +14,7 @@ export function CourseForm({ course, tags, onSaved }: { course?: Course; tags: C
       {course && <input type="hidden" name="id" value={course.id} />}
       <div className="grid gap-5 sm:grid-cols-[160px_1fr]">
         <div className="space-y-1.5">
-          <span className="text-xs font-semibold text-ink-2">Capa (2:3)</span>
+          <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Capa (2:3)</span>
           <ImageUpload name="cover_url" defaultValue={course?.cover_url} folder="courses" colors />
         </div>
         <div className="space-y-4">

@@ -29,7 +29,7 @@ export function LiveMaterialsAdmin({ liveId, materials }: { liveId: string; mate
   const router = useRouter();
   return (
     <div className="space-y-2">
-      <p className="text-xs font-semibold text-ink-2">PDFs da live</p>
+      <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">PDFs da live</p>
       {materials.map((m) => (
         <div key={m.id} className="flex items-center gap-1">
           <div className="min-w-0 flex-1">

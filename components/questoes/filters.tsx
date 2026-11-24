@@ -96,7 +96,7 @@ export function MultiField({
   return (
     <div className="rounded-xl border border-line">
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-center gap-2 px-3 py-2.5 text-left">
-        <span className="text-xs font-semibold text-ink-2">{label}</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">{label}</span>
         <span className="min-w-0 flex-1 truncate text-right text-xs text-muted">{value.length ? value.map(show).join(', ') : 'Todos'}</span>
         <ChevronDown className={cn('size-4 shrink-0 text-muted transition', open && 'rotate-180')} />
       </button>

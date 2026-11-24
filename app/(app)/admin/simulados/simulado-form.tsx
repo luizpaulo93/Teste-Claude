@@ -45,7 +45,7 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
         </Field>
       </div>
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Caderno de questões (PDF)</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Caderno de questões (PDF)</span>
         {pdf ? (
           <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-sm">
             <FileText className="size-4 text-danger" /> <span className="flex-1 truncate text-ink">{pdf.split('/').pop()}</span>
@@ -58,7 +58,7 @@ export function SimuladoForm({ simulado, answerKey = '', onSaved }: { simulado?:
         )}
       </div>
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Resolução (PDF, opcional)</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Resolução (PDF, opcional)</span>
         <p className="text-[11px] text-muted">O aluno só vê depois de entregar a prova e de você tocar em “Liberar resolução”.</p>
         {res ? (
           <div className="flex items-center gap-2 rounded-xl border border-line bg-surface-2/60 p-3 text-sm">

@@ -52,7 +52,12 @@ export function Badge({ tone = 'neutral', className, ...props }: ComponentProps<
   };
   return (
     <span
-      className={cn('inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-medium whitespace-nowrap', tones[tone], className)}
+      // padrão dos cartões do painel: rótulo monoespaçado em maiúsculas (com a cor do estado)
+      className={cn(
+        'inline-flex max-w-full items-center gap-1 overflow-hidden rounded-md px-1.5 py-0.5 font-mono text-[10.5px] font-medium tracking-[0.04em] whitespace-nowrap uppercase',
+        tones[tone],
+        className,
+      )}
       {...props}
     />
   );
@@ -76,7 +81,7 @@ export function Select({ className, ...props }: ComponentProps<'select'>) {
 export function Field({ label, hint, children, className }: { label: string; hint?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <label className={cn('block space-y-1.5', className)}>
-      <span className="text-xs font-medium text-ink-2">{label}</span>
+      <span className="block font-mono text-[11px] tracking-[0.06em] text-muted uppercase">{label}</span>
       {children}
       {hint && <span className="block text-[11px] text-muted">{hint}</span>}
     </label>

@@ -178,7 +178,7 @@ function AddDialog({ row, today, onClose }: { row: AssuntoRow; today: string; on
           {busy === today ? <Spinner /> : <CalendarPlus className="size-4" />} Adicionar hoje
         </button>
         <div>
-          <p className="mb-2 text-xs font-semibold text-ink-2">Ou em outro dia da semana</p>
+          <p className="mb-2 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Ou em outro dia da semana</p>
           <div className="grid grid-cols-3 gap-1.5">
             {days.map((d) => (
               <button
@@ -192,7 +192,7 @@ function AddDialog({ row, today, onClose }: { row: AssuntoRow; today: string; on
                   <Spinner />
                 ) : (
                   <>
-                    <span className="text-[10px] font-bold uppercase">{weekday(d)}</span>
+                    <span className="font-mono text-[10px] font-medium uppercase">{weekday(d)}</span>
                     <span className="text-sm font-semibold tabular-nums">{`${d.slice(8)}/${d.slice(5, 7)}`}</span>
                   </>
                 )}

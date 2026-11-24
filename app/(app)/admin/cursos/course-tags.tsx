@@ -131,7 +131,7 @@ export function TagPicker({ tags, selected }: { tags: CourseTag[]; selected: str
   const [sel, setSel] = useState(selected);
   return (
     <div className="space-y-1.5">
-      <span className="text-xs font-semibold text-ink-2">Tags (filtro do catálogo)</span>
+      <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Tags (filtro do catálogo)</span>
       {sel.map((id) => (
         <input key={id} type="hidden" name="tag_ids" value={id} />
       ))}

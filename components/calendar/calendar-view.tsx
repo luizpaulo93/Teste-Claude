@@ -365,7 +365,7 @@ export function CalendarView({
           >
             <div className="grid grid-cols-7 border-b border-line pb-2.5 text-center">
               {WEEKDAYS.map((w) => (
-                <span key={w} className="text-[11px] font-bold tracking-wider text-muted uppercase sm:text-xs">
+                <span key={w} className="font-mono text-[11px] font-medium tracking-wider text-muted uppercase sm:text-xs">
                   {w}
                 </span>
               ))}
@@ -405,7 +405,7 @@ export function CalendarView({
                       <Cake className="size-4" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-semibold tracking-wider text-amber-500 uppercase">Aniversariante</p>
+                      <p className="font-mono text-[10px] font-semibold tracking-wider text-amber-500 uppercase">Aniversariante</p>
                       <p className="truncate text-sm font-semibold text-ink">{b.name}</p>
                       <p className="text-xs text-ink-2">Dia de celebrar mais um ano de vida e conquistas!</p>
                     </div>
@@ -529,7 +529,7 @@ function EventForm({
             <Input name="title" defaultValue={state.ev?.title} required maxLength={160} autoFocus placeholder="Ex.: Assunto da semana — Cinemática" />
           </Field>
           <div>
-            <span className="text-xs font-semibold text-ink-2">Tipo</span>
+            <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Tipo</span>
             <div className="mt-2 grid grid-cols-2 gap-2">
               {FORM_CATEGORIES.map((c) => (
                 <button
@@ -557,7 +557,7 @@ function EventForm({
           </div>
           {category === 'evento_curso' && (
             <div>
-              <span className="text-xs font-semibold text-ink-2">Cor</span>
+              <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Cor</span>
               <div className="mt-2 flex flex-wrap gap-2">
                 {Object.entries(EVENT_COLORS)
                   .filter(([k]) => k !== 'slate')

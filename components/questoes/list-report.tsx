@@ -45,19 +45,19 @@ export function ListReport({ qs, base = '' }: { qs: ReportQuestion[]; base?: str
       </h2>
       <div className="grid grid-cols-3 gap-2 text-center">
         <Card className="p-3">
-          <p className="text-2xl font-semibold text-success">{pct(right)}%</p>
+          <p className="num text-2xl font-semibold text-success">{pct(right)}%</p>
           <p className="text-[11px] text-muted">
             {right} {right === 1 ? 'acerto' : 'acertos'}
           </p>
         </Card>
         <Card className="p-3">
-          <p className="text-2xl font-semibold text-danger">{pct(wrong)}%</p>
+          <p className="num text-2xl font-semibold text-danger">{pct(wrong)}%</p>
           <p className="text-[11px] text-muted">
             {wrong} {wrong === 1 ? 'erro' : 'erros'}
           </p>
         </Card>
         <Card className="p-3">
-          <p className="text-2xl font-semibold text-ink">{qs.length - done.length}</p>
+          <p className="num text-2xl font-semibold text-ink">{qs.length - done.length}</p>
           <p className="text-[11px] text-muted">sem resposta</p>
         </Card>
       </div>

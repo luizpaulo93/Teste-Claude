@@ -63,7 +63,7 @@ export function LiveLessonEditor({
           {startsAt && <p className="text-xs text-muted">Live de {formatDateTime(startsAt)}</p>}
 
           <div className="space-y-2">
-            <p className="text-xs font-semibold text-ink-2">PDFs da aula</p>
+            <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">PDFs da aula</p>
             {mats.map((m) => (
               <div key={m.id} className="flex items-center gap-1.5 rounded-xl border border-line pr-2">
                 <button

@@ -77,7 +77,7 @@ export function LessonForm({
         </select>
       </Field>
       <div className="space-y-1.5">
-        <span className="text-xs font-semibold text-ink-2">Foto de capa (16:9)</span>
+        <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Foto de capa (16:9)</span>
         <ImageUpload name="thumbnail_url" defaultValue={lesson?.thumbnail_url} folder="lessons" aspect="aspect-video max-w-xs" maxSize={1280} />
       </div>
       <Field label="Descrição / links">
@@ -86,7 +86,7 @@ export function LessonForm({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-semibold text-ink-2">Materiais em PDF ({mats.length})</span>
+          <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Materiais em PDF ({mats.length})</span>
           {mats.length > 1 && (
             <button type="button" onClick={() => setMats((l) => [...l].sort(byTitle))} className="flex items-center gap-1 text-xs font-semibold text-brand">
               <ArrowDownAZ className="size-3.5" /> Ordem alfabética

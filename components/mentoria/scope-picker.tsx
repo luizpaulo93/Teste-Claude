@@ -14,7 +14,7 @@ const OPTIONS = [
 export function ScopePicker({ value, onChange }: { value: MentoriaScope; onChange: (v: MentoriaScope) => void }) {
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-ink-2">Tipo de mentoria</p>
+      <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Tipo de mentoria</p>
       <div className="grid gap-2 sm:grid-cols-2">
         {OPTIONS.map((o) => (
           <button

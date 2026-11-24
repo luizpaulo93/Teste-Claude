@@ -97,7 +97,7 @@ export function ClassesManager({
               description="Libera todos os cursos, inclusive os criados no futuro"
             />
             <div>
-              <p className="mb-2 text-xs font-semibold text-ink-2">Cursos liberados</p>
+              <p className="mb-2 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Cursos liberados</p>
               <div className="grid max-h-64 gap-2 overflow-y-auto rounded-xl border border-line p-3 sm:grid-cols-2">
                 {courses.map((c) => (
                   <Checkbox

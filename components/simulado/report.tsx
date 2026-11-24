@@ -103,7 +103,7 @@ export function ClassCards({
               <span className="block text-lg font-semibold text-ink tabular-nums">
                 {useTri && c.meanTri != null ? c.meanTri.toFixed(0) : (c.meanCorrect ?? '—')}
               </span>
-              <span className="block text-[10px] text-muted uppercase">{useTri && c.meanTri != null ? 'média TRI' : 'acertos'}</span>
+              <span className="font-mono block text-[10px] text-muted uppercase">{useTri && c.meanTri != null ? 'média TRI' : 'acertos'}</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-muted" />
           </Link>
@@ -162,7 +162,7 @@ export function StudentRanking({
                       <span className="block text-base font-semibold text-ink tabular-nums">
                         {useTri && r.tri != null ? r.tri.toFixed(1) : `${r.correct}`}
                       </span>
-                      <span className="block text-[10px] text-muted uppercase">{useTri && r.tri != null ? 'TRI' : 'acertos'}</span>
+                      <span className="font-mono block text-[10px] text-muted uppercase">{useTri && r.tri != null ? 'TRI' : 'acertos'}</span>
                     </span>
                   ) : (
                     <Badge tone="warning">Fazendo</Badge>

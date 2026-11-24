@@ -209,7 +209,7 @@ export function ModulesManager({
             {moduleModal.module && <input type="hidden" name="id" value={moduleModal.module.id} />}
             <div className="grid gap-4 sm:grid-cols-[150px_1fr]">
               <div className="mx-auto w-32 space-y-1.5 sm:w-auto">
-                <span className="text-xs font-semibold text-ink-2">Capa (2:3)</span>
+                <span className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Capa (2:3)</span>
                 <ImageUpload name="cover_url" defaultValue={moduleModal.module?.cover_url} folder="modules" colors />
               </div>
               <Field label="Nome do módulo">

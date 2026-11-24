@@ -68,7 +68,7 @@ export function RankList({
               </span>
               <span className="shrink-0 text-right">
                 <span className="block text-base font-semibold text-ink tabular-nums">{it.value}</span>
-                <span className="block text-[10px] text-muted uppercase">{it.unit}</span>
+                <span className="font-mono block text-[10px] text-muted uppercase">{it.unit}</span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-muted" />
             </Link>

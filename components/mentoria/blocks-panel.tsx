@@ -175,7 +175,7 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
     >
       <div className="space-y-5">
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-ink-2">Duração</p>
+          <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Duração</p>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {KINDS.map((k) => (
               <button
@@ -207,7 +207,7 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
         </Field>
 
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-ink-2">
+          <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             Assuntos do período{' '}
             <span className="font-normal text-muted">
               ({keys.length} escolhido{keys.length === 1 ? '' : 's'})
@@ -268,7 +268,7 @@ function BlockModal({ space, today, block, onClose }: { space: string; today: st
         </div>
 
         <div className="space-y-2">
-          <p className="text-xs font-semibold text-ink-2">Apostilas (PDF)</p>
+          <p className="font-mono text-[11px] tracking-[0.06em] text-muted uppercase">Apostilas (PDF)</p>
           {files.map((f) => (
             <div key={f.id} className="flex items-center gap-2 rounded-xl border border-line px-3 py-2">
               <FileText className="size-4 shrink-0 text-danger" />

@@ -395,3 +395,9 @@ html.studio-full [data-chrome] { display: none !important; }
   --dcline: oklch(0.56 0.12 var(--dh, 260) / 0.28);
   --dcink: oklch(0.36 0.09 var(--dh, 260));
 }
+
+/* Padrão dos cartões em todo o app: todo número marcado como tabela (contadores, notas, tempos) usa a letra monoespaçada */
+.tabular-nums {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}

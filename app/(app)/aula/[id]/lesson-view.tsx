@@ -202,7 +202,7 @@ export function LessonView(p: Props) {
                       if (!items.length) return null;
                       return (
                         <div key={m.id}>
-                          <p className="sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-bold tracking-wide text-muted uppercase backdrop-blur">
+                          <p className="font-mono sticky top-0 z-10 border-b border-line bg-surface-2/95 px-4 py-2 text-[11px] font-medium tracking-wide text-muted uppercase backdrop-blur">
                             {m.title}
                           </p>
                           {items.map((l) => {

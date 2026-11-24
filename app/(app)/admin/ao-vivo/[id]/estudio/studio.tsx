@@ -2860,7 +2860,7 @@ export function Studio({
                     <div className="max-h-64 space-y-2 overflow-y-auto">
                       {camGroups.map((g) => (
                         <div key={g.device}>
-                          {camGroups.length > 1 && <p className="px-2.5 pb-0.5 text-[10px] font-bold tracking-wider text-muted uppercase">{g.label}</p>}
+                          {camGroups.length > 1 && <p className="font-mono px-2.5 pb-0.5 text-[10px] font-medium tracking-wider text-muted uppercase">{g.label}</p>}
                           <ul className="space-y-1">
                             {!g.cams.length && <li className="px-2.5 py-1.5 text-[11px] text-muted">Sem câmera liberada — abra a câmera nele e toque em Procurar</li>}
                             {g.cams.map((o) => {
@@ -3231,7 +3231,7 @@ export function Studio({
         )}
         <p className="text-xs text-muted">{support && !support.ok ? support.reason : permError || hint}</p>
         <div className="block space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             <Camera className="size-3.5" /> Câmera
             {/* lê de novo as câmeras de todos os aparelhos abertos no estúdio */}
             <button
@@ -3272,7 +3272,7 @@ export function Studio({
         {scene !== 'pdf' && <MirrorButton mirror={mirror} onToggle={() => setMirror((m) => !m)} />}
 
         <div className="space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             <Monitor className="size-3.5" /> Espelhar tela
           </span>
           {canShare ? (
@@ -3296,7 +3296,7 @@ export function Studio({
         </div>
 
         <div className="space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             <Mic className="size-3.5" /> Microfone
           </span>
           <div className="flex gap-2">
@@ -3351,7 +3351,7 @@ export function Studio({
           )}
         </div>
         <label className="block space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             <Settings2 className="size-3.5" /> Conexão
           </span>
           <Select value={net} onChange={(e) => pickNet(e.target.value as Net)} aria-label="Conexão">
@@ -3363,7 +3363,7 @@ export function Studio({
           </Select>
         </label>
         <label className="block space-y-1.5">
-          <span className="flex items-center gap-1.5 text-xs font-semibold text-ink-2">
+          <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
             <Settings2 className="size-3.5" /> Resolução
           </span>
           <Select value={res} onChange={(e) => pickRes(e.target.value as Res)} disabled={onAir || liveOn} aria-label="Resolução">

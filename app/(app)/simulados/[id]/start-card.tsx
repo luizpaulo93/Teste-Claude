@@ -86,10 +86,10 @@ export function StartCard({ simulado, submission }: { simulado: Simulado; submis
 function Info({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div className="rounded-xl border border-line bg-surface-2/60 p-4">
-      <p className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+      <p className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.06em] text-muted uppercase">
         {icon} {label}
       </p>
-      <p className="mt-1 text-xl font-semibold text-ink">{value}</p>
+      <p className="num mt-1 text-xl font-semibold text-ink">{value}</p>
     </div>
   );
 }
