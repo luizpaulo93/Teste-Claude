@@ -2,7 +2,7 @@ import 'server-only';
 import { newId, sql, tx } from '@/lib/db';
 import { ASSUNTO_BY_KEY, ASSUNTOS, trilhaKey } from '@/lib/trilha-catalog';
 import { materialize } from '@/lib/trilha';
-import { COST, schedule, shift, todayBR, type PlanCard } from '@/lib/mentoria';
+import { cleanWindows, COST, schedule, shift, todayBR, windowsFromAvailability, type PlanCard } from '@/lib/mentoria';
 import type { Mentoria } from '@/lib/types';
 
 export interface Card {
@@ -31,22 +31,27 @@ export interface Card {
   retained_total: number;
   next_review: string | null;
   mastered_on: string | null;
+  /** atrasado desde (dia em que deveria ter sido feito) */
+  late_from: string | null;
 }
 
 export async function getMentoria(id: string) {
-  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null; scope: 'completa' | 'especifica' }>(
+  const m = await sql.one<Mentoria & { plan_disciplines: string[]; plan_order: string; group_id: string | null; scope: 'completa' | 'especifica'; study_windows: unknown }>(
     `select * from mentorias where id = $1`,
     [id],
   );
   if (!m) return null;
-  return { ...m, availability: Array.isArray(m.availability) ? m.availability.map(Number) : [0, 0, 0, 0, 0, 0, 0], plan_disciplines: m.plan_disciplines ?? [] };
+  const availability = Array.isArray(m.availability) ? m.availability.map(Number) : [0, 0, 0, 0, 0, 0, 0];
+  // períodos de estudo de cada dia (quem ainda não escolheu: montados a partir dos minutos por dia)
+  const windows = m.study_windows ? cleanWindows(m.study_windows) : windowsFromAvailability(availability);
+  return { ...m, availability, windows, plan_disciplines: m.plan_disciplines ?? [] };
 }
 
 export const cards = (id: string) =>
   sql.query<Card>(
     `select id, item_key, discipline, title, priority, ord, level, step, due_on::text as due_on, scheduled_on::text as scheduled_on, last_acc, attempts,
             history -> -1 ->> 'd' as last_day, history, pinned_on::text as pinned_on, added_by_student, span_end::text as span_end, block_id,
-            list_size, hard, retained, retained_total, next_review::text as next_review, mastered_on::text as mastered_on
+            list_size, hard, retained, retained_total, next_review::text as next_review, mastered_on::text as mastered_on, late_from::text as late_from
        from mentoria_cards where mentoria_id = $1 order by ord`,
     [id],
   );
@@ -65,8 +70,17 @@ export async function reschedule(mentoriaId: string) {
   if (!m) return;
   const now = todayBR();
   const from = m.start_date && m.start_date > now ? m.start_date : now;
+  // Ficou para trás (o dia passou e o assunto não foi feito): marca o dia em que atrasou.
+  // Ele é realocado primeiro; a marca sai quando o aluno faz (teoria ou lista) — ver lib/trilha.ts.
+  await sql.exec(
+    `update mentoria_cards set late_from = scheduled_on
+      where mentoria_id = $1 and late_from is null and scheduled_on < $2 and level < 4 and block_id is null`,
+    [mentoriaId, now],
+  );
+  await sql.exec(`update mentoria_cards set late_from = null where mentoria_id = $1 and late_from is not null and level >= 4`, [mentoriaId]);
   const list = await sql.query<PlanCard & { last_day: string | null; last_level: number | null }>(
-    `select id, level, step, ord, due_on::text as due_on, pinned_on::text as pinned_on, history -> -1 ->> 'd' as last_day, (history -> -1 ->> 'l')::int as last_level
+    `select id, level, step, ord, priority, late_from::text as late_from, due_on::text as due_on, pinned_on::text as pinned_on,
+            history -> -1 ->> 'd' as last_day, (history -> -1 ->> 'l')::int as last_level
        from mentoria_cards where mentoria_id = $1`,
     [mentoriaId],
   );
@@ -310,6 +324,10 @@ export async function assuntoRows(id: string, list?: Card[], scope: 'completa' |
   return { rows, disciplines };
 }
 
+/** Atrasados primeiro (e, entre eles, os mais cobrados no ENEM); o resto mantém a ordem do plano */
+const lateFirst = (a: { late: string | null; priority: number }, b: { late: string | null; priority: number }) =>
+  a.late && b.late ? b.priority - a.priority || a.late.localeCompare(b.late) : Number(Boolean(b.late)) - Number(Boolean(a.late));
+
 /** Lista da trilha mostrada na agenda (a que o aluno abre para responder) */
 export interface DayList {
   id: string;
@@ -383,7 +401,10 @@ export async function dayData(m: { id: string; availability: number[] }, request
             step: 'study' as const,
             list: open.get(c.id) ?? null,
             result: null,
-          }));
+            late: c.late_from,
+          }))
+          // o que atrasou vem primeiro (entre os atrasados, os mais cobrados no ENEM); o resto na ordem do plano
+          .sort(lateFirst);
   // revisões da semana abertas (assuntos estudados que voltam): aparecem hoje
   const reviews =
     day === today
@@ -550,4 +571,158 @@ export async function studentPanel(m: { id: string; plan_disciplines: string[]; 
       finishedLists: lists.filter((l) => l.status !== 'open').length,
     },
   };
+}
+
+/** Uma sessão na grade da semana */
+export interface WeekSession {
+  id: string;
+  kind: 'theory' | 'list' | 'review';
+  discipline: string;
+  disciplineName: string;
+  title: string;
+  minutes: number;
+  level: number;
+  priority: number;
+  /** horário de início (pelos períodos do aluno) */
+  start: string;
+  /** já feita neste dia (resultado) */
+  done: { passed: boolean; acc: number } | null;
+  /** atrasada: dia em que deveria ter sido feita */
+  late: string | null;
+  /** dia passado em que não foi feita: foi realocada para esta data */
+  movedTo: string | null;
+  /** assunto de período do mentor (não ocupa tempo do dia) */
+  period: boolean;
+}
+
+/**
+ * Semana do aluno (seg a dom): o que foi feito nos dias que passaram, o que ficou para trás (e para onde foi)
+ * e o planejado de hoje em diante — atrasados primeiro, mais cobrados no ENEM na frente.
+ */
+export async function weekData(m: { id: string; availability: number[]; windows: import('@/lib/mentoria').StudyWindow[][] }, requested?: string) {
+  const { DISCIPLINE_NAME: names } = await import('@/lib/trilha-catalog');
+  const { weekdayIndex, sessionStarts } = await import('@/lib/mentoria');
+  const { passedList, trailListsOf } = await import('@/lib/trilha');
+  const today = todayBR();
+  const ref = /^\d{4}-\d{2}-\d{2}$/.test(requested ?? '') ? requested! : today;
+  const monday = shift(ref, -weekdayIndex(ref));
+  const week = Array.from({ length: 7 }, (_, i) => shift(monday, i));
+  const [list, lists, late] = await Promise.all([
+    cards(m.id),
+    trailListsOf(m.id),
+    sql.query<{ id: string; late_from: string }>(`select id, late_from::text as late_from from mentoria_cards where mentoria_id = $1 and late_from is not null`, [m.id]),
+  ]);
+  const lateOf = new Map(late.map((l) => [l.id, l.late_from]));
+  const open = new Set(lists.filter((t) => t.status === 'open' && t.card_id).map((t) => t.card_id!));
+  const base = (c: Card) => {
+    const a = ASSUNTO_BY_KEY.get(c.item_key);
+    return {
+      discipline: c.discipline,
+      disciplineName: names[c.discipline] ?? c.discipline,
+      title: a?.short ?? c.title,
+      priority: c.priority,
+      level: c.level,
+    };
+  };
+  const inSpan = (c: Card) => Boolean(c.pinned_on && c.span_end && c.block_id);
+
+  const days = week.map((d) => {
+    const done: WeekSession[] = list.flatMap((c) =>
+      (c.history ?? [])
+        .filter((h) => h.d === d)
+        .map((h, k) => ({
+          ...base(c),
+          id: `${c.id}-h${k}`,
+          kind: 'list' as const,
+          level: h.l,
+          minutes: COST.revisao,
+          start: '',
+          done: { passed: h.p === undefined ? passedList(h.c, h.q) : Boolean(h.p), acc: h.q ? Math.round((h.c / h.q) * 100) : 0 },
+          late: null,
+          movedTo: null,
+          period: false,
+        })),
+    );
+    // dia que passou: o que era dele e ficou para trás (já realocado)
+    const missed: WeekSession[] =
+      d < today
+        ? list
+            .filter((c) => lateOf.get(c.id) === d)
+            .map((c) => ({
+              ...base(c),
+              id: `${c.id}-miss`,
+              kind: (c.level === 0 ? 'theory' : 'list') as 'theory' | 'list',
+              minutes: c.level === 0 ? COST.novo : COST.revisao,
+              start: '',
+              done: null,
+              late: d,
+              movedTo: c.scheduled_on,
+              period: false,
+            }))
+        : [];
+    const pending: WeekSession[] =
+      d < today
+        ? []
+        : list
+            .filter((c) => c.level < 4)
+            .filter((c) =>
+              inSpan(c)
+                ? c.pinned_on! <= d && (c.span_end! >= d || (d === today && c.span_end! < today))
+                : d === today
+                  ? c.scheduled_on !== null && c.scheduled_on <= today
+                  : c.scheduled_on === d,
+            )
+            .filter((c) => !(c.last_day === today && d === today && !open.has(c.id)))
+            .map((c) => ({
+              ...base(c),
+              id: c.id,
+              kind: (c.level === 0 ? 'theory' : 'list') as 'theory' | 'list',
+              minutes: inSpan(c) ? 0 : c.level === 0 ? COST.novo : COST.revisao,
+              start: '',
+              done: null,
+              late: lateOf.get(c.id) ?? null,
+              movedTo: null,
+              period: inSpan(c),
+            }))
+            // atrasados na frente (os mais cobrados no ENEM primeiro); o resto na ordem do plano
+            .sort(lateFirst);
+    const reviews: WeekSession[] =
+      d === today
+        ? lists
+            .filter((t) => t.status === 'open' && t.level === 0)
+            .map((t) => ({
+              id: `rev-${t.id}`,
+              kind: 'review' as const,
+              discipline: t.discipline,
+              disciplineName: names[t.discipline] ?? t.discipline,
+              title: 'Revisão da semana',
+              priority: 1,
+              level: 0,
+              minutes: COST.revisao,
+              start: '',
+              done: null,
+              late: null,
+              movedTo: null,
+              period: false,
+            }))
+        : [];
+    const todo = [...pending.filter((s) => s.late), ...reviews, ...pending.filter((s) => !s.late)];
+    const timed = todo.filter((s) => !s.period);
+    const starts = sessionStarts(m.windows[weekdayIndex(d)] ?? [], timed.map((s) => s.minutes));
+    timed.forEach((s, i) => (s.start = starts[i] ?? ''));
+    const sessions = [...done, ...missed, ...todo];
+    return { date: d, free: Number(m.availability[weekdayIndex(d)]) || 0, sessions, lateDay: missed.length > 0 };
+  });
+
+  const real = days.flatMap((x) => x.sessions).filter((s) => !s.movedTo && !s.period);
+  const summary = {
+    planned: real.reduce((a, s) => a + s.minutes, 0),
+    free: m.availability.reduce((a, b) => a + (Number(b) || 0), 0),
+    sessions: real.length,
+    disciplines: new Set(real.map((s) => s.discipline)).size,
+    reviews: real.filter((s) => s.kind !== 'theory').reduce((a, s) => a + s.minutes, 0),
+    done: real.filter((s) => s.done).length,
+    late: late.length,
+  };
+  return { today, monday, week, days, summary };
 }

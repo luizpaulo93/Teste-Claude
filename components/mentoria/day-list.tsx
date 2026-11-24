@@ -11,6 +11,7 @@ import { DayFolder, periodLabel, type ApostilaGroup } from '@/components/mentori
 import { removeFromDay, setListSize, studiedTheory } from '@/app/(app)/mentoria/actions';
 import { LEVELS, WEEKDAYS } from '@/lib/mentoria';
 import { cn, formatDate } from '@/lib/utils';
+import { discStyle } from '@/lib/discipline-colors';
 
 export interface DayItem {
   id: string;
@@ -31,7 +32,15 @@ export interface DayItem {
   /** assunto de um período escolhido pelo mentor */
   period?: { from: string; to: string } | null;
   /** já feito neste dia: resultado da lista */
-  result?: { q: number; c: number; acc: number; passed: boolean; round: number } | null;
+  result?: {
+    q: number;
+    c: number;
+    acc: number;
+    passed: boolean;
+    round: number;
+  } | null;
+  /** atrasado: dia em que deveria ter sido feito (foi realocado e vem primeiro) */
+  late?: string | null;
 }
 
 /** Agenda por dia da semana: teoria para estudar, listas dos níveis e revisões. */
@@ -44,6 +53,7 @@ export function DayList({
   free,
   mentoriaId,
   folder = [],
+  strip = true,
 }: {
   week: string[]; // 7 datas (seg..dom)
   day: string;
@@ -54,39 +64,43 @@ export function DayList({
   mentoriaId?: string;
   /** apostilas dos períodos que valem neste dia */
   folder?: ApostilaGroup[];
+  /** mostra a fileira dos dias da semana (na visão Semana a grade já faz isso) */
+  strip?: boolean;
 }) {
   const path = usePathname();
-  const href = (d: string) => `${path}?d=${d}`;
+  const href = (d: string) => `${path}?v=dia&d=${d}`;
   const prev = week[0] ? shiftISO(week[0], -7) : day;
   const next = week[0] ? shiftISO(week[0], 7) : day;
   const editable = day <= today;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-1.5">
-        <Link href={href(prev)} scroll={false} className={buttonClass('ghost', 'icon', 'size-9 shrink-0')} aria-label="Semana anterior">
-          <ChevronLeft className="size-4" />
-        </Link>
-        <div className="grid flex-1 grid-cols-7 gap-1">
-          {week.map((d, i) => (
-            <Link
-              key={d}
-              href={href(d)}
-              scroll={false}
-              className={cn(
-                'flex flex-col items-center rounded-lg border py-1.5 transition',
-                d === day ? 'border-ink bg-ink text-bg' : d === today ? 'border-brand/50 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
-              )}
-            >
-              <span className="font-mono text-[10px] uppercase">{WEEKDAYS[i]}</span>
-              <span className="num text-sm font-medium">{Number(d.slice(8))}</span>
-            </Link>
-          ))}
+      {strip && (
+        <div className="flex items-center gap-1.5">
+          <Link href={href(prev)} scroll={false} className={buttonClass('ghost', 'icon', 'size-9 shrink-0')} aria-label="Semana anterior">
+            <ChevronLeft className="size-4" />
+          </Link>
+          <div className="grid flex-1 grid-cols-7 gap-1">
+            {week.map((d, i) => (
+              <Link
+                key={d}
+                href={href(d)}
+                scroll={false}
+                className={cn(
+                  'flex flex-col items-center rounded-lg border py-1.5 transition',
+                  d === day ? 'border-ink bg-ink text-bg' : d === today ? 'border-brand/50 text-ink' : 'border-line text-ink-2 hover:bg-surface-2',
+                )}
+              >
+                <span className="font-mono text-[10px] uppercase">{WEEKDAYS[i]}</span>
+                <span className="num text-sm font-medium">{Number(d.slice(8))}</span>
+              </Link>
+            ))}
+          </div>
+          <Link href={href(next)} scroll={false} className={buttonClass('ghost', 'icon', 'size-9 shrink-0')} aria-label="Próxima semana">
+            <ChevronRight className="size-4" />
+          </Link>
         </div>
-        <Link href={href(next)} scroll={false} className={buttonClass('ghost', 'icon', 'size-9 shrink-0')} aria-label="Próxima semana">
-          <ChevronRight className="size-4" />
-        </Link>
-      </div>
+      )}
 
       <div className="flex items-baseline justify-between gap-2">
         <p className="text-sm font-semibold text-ink">
@@ -119,7 +133,9 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
 
   async function remove() {
     setBusy(true);
-    const r = await removeFromDay(it.id, mentoriaId).catch(() => ({ error: 'rede' }));
+    const r = await removeFromDay(it.id, mentoriaId).catch(() => ({
+      error: 'rede',
+    }));
     setBusy(false);
     if (r.error) return toast.error('Não foi possível tirar.');
     toast('Assunto tirado do dia.');
@@ -127,7 +143,14 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
   }
   async function theoryDone() {
     setBusy(true);
-    const r = await studiedTheory(it.id, mentoriaId).catch(() => ({ error: 'Sem conexão.' }) as { error: string; listId?: string; noQuestions?: boolean });
+    const r = await studiedTheory(it.id, mentoriaId).catch(
+      () =>
+        ({ error: 'Sem conexão.' }) as {
+          error: string;
+          listId?: string;
+          noQuestions?: boolean;
+        },
+    );
     setBusy(false);
     if (r.error) return toast.error(r.error);
     if ('noQuestions' in r && r.noQuestions) toast('Teoria concluída. Ainda não há questões deste assunto no banco: o mentor foi avisado.');
@@ -139,15 +162,21 @@ function Row({ it, editable, removable, mentoriaId }: { it: DayItem; editable: b
   return (
     <li
       className={cn(
-        'rounded-xl border bg-surface p-3.5',
-        it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : it.kind === 'review' ? 'border-brand/35' : 'border-line',
+        'disc rounded-xl border bg-surface p-3.5 shadow-[inset_3px_0_0_var(--dc)]',
+        it.result ? (it.result.passed ? 'border-success/40' : 'border-danger/40') : it.late ? 'border-danger/35' : 'border-line',
       )}
+      style={discStyle(it.discipline, it.kind === 'review')}
     >
       <div className="flex items-start gap-3">
-        <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', it.kind === 'review' ? 'bg-brand' : lv.dot)} />
+        <span className={cn('mt-1.5 size-2.5 shrink-0 rounded-full', lv.dot)} title={label} />
         <div className="min-w-0 flex-1">
           <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[10.5px] tracking-[0.04em] text-muted uppercase">
-            {it.discipline} · {label}
+            <span className="text-[var(--dc)]">{it.discipline}</span> · {label}
+            {it.late && !it.result && (
+              <span className="rounded bg-danger/10 px-1 py-px text-danger normal-case">
+                atrasado · era de {it.late.slice(8, 10)}/{it.late.slice(5, 7)}
+              </span>
+            )}
             {it.priority >= 3 && it.kind !== 'review' && (
               <span className="flex items-center gap-0.5 text-orange-500 normal-case">
                 <Flame className="size-3" /> mais cobrado
@@ -218,7 +247,9 @@ function ListLine({ it, editable, mentoriaId }: { it: DayItem; editable: boolean
   async function size(n: number) {
     if (n === it.size) return;
     setBusy(n);
-    const r = await setListSize(it.id, n, mentoriaId).catch(() => ({ error: 'Sem conexão.' }));
+    const r = await setListSize(it.id, n, mentoriaId).catch(() => ({
+      error: 'Sem conexão.',
+    }));
     setBusy(0);
     if (r.error) return toast.error(r.error);
     toast(`Listas deste assunto com ${n} questões.`);
@@ -228,7 +259,12 @@ function ListLine({ it, editable, mentoriaId }: { it: DayItem; editable: boolean
     <div className="mt-2 space-y-2.5">
       <div className="flex items-center gap-2.5">
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-surface-3">
-          <div className="h-full rounded-full bg-brand" style={{ width: `${Math.round((l.answered / Math.max(1, l.total)) * 100)}%` }} />
+          <div
+            className="h-full rounded-full bg-brand"
+            style={{
+              width: `${Math.round((l.answered / Math.max(1, l.total)) * 100)}%`,
+            }}
+          />
         </div>
         <span className="num shrink-0 text-[11px] text-muted">
           {l.answered}/{l.total}

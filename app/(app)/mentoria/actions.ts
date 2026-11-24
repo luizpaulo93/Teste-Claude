@@ -3,7 +3,7 @@
 import { refresh as refreshClient } from 'next/cache';
 import { emailKey, newId, sql } from '@/lib/db';
 import { ASSUNTO_BY_KEY, DISCIPLINES } from '@/lib/trilha-catalog';
-import { shift, todayBR } from '@/lib/mentoria';
+import { cleanWindows, shift, todayBR, windowMinutes, type StudyWindow } from '@/lib/mentoria';
 import { createStudentReview, newTrailList, setTrailLevel, setTrailSize } from '@/lib/trilha';
 import { checkOptions, createCheck } from '@/lib/mentoria-checks';
 import { reschedule, writePlan } from '@/lib/mentoria-data';
@@ -31,7 +31,6 @@ function refresh(id: string) {
   refreshClient();
 }
 
-const clampInt = (v: unknown, min: number, max: number) => Math.min(max, Math.max(min, Math.round(Number(v) || 0)));
 
 // ---------------- Mentor monta o cronograma
 /**
@@ -122,15 +121,17 @@ export async function createReviewList(size: number, discipline?: string, mentor
 }
 
 // ---------------- Horários do aluno
-export async function saveSchedule(data: { availability: number[] }, mentoriaId?: string): Promise<Result> {
+export async function saveSchedule(data: { windows: StudyWindow[][] }, mentoriaId?: string): Promise<Result> {
   const a = await access(mentoriaId);
   if (!a) return { error: 'Sem acesso.' };
-  const availability = Array.from({ length: 7 }, (_, i) => clampInt(data.availability?.[i], 0, 720));
-  if (!availability.some(Boolean)) return { error: 'Informe pelo menos um dia com tempo livre.' };
+  // os períodos de cada dia definem o tempo livre (minutos) que o cronograma usa
+  const windows = cleanWindows(data?.windows);
+  const availability = windows.map((w) => Math.min(720, windowMinutes(w)));
+  if (!availability.some(Boolean)) return { error: 'Escolha pelo menos um período de estudo.' };
   await sql.exec(
-    `update mentorias set availability = $2, weekly_hours_target = greatest(1, round($3 / 60.0)),
+    `update mentorias set availability = $2, study_windows = $4, weekly_hours_target = greatest(1, round($3 / 60.0)),
        diagnosed_at = coalesce(diagnosed_at, now()), updated_at = now() where id = $1`,
-    [a.id, JSON.stringify(availability), availability.reduce((x, y) => x + y, 0)],
+    [a.id, JSON.stringify(availability), availability.reduce((x, y) => x + y, 0), JSON.stringify(windows)],
   );
   await reschedule(a.id);
   refresh(a.id);

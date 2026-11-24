@@ -8,6 +8,7 @@ import { toast } from '@/components/toast';
 import { buttonClass } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { LEVELS, TASK_KIND, WEEKDAYS } from '@/lib/mentoria';
+import { discStyle } from '@/lib/discipline-colors';
 import { cn, formatDate } from '@/lib/utils';
 
 export interface AssuntoRow {
@@ -64,6 +65,7 @@ export function AssuntosView({
                 disc === d.key ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2',
               )}
             >
+              <span aria-hidden className="disc size-2 shrink-0 rounded-full bg-[var(--dc)]" style={discStyle(d.key)} />
               {d.name} <span className="text-xs opacity-75">{pct}%</span>
             </button>
           );

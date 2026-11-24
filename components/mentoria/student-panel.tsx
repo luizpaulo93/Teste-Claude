@@ -13,6 +13,7 @@ import { Button, buttonClass, Field, Input, Select } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import { fetchFile, safeName, saveBlob } from '@/lib/download';
 import { stampedPdfUrl } from '@/lib/pdf-stamp';
+import { discStyle } from '@/lib/discipline-colors';
 import { cn, formatDate } from '@/lib/utils';
 
 export const PHASES = [
@@ -125,6 +126,7 @@ export function AllSubjects({ subjects, disciplines }: { subjects: PanelSubject[
                 disc === d.key ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
+              <span aria-hidden className="disc size-2 shrink-0 rounded-full bg-[var(--dc)]" style={discStyle(d.key)} />
               {d.name}
               <span className={cn('num text-[11px]', disc === d.key ? 'text-bg/70' : 'text-muted')}>{pct}%</span>
             </button>

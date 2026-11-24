@@ -17,10 +17,10 @@ export default async function MentoriaHours({ searchParams }: { searchParams: Pr
       {first && (
         <div className="mb-5 rounded-xl bg-brand/10 p-4 text-sm text-ink">
           <p className="font-bold">Bem-vindo à mentoria</p>
-          <p className="mt-1 text-ink-2">Diga quanto tempo você tem em cada dia. Seu cronograma é montado nesses horários.</p>
+          <p className="mt-1 text-ink-2">Escolha os dias e os períodos em que você pode estudar. Seu cronograma é montado nesses horários e você pode mudar quando quiser.</p>
         </div>
       )}
-      <ScheduleForm availability={m.availability} next={first ? '/mentoria' : undefined} />
+      <ScheduleForm windows={m.windows} next={first ? '/mentoria/agenda' : undefined} />
     </Card>
   );
 }

@@ -961,3 +961,12 @@ alter table mentoria_cards add column if not exists review_every int not null de
 -- questoes: null = segue a turma (como antes); true = liberado mesmo sem turma; false = sem questões.
 -- ============================================================================
 alter table students add column if not exists questoes boolean;
+
+-- ============================================================================
+-- Versão 38: horários por período e assuntos atrasados.
+-- study_windows: 7 listas (seg..dom) de períodos [["19:00","21:00"], ...]; o tempo livre do dia
+-- (availability) passa a ser a soma deles. late_from: dia em que o assunto deveria ter sido feito e não foi
+-- (ele é realocado primeiro nos próximos dias e sai daqui quando o aluno o faz).
+-- ============================================================================
+alter table mentorias add column if not exists study_windows jsonb;
+alter table mentoria_cards add column if not exists late_from date;

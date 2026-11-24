@@ -376,3 +376,22 @@ input[type='date'], input[type='datetime-local'], input[type='time'] { color-sch
 
 /* Estúdio em tela inteira (modo escrita): os menus do app saem da frente */
 html.studio-full [data-chrome] { display: none !important; }
+
+/* ------------------------------------------------------------------
+   Cores das disciplinas (mentoria): um tom por disciplina, suave nos dois temas.
+   Uso: class="disc" style="--dh: 265" (o matiz vem de lib/discipline-colors.ts).
+   --dc: cor da marca (barra, ponto) · --dcbg: fundo do bloco · --dcink: texto sobre o fundo
+------------------------------------------------------------------- */
+.disc {
+  --dc: oklch(0.72 0.11 var(--dh, 260));
+  --dcbg: oklch(0.72 0.11 var(--dh, 260) / 0.13);
+  --dcline: oklch(0.72 0.11 var(--dh, 260) / 0.32);
+  --dcink: oklch(0.9 0.05 var(--dh, 260));
+}
+[data-theme='light'] .disc,
+.disc[data-theme='light'] {
+  --dc: oklch(0.56 0.12 var(--dh, 260));
+  --dcbg: oklch(0.6 0.11 var(--dh, 260) / 0.1);
+  --dcline: oklch(0.56 0.12 var(--dh, 260) / 0.28);
+  --dcink: oklch(0.36 0.09 var(--dh, 260));
+}

@@ -273,7 +273,7 @@ export async function setTrailLevel(mentoriaId: string, cardId: string, level: n
   const today = todayBR();
   await closeOpen(mentoriaId, cardId);
   await sql.exec(
-    `update mentoria_cards set level = $3, step = 'study', retained = 0, updated_at = now(),
+    `update mentoria_cards set level = $3, step = 'study', retained = 0, late_from = null, updated_at = now(),
             due_on = case when $3 between 1 and 3 then $4::date else null end,
             mastered_on = case when $3 = 4 then coalesce(mastered_on, $4::date) else null end,
             next_review = case when $3 = 4 then $5::date when $3 = 0 then null else next_review end,
@@ -407,7 +407,7 @@ export async function afterTrailList(listId: string, userId: string): Promise<Tr
     // dominou: com facilidade (no máximo 1 lista repetida na trilha toda) volta a cada 2 semanas; com dificuldade, toda semana
     const hard = mastered ? c.retained_total >= 2 : false;
     await sql.exec(
-      `update mentoria_cards set level = $3, retained = 0, step = 'study', last_acc = $4, attempts = attempts + 1, history = $5,
+      `update mentoria_cards set level = $3, retained = 0, step = 'study', last_acc = $4, attempts = attempts + 1, history = $5, late_from = null,
               hard = $6, review_ok = 0, review_every = case when $8 then $11::int else review_every end,
               due_on = $7, mastered_on = case when $8 then $9::date else mastered_on end,
               next_review = case when $8 then $10::date else next_review end, updated_at = now()
@@ -433,7 +433,7 @@ export async function afterTrailList(listId: string, userId: string): Promise<Tr
   // retido: outra lista do mesmo nível (questões novas); 2 listas seguidas sem passar = assunto com dificuldade
   await sql.exec(
     `update mentoria_cards set retained = retained + 1, retained_total = retained_total + 1, hard = hard or retained + 1 >= 2,
-            last_acc = $3, attempts = attempts + 1, history = $4, due_on = $5, updated_at = now(),
+            last_acc = $3, attempts = attempts + 1, history = $4, due_on = $5, late_from = null, updated_at = now(),
             -- com dificuldade: passa a entrar já nas próximas listas dos outros assuntos da disciplina (toda semana)
             next_review = case when hard or retained + 1 >= 2 then coalesce(next_review, $6::date) else next_review end
       where id = $1 and mentoria_id = $2`,

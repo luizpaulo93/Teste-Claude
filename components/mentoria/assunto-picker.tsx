@@ -9,6 +9,7 @@ import { Spinner } from '@/components/ui-client';
 import { setGroupAssuntos } from '@/app/(app)/admin/mentoria/group-actions';
 import { setPlanAssuntos } from '@/app/(app)/mentoria/actions';
 import { DISCIPLINES } from '@/lib/trilha-catalog';
+import { discStyle } from '@/lib/discipline-colors';
 import { cn } from '@/lib/utils';
 
 /** Mentor marca e desmarca os assuntos do cronograma (manual ou ajustando o que foi gerado). */
@@ -59,6 +60,7 @@ export function AssuntoPicker({ mentoriaId, groupId, selected }: { mentoriaId?: 
                 disc === d.key && !term ? 'border-ink bg-ink text-bg' : 'border-line bg-surface text-ink-2',
               )}
             >
+              <span aria-hidden className="disc size-2 shrink-0 rounded-full bg-[var(--dc)]" style={discStyle(d.key)} />
               {d.name} <span className="text-xs opacity-75">{n}</span>
             </button>
           );

@@ -10,6 +10,7 @@ import { Button, buttonClass, Input } from '@/components/ui';
 import { Modal, Spinner } from '@/components/ui-client';
 import type { BoardCard } from '@/lib/mentoria-data';
 import { LEVELS } from '@/lib/mentoria';
+import { discStyle } from '@/lib/discipline-colors';
 import { cn, formatDate } from '@/lib/utils';
 
 const COLS = [
@@ -207,10 +208,11 @@ export function TrailBoard({
               onClick={() => setDisc(d.key)}
               aria-pressed={disc === d.key}
               className={cn(
-                'shrink-0 rounded-md border px-2.5 py-1.5 text-xs font-medium transition',
+                'flex shrink-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium transition',
                 disc === d.key ? 'border-ink bg-ink text-bg' : 'border-line text-ink-2 hover:bg-surface-2',
               )}
             >
+              {d.key && <span aria-hidden className="disc size-2 shrink-0 rounded-full bg-[var(--dc)]" style={discStyle(d.key)} />}
               {d.name}
             </button>
           ))}
@@ -336,7 +338,12 @@ function CardFace({ c, discName, showDisc }: { c: BoardCard; discName: string; s
   return (
     <>
       <p className="flex items-center gap-1 font-mono text-[9.5px] tracking-[0.04em] text-muted uppercase">
-        {showDisc && <span className="truncate">{discName}</span>}
+        {showDisc && (
+          <span className="disc flex min-w-0 items-center gap-1 text-[var(--dc)]" style={discStyle(c.discipline)}>
+            <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-[var(--dc)]" />
+            <span className="truncate">{discName}</span>
+          </span>
+        )}
         {c.priority >= 3 && <Flame className="size-3 shrink-0 text-orange-500" aria-label="mais cobrado" />}
       </p>
       <p className="mt-0.5 text-[13px] leading-snug font-medium text-ink">{c.title}</p>

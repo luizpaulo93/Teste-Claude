@@ -11,7 +11,7 @@ export default async function AdminMentoradoHours({ params }: { params: Promise<
       {!m.diagnosed_at && (
         <p className="mb-4 rounded-xl bg-warning/10 p-3 text-sm text-ink">O aluno ainda não informou os horários. Você pode preencher por ele.</p>
       )}
-      <ScheduleForm availability={m.availability} mentoriaId={m.id} />
+      <ScheduleForm windows={m.windows} mentoriaId={m.id} />
     </Card>
   );
 }
