@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
@@ -60,6 +60,11 @@ export default async function QuestaoPage({
         <Link href={`/questoes${qs}`} className="flex items-center gap-1.5 text-sm font-semibold text-muted hover:text-ink">
           <ArrowLeft className="size-4" /> {viewer.isAdmin ? 'Questões' : 'Exercícios'}
         </Link>
+        {viewer.isAdmin && (
+          <Link href={`/admin/questoes/editar/${encodeURIComponent(q.id)}`} className="flex items-center gap-1.5 text-sm font-semibold text-brand hover:underline">
+            <Pencil className="size-4" /> Editar questão
+          </Link>
+        )}
       </div>
 
       <Card className="mb-4 space-y-2 p-4">

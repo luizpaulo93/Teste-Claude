@@ -1,12 +1,13 @@
 'use client';
 
-import { CheckCircle2, FileJson, FolderOpen, ImageIcon, Trash2, Upload } from 'lucide-react';
+import { CheckCircle2, FileArchive, FileJson, FolderOpen, ImageIcon, Trash2, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { Badge, Button, Card, Checkbox, ProgressBar } from '@/components/ui';
 import { ActionButton, Spinner } from '@/components/ui-client';
 import { fileName, imagesOf, type ProvaIn } from '@/lib/question-types';
 import { cn } from '@/lib/utils';
+import { filesFromZip } from '@/lib/unzip-client';
 import { checkImport, deletePaper } from './actions';
 import { clearImportResult, startImport, useImportJob } from './import-job';
 
@@ -29,6 +30,8 @@ export function Importer() {
   const jsonInput = useRef<HTMLInputElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const dirInput = useRef<HTMLInputElement>(null);
+  const zipInput = useRef<HTMLInputElement>(null);
+  const [unzipping, setUnzipping] = useState('');
   const [provas, setProvas] = useState<ProvaIn[] | null>(null);
   const [jsonName, setJsonName] = useState('');
   const [files, setFiles] = useState<Map<string, File>>(new Map());
@@ -59,24 +62,51 @@ export function Importer() {
     setCheck(await checkImport((list ?? []).map((p) => p.provaId)).catch(() => null));
   }
 
-  async function readJson(f: File) {
-    try {
-      const data = JSON.parse(await f.text());
-      const list: ProvaIn[] = Array.isArray(data?.provas) ? data.provas : Array.isArray(data) ? data : data?.provaId ? [data] : [];
-      if (!list.length || !list.every((p) => p?.provaId && Array.isArray(p.questoes))) throw new Error('formato');
-      setProvas(list);
-      setJsonName(f.name);
-      clearImportResult();
-      await refreshCheck(list);
-    } catch {
-      toast.error('Este arquivo não é um provas.json válido.');
+  /** Lê um ou vários .json de provas (vários juntos viram uma importação só; prova repetida fica a última). */
+  async function readJson(fs: File[], quiet = false) {
+    const byId = new Map<string, ProvaIn>();
+    const ok: string[] = [];
+    for (const f of fs) {
+      try {
+        const data = JSON.parse(await f.text());
+        const list: ProvaIn[] = Array.isArray(data?.provas) ? data.provas : Array.isArray(data) ? data : data?.provaId ? [data] : [];
+        if (!list.length || !list.every((p) => p?.provaId && Array.isArray(p.questoes))) throw new Error('formato');
+        for (const p of list) byId.set(p.provaId, p);
+        ok.push(f.name);
+      } catch {
+        if (!quiet) toast.error(`${f.name} não é um provas.json válido.`);
+      }
     }
+    if (!byId.size) {
+      if (quiet) toast.error('Não achei nenhum provas.json válido dentro do zip.');
+      return;
+    }
+    const list = [...byId.values()];
+    setProvas(list);
+    setJsonName(ok.length === 1 ? ok[0] : `${ok.length} arquivos .json`);
+    clearImportResult();
+    await refreshCheck(list);
   }
 
-  async function pick(list: FileList | null) {
-    if (!list?.length) return;
-    const all = Array.from(list);
-    const json = all.find((f) => /\.json$/i.test(f.name));
+  async function pick(input: FileList | File[] | null) {
+    if (!input?.length) return;
+    let all = Array.from(input);
+    // .zip: abre aqui mesmo e separa o provas.json e as imagens, de qualquer pasta de dentro
+    const zips = all.filter((f) => /\.zip$/i.test(f.name) || f.type === 'application/zip');
+    if (zips.length) {
+      all = all.filter((f) => !zips.includes(f));
+      for (const z of zips) {
+        setUnzipping(z.name);
+        try {
+          all.push(...(await filesFromZip(z)));
+        } catch {
+          toast.error(`Não consegui abrir ${z.name}. Confira se é um .zip.`);
+        }
+      }
+      setUnzipping('');
+    }
+    const jsons = all.filter((f) => /\.json$/i.test(f.name));
+    const json = jsons[0];
     const imgs = all.filter(isImage);
     if (imgs.length) {
       setFiles((m) => {
@@ -86,8 +116,9 @@ export function Importer() {
       });
       clearImportResult();
     }
-    if (json) await readJson(json);
+    if (json) await readJson(jsons, zips.length > 0 || jsons.length > 1);
     else if (!check) await refreshCheck(provas);
+    if (zips.length) toast(`Zip aberto: ${jsons.length} arquivo(s) .json e ${imgs.length} imagens.`);
   }
 
   // ---------------- resumo
@@ -152,6 +183,30 @@ export function Importer() {
 
   return (
     <Card className="space-y-4 p-4 sm:p-5">
+      <button
+        type="button"
+        onClick={() => zipInput.current?.click()}
+        disabled={Boolean(unzipping) || busy}
+        className="flex w-full items-center gap-3 rounded-xl border border-brand/40 bg-brand-soft p-3.5 text-left transition hover:border-brand disabled:opacity-60"
+      >
+        <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-brand text-white">
+          {unzipping ? <Spinner /> : <FileArchive className="size-5" />}
+        </span>
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-ink">{unzipping ? `Abrindo ${unzipping}…` : 'Arquivo .zip (tudo junto)'}</span>
+          <span className="block text-xs text-muted">O provas.json e as imagens são lidos e organizados sozinhos.</span>
+        </span>
+      </button>
+      <input
+        ref={zipInput}
+        type="file"
+        accept=".zip,application/zip,application/x-zip-compressed"
+        multiple
+        hidden
+        aria-label="Arquivo zip"
+        onChange={(e) => void pick(e.target.files).then(() => (e.target.value = ''))}
+      />
+      <p className="text-center font-mono text-[10.5px] tracking-[0.06em] text-muted uppercase">ou escolha separado</p>
       <div className="grid gap-2 sm:grid-cols-3">
         <PickButton
           icon={<FileJson className="size-4" />}
@@ -192,7 +247,7 @@ export function Importer() {
             const st = (s: string) => p.questoes.filter((q) => (q.status ?? 'valida') === s).length;
             return (
               <div key={p.provaId} className="flex flex-wrap items-center gap-2 rounded-xl border border-line p-3 text-sm">
-                <span className="min-w-0 flex-1 font-semibold text-ink">
+                <span className="min-w-0 basis-full font-semibold text-ink sm:flex-1 sm:basis-auto">
                   {[p.exame, p.ano, p.dia].filter(Boolean).join(' ')} · {p.aplicacao || p.provaId}
                 </span>
                 <Badge>{p.questoes.length} questões</Badge>

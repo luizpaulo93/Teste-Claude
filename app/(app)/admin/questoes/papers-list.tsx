@@ -1,6 +1,6 @@
 'use client';
 
-import { AlertTriangle, Check, ImageOff, Search, Trash2, X } from 'lucide-react';
+import { AlertTriangle, Check, ImageOff, Pencil, Search, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
@@ -23,7 +23,7 @@ export interface PaperView {
   /** questões sem resolução */
   noRes: number;
   /** fórmulas com erro / texto corrompido achados na importação */
-  problems: { n: number; onde: string; msg: string }[];
+  problems: { n: number; onde: string; msg: string; qid: string | null }[];
 }
 
 /** Provas do app: marcar várias (ou todas as da busca) e excluir de uma vez. */
@@ -138,10 +138,26 @@ export function PapersList({ papers }: { papers: PaperView[] }) {
               <DeletePaper id={p.id} />
             </span>
             {open === p.id && (
-              <ul className="w-full space-y-1 rounded-xl bg-surface-2 p-2.5 text-[11px] text-ink-2">
+              <ul className="w-full space-y-0.5 rounded-xl bg-surface-2 p-1.5 text-[11px] text-ink-2">
                 {p.problems.map((x, k) => (
                   <li key={k}>
-                    <b className="text-ink">Questão {x.n}</b> ({x.onde}): {x.msg}
+                    {x.qid ? (
+                      <Link
+                        href={`/admin/questoes/editar/${encodeURIComponent(x.qid)}?onde=${encodeURIComponent(x.onde)}`}
+                        className="group flex items-center gap-2 rounded-lg px-1.5 py-1.5 hover:bg-surface-3"
+                      >
+                        <span className="min-w-0 flex-1">
+                          <b className="text-ink">Questão {x.n}</b> ({x.onde}): {x.msg}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1 font-medium text-brand">
+                          <Pencil className="size-3" /> Corrigir
+                        </span>
+                      </Link>
+                    ) : (
+                      <span className="block px-1.5 py-1.5">
+                        <b className="text-ink">Questão {x.n}</b> ({x.onde}): {x.msg}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

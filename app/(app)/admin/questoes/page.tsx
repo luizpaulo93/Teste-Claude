@@ -17,6 +17,12 @@ export default async function AdminQuestoes() {
             (select count(*)::int from question_answers a join questions q on q.id = a.question_id where q.paper_id = p.id) as answers
        from exam_papers p order by p.ano desc nulls last, p.id`,
   );
+  // questão de cada problema (para abrir direto na edição)
+  const withProblems = papers.filter((p) => p.problems?.length).map((p) => p.id);
+  const qids = withProblems.length
+    ? await sql.query<{ paper_id: string; numero: number; id: string }>(`select paper_id, numero, id from questions where paper_id = any($1)`, [withProblems])
+    : [];
+  const qidOf = new Map(qids.map((r) => [`${r.paper_id}#${r.numero}`, r.id]));
   return (
     <>
       <PageHeader eyebrow="Banco de questões" title="Questões" />
@@ -37,7 +43,7 @@ export default async function AdminQuestoes() {
               images: p.images,
               missing: p.missing_images,
               noRes: p.no_res,
-              problems: p.problems ?? [],
+              problems: (p.problems ?? []).map((x) => ({ ...x, qid: qidOf.get(`${p.id}#${x.n}`) ?? null })),
             }))}
           />
         ) : (
