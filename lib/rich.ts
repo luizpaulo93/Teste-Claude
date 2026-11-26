@@ -10,8 +10,10 @@ const md = new Marked({ gfm: true, breaks: true, async: false });
 
 const DOLLAR = '';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** dentro da fórmula, o cifrão escrito "\$" (ex.: \mathrm{R\$}) volta a ser "\$" para o KaTeX */
+const texSrc = (src: string) => src.replaceAll(DOLLAR, '\\$');
 const tex = (src: string, display: boolean) =>
-  katex.renderToString(breakable(src), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
+  katex.renderToString(breakable(texSrc(src)), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
 
 /**
  * \mathrm{A + B \rightarrow C} vira \mathrm{A} + \mathrm{B} \rightarrow \mathrm{C}: o KaTeX não quebra linha
@@ -122,7 +124,8 @@ export const richTex = (latex: string) => tex(latex, true);
  */
 export function formulaProblems(src: string | null | undefined): string[] {
   // dinheiro não é fórmula ("\$", "R$ 14,00"), como no rich()
-  const s = money(String(src ?? ''), '');
+  // mesma preparação da montagem (rich): o que passa aqui abre igual na tela do aluno
+  const s = money(String(src ?? ''), DOLLAR);
   if (!s.includes('$')) return [];
   if ((s.match(/\$/g)?.length ?? 0) % 2) return ['cifrão ($) sem par'];
   const out: string[] = [];
@@ -130,10 +133,11 @@ export function formulaProblems(src: string | null | undefined): string[] {
   return out;
 }
 export function latexProblems(latex: string): string[] {
-  const t = String(latex ?? '');
+  const t = texSrc(String(latex ?? ''));
   if (!t.trim()) return [];
   try {
-    katex.renderToString(t, { throwOnError: true, strict: 'ignore' });
+    // exatamente como vai para a tela (com as quebras de linha das equações químicas)
+    katex.renderToString(breakable(t), { throwOnError: true, strict: 'ignore' });
   } catch (e) {
     void e;
     return ['fórmula com erro (não abre)'];
