@@ -19,7 +19,10 @@ export async function previewFields(fields: PreviewField[]): Promise<{ html: str
   return (Array.isArray(fields) ? fields : []).slice(0, 200).map((f) => {
     const src = String(f?.src ?? '').slice(0, 20000);
     try {
-      return f?.kind === 'tex' ? { html: richTex(src), problems: latexProblems(src) } : { html: rich(src), problems: formulaProblems(src) };
+      const r = f?.kind === 'tex' ? { html: richTex(src), problems: latexProblems(src) } : { html: rich(src), problems: formulaProblems(src) };
+      // o que sai em vermelho na prévia é sempre problema, mesmo que a checagem não tenha visto
+      if (!r.problems.length && r.html.includes('katex-error')) r.problems = ['fórmula com erro (aparece em vermelho)'];
+      return r;
     } catch {
       return { html: '', problems: ['não foi possível mostrar'] };
     }

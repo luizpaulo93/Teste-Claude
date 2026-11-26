@@ -130,6 +130,8 @@ export function formulaProblems(src: string | null | undefined): string[] {
   if ((s.match(/\$/g)?.length ?? 0) % 2) return ['cifrão ($) sem par'];
   const out: string[] = [];
   for (const m of s.matchAll(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g)) out.push(...latexProblems(m[1] ?? m[2] ?? ''));
+  // trava final: monta como o aluno vê; se algum pedaço sair em vermelho (erro do KaTeX), avisa
+  if (!out.length && rich(src).includes('katex-error')) out.push('fórmula com erro (aparece em vermelho)');
   return out;
 }
 export function latexProblems(latex: string): string[] {
