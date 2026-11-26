@@ -11,7 +11,37 @@ const md = new Marked({ gfm: true, breaks: true, async: false });
 const DOLLAR = '';
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 /** dentro da fórmula, o cifrão escrito "\$" (ex.: \mathrm{R\$}) volta a ser "\$" para o KaTeX */
-const texSrc = (src: string) => src.replaceAll(DOLLAR, '\\$');
+const texSrc = (src: string) => uprightAccents(src.replaceAll(DOLLAR, '\\$'));
+
+const TEXT_CMD = /\\(?:text|textrm|textnormal|mathrm|mathit|mathbf|mathsf|mbox|textbf|textit|operatorname)\s*\{/g;
+/** Aplica `fn` só nos trechos da fórmula fora de \text{…}/\mathrm{…} (chaves dentro de chaves contam). */
+function outsideText(t: string, fn: (part: string) => string, keep = true) {
+  const re = new RegExp(TEXT_CMD.source, 'g');
+  let out = '';
+  let i = 0;
+  for (let m = re.exec(t); m; m = re.exec(t)) {
+    out += fn(t.slice(i, m.index));
+    let depth = 1;
+    let j = m.index + m[0].length;
+    for (; j < t.length && depth; j++) {
+      if (t[j] === '{') depth++;
+      else if (t[j] === '}') depth--;
+    }
+    if (keep) out += t.slice(m.index, j);
+    i = j;
+    re.lastIndex = j;
+  }
+  return out + fn(t.slice(i));
+}
+
+/**
+ * Palavra com acento dentro da fórmula (h_{máx}, v_{média}) é texto: vai em letra reta, como nos livros,
+ * em vez do itálico de variável (e sem o aviso de "caractere estranho").
+ */
+function uprightAccents(t: string) {
+  if (!/[À-ÖØ-öø-ÿ]/.test(t)) return t;
+  return outsideText(t, (part) => part.replace(/(?<![\\A-Za-zÀ-ÖØ-öø-ÿ])[A-Za-zÀ-ÖØ-öø-ÿ]*[À-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ]*/g, (w) => `\\text{${w}}`));
+}
 const tex = (src: string, display: boolean) =>
   katex.renderToString(breakable(texSrc(src)), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
 
@@ -70,23 +100,7 @@ function money(s: string, mark: string) {
 }
 
 /** Tira os comandos de texto da fórmula (\text{…}, \mathrm{…} com chaves dentro de chaves): ali acento é normal. */
-function withoutText(t: string) {
-  const re = /\\(?:text|textrm|textnormal|mathrm|mathit|mathbf|mathsf|mbox|textbf|textit|operatorname)\s*\{/g;
-  let out = '';
-  let i = 0;
-  for (let m = re.exec(t); m; m = re.exec(t)) {
-    out += t.slice(i, m.index);
-    let depth = 1;
-    let j = m.index + m[0].length;
-    for (; j < t.length && depth; j++) {
-      if (t[j] === '{') depth++;
-      else if (t[j] === '}') depth--;
-    }
-    i = j;
-    re.lastIndex = j;
-  }
-  return out + t.slice(i);
-}
+const withoutText = (t: string) => outsideText(t, (p) => p, false);
 
 export function rich(src: string | null | undefined, inline = false): string {
   let s = String(src ?? '');
@@ -144,8 +158,10 @@ export function latexProblems(latex: string): string[] {
     void e;
     return ['fórmula com erro (não abre)'];
   }
-  // fora de \text{…}: letra acentuada, aspas ou símbolos de fonte trocada não aparecem em fórmula
+  // fora de \text{…}: aspas ou símbolos de fonte trocada (cópia errada do PDF) não aparecem em fórmula.
+  // Letra com acento é normal (h_{máx}): vira texto reto em uprightAccents.
   const bare = withoutText(t);
-  if (/[-�\u0000-\u0008\u000E-\u001F]/.test(bare) || /["´¨¥¤¦§¶¬¯]|[À-ÖØ-öø-ÿ]/.test(bare)) return ['fórmula com caracteres estranhos'];
+  const odd = bare.match(/[\uFFFD\u0000-\u0008\u000E-\u001F\uE000-\uF8FF]|["´¨¥¤¦§¶¬¯]/) ?? String(latex ?? '').match(/[ÃÂ][\u0080-\u00BF]/);
+  if (odd) return [`símbolo estranho na fórmula: "${odd[0].replace(/[\u0000-\u001F]/g, '?')}" (provável erro ao copiar do PDF)`];
   return [];
 }
