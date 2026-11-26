@@ -194,7 +194,7 @@ export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativa
   return out;
 }
 /** Muda quando a checagem das fórmulas melhora: as provas já importadas são conferidas de novo. */
-const PROBLEMS_VERSION = '5';
+const PROBLEMS_VERSION = '6';
 const gp = globalThis as { __problemsCheck?: Promise<void> | null };
 /** Refaz a lista de problemas de todas as provas (uma vez por versão da checagem). */
 export function recheckProblems() {
