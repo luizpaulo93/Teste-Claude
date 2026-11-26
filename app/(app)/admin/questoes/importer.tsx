@@ -19,6 +19,12 @@ const noRes = (p: ProvaIn) =>
     const v = (q as unknown as Record<string, unknown>)[k];
     return (typeof v === 'string' && v.trim()) || (v && typeof v === 'object' && typeof (v as { texto?: unknown }).texto === 'string');
   })).length;
+/** zip pelo começo do arquivo ("PK\x03\x04"), mesmo sem extensão no nome */
+const looksZip = async (f: File) => {
+  const b = new Uint8Array(await f.slice(0, 4).arrayBuffer());
+  return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+};
+const looksJson = async (f: File) => /^\s*[[{]/.test(await f.slice(0, 64).text());
 const isImage = (f: File) => /\.(webp|png|jpe?g|gif|avif)$/i.test(f.name) || f.type.startsWith('image/');
 
 /**
@@ -92,7 +98,9 @@ export function Importer() {
     if (!input?.length) return;
     let all = Array.from(input);
     // .zip: abre aqui mesmo e separa o provas.json e as imagens, de qualquer pasta de dentro
-    const zips = all.filter((f) => /\.zip$/i.test(f.name) || f.type === 'application/zip');
+    // no Android o arquivo pode chegar sem a extensão: o zip é reconhecido pelo conteúdo (começa com "PK")
+    const zipFlags = await Promise.all(all.map(async (f) => /\.zip$/i.test(f.name) || /zip/i.test(f.type) || (!isImage(f) && (await looksZip(f)))));
+    const zips = all.filter((_, i) => zipFlags[i]);
     if (zips.length) {
       all = all.filter((f) => !zips.includes(f));
       for (const z of zips) {
@@ -105,7 +113,9 @@ export function Importer() {
       }
       setUnzipping('');
     }
-    const jsons = all.filter((f) => /\.json$/i.test(f.name));
+    // .json pelo nome ou, sem extensão, pelo conteúdo (texto que começa com { ou [)
+    const jsonFlags = await Promise.all(all.map(async (f) => /\.json$/i.test(f.name) || (!isImage(f) && !/\.[a-z0-9]{2,5}$/i.test(f.name) && (await looksJson(f)))));
+    const jsons = all.filter((_, i) => jsonFlags[i]);
     const json = jsons[0];
     const imgs = all.filter(isImage);
     if (imgs.length) {
@@ -200,7 +210,7 @@ export function Importer() {
       <input
         ref={zipInput}
         type="file"
-        accept=".zip,application/zip,application/x-zip-compressed"
+        // sem filtro de tipo: no Android o filtro abre só a galeria de fotos e esconde o .zip
         multiple
         hidden
         aria-label="Arquivo zip"
