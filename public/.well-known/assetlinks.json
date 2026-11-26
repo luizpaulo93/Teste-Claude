@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "br.com.cursovertice.app",
+      "sha256_cert_fingerprints": ["06:96:65:E5:E1:DA:2D:8F:5C:B1:CA:1F:F6:0A:43:40:2C:06:14:2D:1D:EB:3D:AC:E8:66:B0:E2:7E:85:1E:37"]
+    }
+  }
+]

@@ -1,0 +1,45 @@
+// App Android do Curso Vértice: abre a plataforma em tela cheia (Trusted Web Activity, pelo Chrome).
+// Tudo o que muda no site aparece no app sozinho; só é preciso gerar outro APK se mudar o endereço ou o ícone.
+plugins {
+    id 'com.android.application'
+}
+
+def host = 'teste-claude-lilac.vercel.app'
+
+android {
+    namespace 'br.com.cursovertice.app'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'br.com.cursovertice.app'
+        minSdk 23
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        manifestPlaceholders = [hostName: host, defaultUrl: "https://${host}/"]
+    }
+
+    // Chave de assinatura: fora do repositório (guardada pelo dono). Caminho e senhas por variáveis de ambiente.
+    signingConfigs {
+        release {
+            storeFile file(System.getenv('VERTICE_KEYSTORE') ?: 'vertice.keystore')
+            storePassword System.getenv('VERTICE_KEYSTORE_PASSWORD')
+            keyAlias 'vertice'
+            keyPassword System.getenv('VERTICE_KEYSTORE_PASSWORD')
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.5.0'
+}

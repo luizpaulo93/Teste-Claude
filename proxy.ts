@@ -3,7 +3,8 @@ import { adminConfigProblem } from '@/lib/firebase/admin-config';
 import { publicConfigProblem } from '@/lib/firebase/config';
 import { databaseConfigProblem } from '@/lib/db-config';
 
-const PUBLIC_PATHS = ['/login', '/auth', '/configurar', '/site', '/api/'];
+// /.well-known: verificação do app Android (assetlinks.json) precisa abrir sem login
+const PUBLIC_PATHS = ['/login', '/auth', '/configurar', '/site', '/api/', '/.well-known/'];
 const SESSION_COOKIE = '__session';
 
 /**
@@ -38,6 +39,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon.svg|sw.js|manifest.webmanifest|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon.svg|sw.js|manifest.webmanifest|\\.well-known|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 };
