@@ -4,8 +4,8 @@
   "description": "Plataforma de estudos Curso Vértice para Enem e vestibulares — Física, Química e Matemática.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#070b14",
-  "theme_color": "#070b14",
+  "background_color": "#0a0a0b",
+  "theme_color": "#0a0a0b",
   "icons": [
     {
       "src": "/icon.svg",
