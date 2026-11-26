@@ -59,11 +59,38 @@ function breakable(src: string): string {
   return out + src.slice(i);
 }
 
+/**
+ * Cifrão de dinheiro (não abre fórmula): "\$", "R$ 14,00", "(R$)" e "R$/kWh".
+ * "R$)" só é dinheiro com o parêntese aberto logo antes: em "($R_1>R$)" o cifrão fecha a fórmula.
+ */
+function money(s: string, mark: string) {
+  return s.replace(/\\\$/g, mark).replace(/(?<![$\w\\])R\$(?=\s?\d|\/)|(?<=\()R\$(?=\))/g, `R${mark}`);
+}
+
+/** Tira os comandos de texto da fórmula (\text{…}, \mathrm{…} com chaves dentro de chaves): ali acento é normal. */
+function withoutText(t: string) {
+  const re = /\\(?:text|textrm|textnormal|mathrm|mathit|mathbf|mathsf|mbox|textbf|textit|operatorname)\s*\{/g;
+  let out = '';
+  let i = 0;
+  for (let m = re.exec(t); m; m = re.exec(t)) {
+    out += t.slice(i, m.index);
+    let depth = 1;
+    let j = m.index + m[0].length;
+    for (; j < t.length && depth; j++) {
+      if (t[j] === '{') depth++;
+      else if (t[j] === '}') depth--;
+    }
+    i = j;
+    re.lastIndex = j;
+  }
+  return out + t.slice(i);
+}
+
 export function rich(src: string | null | undefined, inline = false): string {
   let s = String(src ?? '');
   if (!s.trim()) return '';
-  // dinheiro não é fórmula: "\$" e "R$ 14,00" / "(R$)" viram cifrão de verdade
-  s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, `R${DOLLAR}`);
+  // dinheiro não é fórmula: "\$", "R$ 14,00", "(R$)" e "R$/kWh" viram cifrão de verdade
+  s = money(s, DOLLAR);
   const math: string[] = [];
   const keep = (html: string) => `${math.push(html) - 1}`;
   // $ sem par: mostra como está, sem tentar montar fórmula
@@ -95,9 +122,7 @@ export const richTex = (latex: string) => tex(latex, true);
  */
 export function formulaProblems(src: string | null | undefined): string[] {
   // dinheiro não é fórmula ("\$", "R$ 14,00"), como no rich()
-  const s = String(src ?? '')
-    .replace(/\\\$/g, '')
-    .replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, 'R');
+  const s = money(String(src ?? ''), '');
   if (!s.includes('$')) return [];
   if ((s.match(/\$/g)?.length ?? 0) % 2) return ['cifrão ($) sem par'];
   const out: string[] = [];
@@ -114,7 +139,7 @@ export function latexProblems(latex: string): string[] {
     return ['fórmula com erro (não abre)'];
   }
   // fora de \text{…}: letra acentuada, aspas ou símbolos de fonte trocada não aparecem em fórmula
-  const bare = t.replace(/\\(?:text|textrm|mathrm|mbox|textbf|textit|operatorname)\s*\{[^{}]*\}/g, '');
+  const bare = withoutText(t);
   if (/[-�\u0000-\u0008\u000E-\u001F]/.test(bare) || /["´¨¥¤¦§¶¬¯]|[À-ÖØ-öø-ÿ]/.test(bare)) return ['fórmula com caracteres estranhos'];
   return [];
 }

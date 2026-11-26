@@ -193,6 +193,30 @@ export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativa
   else add('resolução', formulaProblems(r.resolucao));
   return out;
 }
+/** Muda quando a checagem das fórmulas melhora: as provas já importadas são conferidas de novo. */
+const PROBLEMS_VERSION = '2';
+const gp = globalThis as { __problemsCheck?: Promise<void> | null };
+/** Refaz a lista de problemas de todas as provas (uma vez por versão da checagem). */
+export function recheckProblems() {
+  gp.__problemsCheck ??= (async () => {
+    const done = await sql.one<{ value: string }>(`select value from _meta where key = 'problems'`).catch(() => null);
+    if (done?.value === PROBLEMS_VERSION) return;
+    const papers = await sql.query<{ id: string }>(`select id from exam_papers`);
+    for (const p of papers) {
+      const rows = await sql.query<Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos'>>(
+        `select numero, blocos, alternativas, resolucao, resolucao_blocos from questions where paper_id = $1 order by numero`,
+        [p.id],
+      );
+      await sql.exec(`update exam_papers set problems = $2 where id = $1`, [p.id, JSON.stringify(rows.flatMap(questionProblems).slice(0, 300))]);
+    }
+    await sql.exec(`insert into _meta (key, value) values ('problems', $1) on conflict (key) do update set value = excluded.value`, [PROBLEMS_VERSION]);
+  })().catch((e) => {
+    gp.__problemsCheck = null;
+    console.error('[problemas]', e);
+  });
+  return gp.__problemsCheck;
+}
+
 const imgsOfRow = (r: Row) =>
   imagesOf({ ...r, imagemAlternativas: r.imagem_alternativas, resolucaoBlocos: r.resolucao_blocos, numero: r.numero } as unknown as QuestaoIn);
 

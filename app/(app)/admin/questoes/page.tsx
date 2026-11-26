@@ -2,7 +2,7 @@ import { FileQuestion } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState, PageHeader, SectionHeader } from '@/components/ui';
 import { sql } from '@/lib/db';
-import { paperLabel, type Paper } from '@/lib/questions';
+import { paperLabel, recheckProblems, type Paper } from '@/lib/questions';
 import { requireAdmin } from '@/lib/session';
 import { QuestionsHub } from './hub';
 import { PapersList } from './papers-list';
@@ -11,6 +11,8 @@ export const metadata: Metadata = { title: 'Questões · Admin' };
 
 export default async function AdminQuestoes() {
   await requireAdmin();
+  // checagem das fórmulas melhorou: confere de novo as provas já importadas (uma vez)
+  await recheckProblems();
   const papers = await sql.query<Paper & { valid: number; answers: number; no_res: number }>(
     `select p.*, (select count(*)::int from questions q where q.paper_id = p.id and q.status <> 'anulada') as valid,
             (select count(*)::int from questions q where q.paper_id = p.id and q.resolucao = '') as no_res,
