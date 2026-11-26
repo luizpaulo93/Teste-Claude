@@ -1,6 +1,7 @@
 import 'server-only';
 import katex from 'katex';
 import { Marked } from 'marked';
+import { splitMath } from '@/lib/math-split';
 
 /**
  * Texto das questões: Markdown (negrito, itálico, listas) com fórmulas LaTeX em $...$ (ou $$...$$ em destaque).
@@ -42,8 +43,9 @@ function uprightAccents(t: string) {
   if (!/[À-ÖØ-öø-ÿ]/.test(t)) return t;
   return outsideText(t, (part) => part.replace(/(?<![\\A-Za-zÀ-ÖØ-öø-ÿ])[A-Za-zÀ-ÖØ-öø-ÿ]*[À-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ]*/g, (w) => `\\text{${w}}`));
 }
+// marcas internas de montagem nunca podem chegar ao KaTeX (era o "□0□" vermelho na tela)
 const tex = (src: string, display: boolean) =>
-  katex.renderToString(breakable(texSrc(src)), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
+  katex.renderToString(breakable(texSrc(src.replace(/[\uE000\uE001]/g, ''))), { displayMode: display, throwOnError: false, output: 'html', strict: 'ignore' });
 
 /**
  * \mathrm{A + B \rightarrow C} vira \mathrm{A} + \mathrm{B} \rightarrow \mathrm{C}: o KaTeX não quebra linha
@@ -109,10 +111,11 @@ export function rich(src: string | null | undefined, inline = false): string {
   s = money(s, DOLLAR);
   const math: string[] = [];
   const keep = (html: string) => `${math.push(html) - 1}`;
-  // $ sem par: mostra como está, sem tentar montar fórmula
-  if ((s.match(/\$/g)?.length ?? 0) % 2 === 0) {
-    s = s.replace(/\$\$([\s\S]+?)\$\$/g, (_, t) => keep(tex(t, true))).replace(/\$([^$]+?)\$/g, (_, t) => keep(tex(t, false)));
-  }
+  // fórmulas lidas da esquerda para a direita (ver math-split.ts): "$a$$b$" são duas fórmulas coladas,
+  // "($)" é cifrão de texto, e um "$" sem par vira texto sem estragar as outras fórmulas
+  s = splitMath(s)
+    .pieces.map((p) => ('tex' in p ? keep(tex(p.tex, p.display)) : p.text.replaceAll('$', DOLLAR)))
+    .join('');
   // negrito/itálico em LaTeX fora das fórmulas: \textbf{..}, \textit{..}, \emph{..}, \underline{..}
   for (let i = 0; i < 4; i++) {
     const before = s;
@@ -141,9 +144,10 @@ export function formulaProblems(src: string | null | undefined): string[] {
   // mesma preparação da montagem (rich): o que passa aqui abre igual na tela do aluno
   const s = money(String(src ?? ''), DOLLAR);
   if (!s.includes('$')) return [];
-  if ((s.match(/\$/g)?.length ?? 0) % 2) return ['cifrão ($) sem par'];
+  const { pieces, orphans } = splitMath(s);
   const out: string[] = [];
-  for (const m of s.matchAll(/\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g)) out.push(...latexProblems(m[1] ?? m[2] ?? ''));
+  if (orphans) out.push('cifrão ($) sem par — se for dinheiro, escreva \\$');
+  for (const p of pieces) if ('tex' in p) out.push(...latexProblems(p.tex));
   // trava final: monta como o aluno vê; se algum pedaço sair em vermelho (erro do KaTeX), avisa
   if (!out.length && rich(src).includes('katex-error')) out.push('fórmula com erro (aparece em vermelho)');
   return out;

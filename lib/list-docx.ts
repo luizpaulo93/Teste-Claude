@@ -26,6 +26,7 @@ import { metaParts, stars, subjectsOf, type ListQuestion } from '@/lib/list-html
 import { headersOf, type ListTemplate } from '@/lib/question-lists';
 import { altImagesToShow, blankAlternatives, type QImg } from '@/lib/question-types';
 import { fetchMedia } from '@/lib/storage/server';
+import { splitMath } from '@/lib/math-split';
 
 /**
  * Lista em Word (.docx): coluna dupla, margem estreita (1,27 cm), Arial 10.
@@ -88,24 +89,16 @@ function inline(text: string, out: Seg[]) {
 function paragraphs(src: string): Seg[][] {
   let s = String(src ?? '');
   s = s.replace(/\\\$/g, DOLLAR).replace(/(?<![$\w\\])R\$(?=\s?\d|\))/g, `R${DOLLAR}`);
-  const even = (s.match(/\$/g)?.length ?? 0) % 2 === 0;
   return s
     .split(/\n{2,}/)
     .filter((p) => p.trim())
     .map((p) => {
+      // mesma leitura da tela (math-split.ts): "$a$$b$" são duas fórmulas, "($)" é cifrão de texto
       const out: Seg[] = [];
-      if (!even) {
-        inline(p.replace(/\$/g, DOLLAR), out);
-        return out;
+      for (const piece of splitMath(p).pieces) {
+        if ('tex' in piece) out.push({ math: piece.tex });
+        else inline(piece.text.replace(/\$/g, DOLLAR), out);
       }
-      const re = /\$\$([\s\S]+?)\$\$|\$([^$]+?)\$/g;
-      let last = 0;
-      for (const m of p.matchAll(re)) {
-        inline(p.slice(last, m.index), out);
-        out.push({ math: m[1] ?? m[2] });
-        last = m.index! + m[0].length;
-      }
-      inline(p.slice(last), out);
       return out;
     });
 }
