@@ -19,7 +19,9 @@ export default async function EditQuestion({ params, searchParams }: { params: P
       <QuestionEditor
         key={q.id + String((q as { updated_at?: string }).updated_at ?? '')}
         id={q.id}
+        paperId={q.paper_id}
         numero={q.numero}
+        imgAlts={(Array.isArray(q.imagem_alternativas) ? q.imagem_alternativas : q.imagem_alternativas ? [q.imagem_alternativas] : []).filter((i): i is NonNullable<typeof i> => Boolean(i?.arquivo))}
         paperLabel={label}
         focus={(await searchParams).onde}
         initial={{

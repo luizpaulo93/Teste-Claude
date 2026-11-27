@@ -130,7 +130,7 @@ export function PapersList({ papers }: { papers: PaperView[] }) {
             {p.problems.length > 0 && (
               <button type="button" onClick={() => setOpen((o) => (o === p.id ? null : p.id))} aria-expanded={open === p.id}>
                 <Badge tone="danger">
-                  <AlertTriangle className="size-3" /> {new Set(p.problems.map((x) => x.n)).size} com fórmula a revisar
+                  <AlertTriangle className="size-3" /> {new Set(p.problems.map((x) => x.n)).size} {new Set(p.problems.map((x) => x.n)).size === 1 ? 'questão' : 'questões'} a revisar
                 </Badge>
               </button>
             )}

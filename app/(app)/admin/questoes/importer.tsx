@@ -8,6 +8,7 @@ import { ActionButton, Spinner } from '@/components/ui-client';
 import { fileName, imagesOf, type ProvaIn } from '@/lib/question-types';
 import { cn } from '@/lib/utils';
 import { filesFromZip } from '@/lib/unzip-client';
+import { makeMatcher } from '@/lib/image-match';
 import { checkImport, deletePaper } from './actions';
 import { clearImportResult, startImport, useImportJob } from './import-job';
 
@@ -25,6 +26,8 @@ const looksZip = async (f: File) => {
   return b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
 };
 const looksJson = async (f: File) => /^\s*[[{]/.test(await f.slice(0, 64).text());
+/** caminho do arquivo dentro do zip ou da pasta escolhida (vazio para imagens soltas) */
+const pathOf = (f: File) => (f as File & { relPath?: string }).relPath || f.webkitRelativePath || '';
 const isImage = (f: File) => /\.(webp|png|jpe?g|gif|avif)$/i.test(f.name) || f.type.startsWith('image/');
 
 /**
@@ -121,7 +124,8 @@ export function Importer() {
     if (imgs.length) {
       setFiles((m) => {
         const n = new Map(m);
-        for (const f of imgs) n.set(f.name, f);
+        // chave pelo caminho: o mesmo nome em pastas (provas) diferentes não se perde
+        for (const f of imgs) n.set(pathOf(f) || f.name, f);
         return n;
       });
       clearImportResult();
@@ -132,23 +136,33 @@ export function Importer() {
   }
 
   // ---------------- resumo
+  // encaixe tolerante: maiúsculas, extensão, acentos do zip do Mac, mesmo nome em provas diferentes
+  const resolve = makeMatcher([...files.values()].map((f) => ({ name: f.name, path: pathOf(f), file: f })));
   const cited = new Map<string, Set<string>>(); // prova → nomes de arquivo citados
   for (const p of provas ?? []) cited.set(p.provaId, new Set(p.questoes.flatMap((q) => imagesOf(q).map((i) => fileName(i.arquivo)))));
+  const chosen = new Map<string, Map<string, File>>(); // prova → nome citado → arquivo escolhido
+  const pickIn = (prova: string, names: Iterable<string>) => {
+    const m = new Map([...resolve(prova, names)].map(([n, c]) => [n, c.file] as const));
+    chosen.set(prova, new Map([...(chosen.get(prova) ?? []), ...m]));
+    return m;
+  };
   const haveIn = (prova: string, n: string) => Boolean(check?.have[prova]?.[n]);
   let citedN = 0;
   let foundN = 0;
   let inAppN = 0;
   let sameN = 0;
   const missing: string[] = [];
-  for (const [prova, names] of cited)
+  for (const [prova, names] of cited) {
+    const got = pickIn(prova, names);
     for (const n of names) {
       citedN++;
-      if (haveIn(prova, n) && files.has(n)) sameN++;
-      if (files.has(n) && (replace || !haveIn(prova, n)))
+      if (haveIn(prova, n) && got.has(n)) sameN++;
+      if (got.has(n) && (replace || !haveIn(prova, n)))
         foundN++; // escolhida agora (e ainda não está no app, ou vai substituir)
       else if (haveIn(prova, n)) inAppN++;
       else missing.push(n);
     }
+  }
   // só imagens: encaixam em provas que já estão no app e esperam por elas
   // (só as que ainda faltam: escolher a pasta de novo depois de uma parada envia só o resto)
   // (só imagens que já estão no app, nenhuma faltando: é versão nova da figura, substitui)
@@ -157,35 +171,34 @@ export function Importer() {
   let missingChosen = 0;
   if (!provas && check) {
     const provs = [...new Set([...Object.keys(check.want), ...Object.keys(check.have)])];
+    const found = new Map(provs.map((prova) => [prova, pickIn(prova, [...(check.want[prova] ?? []), ...Object.keys(check.have[prova] ?? {})])]));
     for (const prova of provs) {
-      sameOnly += Object.keys(check.have[prova] ?? {}).filter((n) => files.has(n)).length;
-      missingChosen += (check.want[prova] ?? []).filter((n) => files.has(n)).length;
+      const got = found.get(prova)!;
+      sameOnly += Object.keys(check.have[prova] ?? {}).filter((n) => got.has(n)).length;
+      missingChosen += (check.want[prova] ?? []).filter((n) => got.has(n)).length;
     }
     const swap = replace || missingChosen === 0;
     for (const prova of provs) {
-      const inApp = Object.keys(check.have[prova] ?? {}).filter((n) => files.has(n));
-      const got = [...(check.want[prova] ?? []), ...(swap ? inApp : [])].filter((n) => files.has(n));
-      if (got.length) fits.set(prova, [...new Set(got)]);
+      const got = found.get(prova)!;
+      const inApp = Object.keys(check.have[prova] ?? {}).filter((n) => got.has(n));
+      const list = [...(check.want[prova] ?? []), ...(swap ? inApp : [])].filter((n) => got.has(n));
+      if (list.length) fits.set(prova, [...new Set(list)]);
     }
   }
   const fitsN = [...fits.values()].reduce((a, l) => a + l.length, 0);
-  const used = new Set(
-    [...cited.values()]
-      .flatMap((s) => [...s])
-      .concat([...fits.values()].flat())
-      .concat(check ? Object.values(check.have).flatMap((m) => Object.keys(m)) : []),
-  );
-  const unused = [...files.keys()].filter((n) => !used.has(n));
+  const usedFiles = new Set([...chosen.values()].flatMap((m) => [...m.values()]));
+  const unused = [...files.values()].filter((f) => !usedFiles.has(f)).map((f) => f.name);
   const canImport = provas ? !missing.length || allowMissing : fitsN > 0;
+  const fileOf = (prova: string, name: string) => chosen.get(prova)?.get(name);
 
   function run() {
     if (provas) {
       const uploads = [...cited].flatMap(([prova, names]) =>
-        [...names].filter((n) => files.has(n) && (replace || !haveIn(prova, n))).map((name) => ({ prova, name, file: files.get(name)! })),
+        [...names].filter((n) => fileOf(prova, n) && (replace || !haveIn(prova, n))).map((name) => ({ prova, name, file: fileOf(prova, name)! })),
       );
       void startImport({ provas: provas.map((p) => ({ prova: p, have: check?.have[p.provaId] ?? {} })), uploads });
     } else {
-      const uploads = [...fits].flatMap(([prova, names]) => names.map((name) => ({ prova, name, file: files.get(name)! })));
+      const uploads = [...fits].flatMap(([prova, names]) => names.map((name) => ({ prova, name, file: fileOf(prova, name)! })));
       void startImport({ provas: [], uploads });
     }
     toast('Importando… pode continuar usando o app');

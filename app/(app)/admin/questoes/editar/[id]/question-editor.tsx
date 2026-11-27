@@ -1,17 +1,17 @@
 'use client';
 
 import 'katex/dist/katex.min.css';
-import { AlertTriangle, ArrowRight, Check, ImageIcon, Save } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, ImageIcon, ImageUp, Save } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { Button, buttonClass, Card, Select } from '@/components/ui';
 import { Spinner } from '@/components/ui-client';
-import type { QAlternativa, QBloco } from '@/lib/question-types';
+import type { QAlternativa, QBloco, QImg } from '@/lib/question-types';
 import type { PaperProblem } from '@/lib/questions';
 import { cn } from '@/lib/utils';
-import { previewFields, saveQuestionEdit, type PreviewField, type QuestionDraft } from '../../edit-actions';
+import { attachQuestionImage, previewFields, saveQuestionEdit, type PreviewField, type QuestionDraft } from '../../edit-actions';
 
 type Field = PreviewField & { key: string; label: string };
 type Remaining = (PaperProblem & { qid: string })[];
@@ -40,15 +40,20 @@ function fieldsOf(d: QuestionDraft, hasResBlocks: boolean): Field[] {
 
 export function QuestionEditor({
   id,
+  paperId,
   numero,
   paperLabel,
   initial,
   focus,
+  imgAlts = [],
 }: {
   id: string;
+  paperId: string;
   numero: number;
   paperLabel: string;
   initial: QuestionDraft;
+  /** imagem única com as alternativas (quando a prova traz assim) */
+  imgAlts?: QImg[];
   /** onde está o problema (enunciado, alternativa B, resolução) */
   focus?: string;
 }) {
@@ -89,6 +94,46 @@ export function QuestionEditor({
   }, [prev, fields, focus, d.alternativas, hasResBlocks]);
 
   const problems = fields.filter((f) => prev[f.key]?.problems.length);
+  // imagens citadas que não chegaram (a questão fica sem a figura para o aluno)
+  const missingImgs = [
+    ...d.blocos.filter((b): b is Extract<QBloco, { tipo: 'imagem' }> => b.tipo === 'imagem' && !b.url && !b.parte),
+    ...d.alternativas.flatMap((a) => (a.imagem?.arquivo && !a.imagem.url ? [a.imagem] : [])),
+    ...imgAlts.filter((i) => i.arquivo && !i.url),
+    ...d.resolucao_blocos.filter((b): b is Extract<QBloco, { tipo: 'imagem' }> => b.tipo === 'imagem' && !b.url && !b.parte),
+  ];
+  const [uploading, setUploading] = useState('');
+
+  /** Envia a imagem escolhida para o lugar dela (salva antes o que foi digitado, para não perder). */
+  async function uploadImg(arquivo: string, file: File) {
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/.test(file.type)) return toast.error('Escolha uma imagem (JPG, PNG ou WEBP).');
+    if (file.size > 10 * 1024 * 1024) return toast.error('Imagem muito grande (máx. 10 MB).');
+    setUploading(arquivo);
+    try {
+      if (dirty) {
+        const r = await saveQuestionEdit(id, d);
+        if (r.error) throw new Error(r.error);
+      }
+      const res = await fetch('/api/storage/upload-batch', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ folder: `questoes/${paperId}`, files: [{ contentType: file.type, size: file.size }] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const it = data?.items?.[0];
+      if (!res.ok || !it?.uploadUrl) throw new Error(it?.error || data?.error || 'Não foi possível preparar o envio.');
+      const put = await fetch(it.uploadUrl, { method: 'PUT', headers: it.headers, body: file });
+      if (!put.ok) throw new Error('Falha ao enviar a imagem.');
+      const r = await attachQuestionImage(id, arquivo, it.publicUrl);
+      if (r.error) throw new Error(r.error);
+      toast('Imagem enviada.');
+      setRemaining(r.remaining ?? []);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Falha ao enviar a imagem.');
+    } finally {
+      setUploading('');
+    }
+  }
 
   const setBlock = (which: 'blocos' | 'resolucao_blocos', i: number, patch: (b: QBloco) => QBloco) =>
     setD((x) => ({ ...x, [which]: x[which].map((b, k) => (k === i ? patch(b) : b)) }));
@@ -117,18 +162,7 @@ export function QuestionEditor({
             <TextArea mono value={b.latex} onChange={(v) => setBlock(which, i, (x) => ({ ...(x as typeof b), latex: v }))} />
           </FieldBox>
         );
-      if (b.tipo === 'imagem')
-        return (
-          <div key={i} className="flex items-center gap-3 rounded-lg border border-line bg-surface-2/50 p-2.5">
-            {b.url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={b.url} alt="" className="h-14 w-auto max-w-32 rounded bg-white object-contain p-0.5" />
-            ) : (
-              <ImageIcon className="size-5 text-muted" />
-            )}
-            <span className="min-w-0 truncate text-xs text-muted">Imagem · {b.arquivo.split('/').pop()}</span>
-          </div>
-        );
+      if (b.tipo === 'imagem') return b.parte ? null : <ImageSlot key={i} img={b} onFile={(f) => uploadImg(b.arquivo, f)} busy={uploading === b.arquivo} />;
       if (b.tipo === 'tabela')
         return (
           <div key={i} className="space-y-2 rounded-lg border border-line p-2.5">
@@ -175,8 +209,28 @@ export function QuestionEditor({
   return (
     <div className="space-y-5 pb-24">
       <Card className={cn('flex items-start gap-3 p-4', problems.length ? 'border-danger/40' : 'border-success/40')}>
-        {problems.length ? <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" /> : <Check className="mt-0.5 size-5 shrink-0 text-success" />}
+        {problems.length || missingImgs.length ? <AlertTriangle className="mt-0.5 size-5 shrink-0 text-danger" /> : <Check className="mt-0.5 size-5 shrink-0 text-success" />}
         <div className="min-w-0 text-sm">
+          {missingImgs.length > 0 && (
+            <div className="mb-2">
+              <p className="font-semibold text-ink">
+                {missingImgs.length} {missingImgs.length === 1 ? 'imagem não enviada' : 'imagens não enviadas'}
+              </p>
+              <ul className="mt-1 space-y-0.5 text-xs text-ink-2">
+                {missingImgs.map((m) => (
+                  <li key={m.arquivo}>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById(`img-${m.arquivo}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+                      className="text-left hover:text-ink"
+                    >
+                      {m.arquivo.split('/').pop()} — toque em <b className="text-ink">Enviar imagem</b> no lugar dela
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {problems.length ? (
             <>
               <p className="font-semibold text-ink">
@@ -193,7 +247,9 @@ export function QuestionEditor({
               </ul>
             </>
           ) : (
-            <p className="font-semibold text-ink">{Object.keys(prev).length ? 'Nenhum problema nas fórmulas desta questão.' : 'Conferindo as fórmulas…'}</p>
+            <p className="font-semibold text-ink">
+              {Object.keys(prev).length ? `Nenhum problema nas fórmulas${missingImgs.length ? '' : ' desta questão'}.` : 'Conferindo as fórmulas…'}
+            </p>
           )}
           <p className="mt-1.5 text-[11px] text-muted">
             Fórmulas dentro do texto vão entre $…$ (ex.: $v = \frac{'{'}d{'}'}{'{'}t{'}'}$). Acento e aspas dentro de fórmula: use \text{'{'}…{'}'}.
@@ -207,7 +263,11 @@ export function QuestionEditor({
         {d.alternativas.map((a: QAlternativa, i) => (
           <FieldBox key={a.letra} fkey={`a${i}`} label={`Alternativa ${a.letra}${a.letra === d.gabarito ? ' · correta' : ''}`} prev={prev[`a${i}`]}>
             <TextArea value={a.texto} onChange={(v) => setD((x) => ({ ...x, alternativas: x.alternativas.map((y, k) => (k === i ? { ...y, texto: v } : y)) }))} />
+            {a.imagem?.arquivo && <ImageSlot img={a.imagem} onFile={(f) => uploadImg(a.imagem!.arquivo, f)} busy={uploading === a.imagem.arquivo} />}
           </FieldBox>
+        ))}
+        {imgAlts.map((img) => (
+          <ImageSlot key={img.arquivo} img={img} label="Imagem das alternativas" onFile={(f) => uploadImg(img.arquivo, f)} busy={uploading === img.arquivo} />
         ))}
         <label className="flex items-center gap-3">
           <span className={LABEL}>Gabarito</span>
@@ -263,6 +323,47 @@ export function QuestionEditor({
           {saving ? <Spinner /> : <Save className="size-4" />} Salvar
         </Button>
       </div>
+    </div>
+  );
+}
+
+/** Imagem da questão: mostra a que está no app ou avisa que falta; escolher um arquivo envia (ou troca). */
+function ImageSlot({ img, onFile, busy, label }: { img: QImg; onFile: (f: File) => void; busy: boolean; label?: string }) {
+  const input = useRef<HTMLInputElement>(null);
+  const name = img.arquivo.split('/').pop();
+  return (
+    <div
+      id={`img-${img.arquivo}`}
+      className={cn('flex scroll-mt-24 items-center gap-3 rounded-lg border p-2.5', img.url ? 'border-line bg-surface-2/50' : 'border-danger/60 bg-danger/5')}
+    >
+      {img.url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={img.url} alt="" className="h-14 w-auto max-w-32 shrink-0 rounded bg-white object-contain p-0.5" />
+      ) : (
+        <span className="grid h-14 w-14 shrink-0 place-items-center rounded bg-danger/10 text-danger">
+          <ImageIcon className="size-5" />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs text-muted">
+          {label ?? 'Imagem'} · {name}
+        </span>
+        {!img.url && <span className="block text-xs font-medium text-danger">Imagem não enviada: o aluno vê a questão sem a figura.</span>}
+      </span>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f) onFile(f);
+        }}
+      />
+      <Button size="sm" variant={img.url ? 'secondary' : 'primary'} disabled={busy} onClick={() => input.current?.click()} className="shrink-0">
+        {busy ? <Spinner /> : <ImageUp className="size-4" />} {img.url ? 'Trocar' : 'Enviar imagem'}
+      </Button>
     </div>
   );
 }

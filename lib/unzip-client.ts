@@ -24,6 +24,8 @@ export async function filesFromZip(zip: File, depth = 0): Promise<File[]> {
     const name = path.split('/').pop() ?? path;
     const ext = name.split('.').pop()?.toLowerCase() ?? '';
     const file = new File([data as BlobPart], name, { type: MIME[ext] ?? 'application/octet-stream' });
+    // guarda a pasta de dentro do zip: imagens com o mesmo nome em provas diferentes não se misturam
+    Object.defineProperty(file, 'relPath', { value: `${zip.name}/${path}` });
     if (ext === 'zip' && depth < 2) out.push(...(await filesFromZip(file, depth + 1)));
     else out.push(file);
   }

@@ -177,8 +177,18 @@ function resolutionOf(q: QuestaoIn) {
 type Row = ReturnType<typeof cleanQuestion>;
 
 /** Fórmulas com erro ou texto corrompido em cada parte da questão (vai para o aviso da importação). */
-export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos'>): PaperProblem[] {
+export function questionProblems(
+  r: Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos'> & { imagem_alternativas?: QImg | (QImg | null)[] | null },
+): PaperProblem[] {
   const out: PaperProblem[] = [];
+  // imagem citada que não chegou: a questão fica sem a figura para o aluno
+  const noImg = (onde: string, i: QImg | null | undefined) => {
+    if (i?.arquivo && !i.url) out.push({ n: r.numero, onde, msg: `imagem não enviada (${fileName(i.arquivo)})` });
+  };
+  for (const b of r.blocos) if (b.tipo === 'imagem') noImg('enunciado', b);
+  for (const a of r.alternativas) noImg(`alternativa ${a.letra}`, a.imagem);
+  for (const i of Array.isArray(r.imagem_alternativas) ? r.imagem_alternativas : r.imagem_alternativas ? [r.imagem_alternativas] : []) noImg('alternativas', i);
+  for (const b of r.resolucao_blocos ?? []) if (b.tipo === 'imagem') noImg('resolução', b);
   const add = (onde: string, list: string[]) => list.slice(0, 1).forEach((msg) => out.push({ n: r.numero, onde, msg }));
   for (const b of r.blocos) {
     if (b.tipo === 'texto') add('enunciado', formulaProblems(b.conteudo));
@@ -193,8 +203,19 @@ export function questionProblems(r: Pick<Row, 'numero' | 'blocos' | 'alternativa
   else add('resolução', formulaProblems(r.resolucao));
   return out;
 }
+/** Refaz e guarda os problemas de uma prova (fórmulas e imagens que faltam), com a questão de cada um. */
+export async function refreshPaperProblems(paperId: string) {
+  const rows = await sql.query<Pick<Row, 'id' | 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos' | 'imagem_alternativas'>>(
+    `select id, numero, blocos, alternativas, resolucao, resolucao_blocos, imagem_alternativas from questions where paper_id = $1 order by numero`,
+    [paperId],
+  );
+  const problems = rows.flatMap((r) => questionProblems(r).map((p) => ({ ...p, qid: r.id })));
+  await sql.exec(`update exam_papers set problems = $2 where id = $1`, [paperId, JSON.stringify(problems.slice(0, 300).map(({ qid: _q, ...p }) => p))]);
+  return problems;
+}
+
 /** Muda quando a checagem das fórmulas melhora: as provas já importadas são conferidas de novo. */
-const PROBLEMS_VERSION = '5';
+const PROBLEMS_VERSION = '6';
 const gp = globalThis as { __problemsCheck?: Promise<void> | null };
 /** Refaz a lista de problemas de todas as provas (uma vez por versão da checagem). */
 export function recheckProblems() {
@@ -202,13 +223,7 @@ export function recheckProblems() {
     const done = await sql.one<{ value: string }>(`select value from _meta where key = 'problems'`).catch(() => null);
     if (done?.value === PROBLEMS_VERSION) return;
     const papers = await sql.query<{ id: string }>(`select id from exam_papers`);
-    for (const p of papers) {
-      const rows = await sql.query<Pick<Row, 'numero' | 'blocos' | 'alternativas' | 'resolucao' | 'resolucao_blocos'>>(
-        `select numero, blocos, alternativas, resolucao, resolucao_blocos from questions where paper_id = $1 order by numero`,
-        [p.id],
-      );
-      await sql.exec(`update exam_papers set problems = $2 where id = $1`, [p.id, JSON.stringify(rows.flatMap(questionProblems).slice(0, 300))]);
-    }
+    for (const p of papers) await refreshPaperProblems(p.id);
     await sql.exec(`insert into _meta (key, value) values ('problems', $1) on conflict (key) do update set value = excluded.value`, [PROBLEMS_VERSION]);
   })().catch((e) => {
     gp.__problemsCheck = null;
@@ -396,6 +411,8 @@ export async function attachImages(paperId: string, urls: Record<string, string>
     await splitTallImages(paperId, changed).catch(() => 0);
   }
   await refreshPaperCounts(paperId);
+  // imagens chegaram: a lista de problemas da prova (imagem não enviada) fica em dia
+  if (changed.length) await refreshPaperProblems(paperId);
   await dropUnused(replaced);
   return changed.length;
 }

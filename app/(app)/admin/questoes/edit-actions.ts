@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { fail, requireAdminAction } from '@/lib/admin/guard';
 import { sql } from '@/lib/db';
 import type { QAlternativa, QBloco } from '@/lib/question-types';
-import { questionProblems, type PaperProblem } from '@/lib/questions';
+import { attachImages, refreshPaperProblems, type PaperProblem } from '@/lib/questions';
+import { fileName } from '@/lib/question-types';
 import { formulaProblems, latexProblems, rich, richTex } from '@/lib/rich';
 
 /** Um campo do editor para pré-visualizar: texto com fórmulas ($…$) ou LaTeX puro (bloco de equação). */
@@ -62,15 +63,7 @@ function mergeBlocks(orig: QBloco[], edit: unknown): QBloco[] {
 }
 
 /** Problemas que sobraram na prova, com o link de cada questão. */
-async function paperProblems(paperId: string) {
-  const rows = await sql.query<{ id: string; numero: number; blocos: QBloco[]; alternativas: QAlternativa[]; resolucao: string; resolucao_blocos: QBloco[] }>(
-    `select id, numero, blocos, alternativas, resolucao, resolucao_blocos from questions where paper_id = $1 order by numero`,
-    [paperId],
-  );
-  const problems: (PaperProblem & { qid: string })[] = rows.flatMap((r) => questionProblems(r as unknown as Parameters<typeof questionProblems>[0]).map((p) => ({ ...p, qid: r.id })));
-  await sql.exec(`update exam_papers set problems = $2 where id = $1`, [paperId, JSON.stringify(problems.slice(0, 300).map(({ qid: _q, ...p }) => p))]);
-  return problems;
-}
+const paperProblems = (paperId: string) => refreshPaperProblems(paperId);
 
 /** Salva a correção manual da questão e refaz a lista de problemas da prova. */
 export async function saveQuestionEdit(id: string, draft: QuestionDraft): Promise<{ ok?: boolean; error?: string; remaining?: (PaperProblem & { qid: string })[] }> {
@@ -94,6 +87,27 @@ export async function saveQuestionEdit(id: string, draft: QuestionDraft): Promis
       [id, JSON.stringify(blocos), JSON.stringify(alternativas), gabarito, resolucao, JSON.stringify(resolucao_blocos)],
     );
     const remaining = await paperProblems(q.paper_id);
+    revalidatePath('/admin/questoes');
+    revalidatePath(`/questoes/${id}`);
+    return { ok: true, remaining };
+  } catch (e) {
+    return fail(e);
+  }
+}
+
+/**
+ * Imagem enviada pelo editor da questão: entra em todos os lugares da prova que citam o mesmo arquivo
+ * (como na importação) e a lista de problemas da prova é refeita.
+ */
+export async function attachQuestionImage(id: string, arquivo: string, url: string): Promise<{ ok?: boolean; error?: string; remaining?: (PaperProblem & { qid: string })[] }> {
+  try {
+    await requireAdminAction();
+    const q = await sql.one<{ paper_id: string }>(`select paper_id from questions where id = $1`, [String(id ?? '').slice(0, 200)]);
+    if (!q) return { error: 'Questão não encontrada.' };
+    const name = fileName(String(arquivo ?? '').slice(0, 300));
+    if (!name || !/^https?:\/\/[^\s"'<>]+$/.test(String(url ?? ''))) return { error: 'Imagem inválida.' };
+    await attachImages(q.paper_id, { [name]: url });
+    const remaining = await refreshPaperProblems(q.paper_id);
     revalidatePath('/admin/questoes');
     revalidatePath(`/questoes/${id}`);
     return { ok: true, remaining };
